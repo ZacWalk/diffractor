@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: What one opened display shows: the item or items on screen, their textures and decoders,
 // the player session, zoom and panorama views, comparison, and the subtitles and media controls drawn
@@ -14,9 +13,11 @@
 #pragma once
 
 #include "model.h"
+#include "av_c64.h"
 #include "av_format.h"
 #include "av_player.h"
 #include "av_sid.h"
+#include "av_tracker.h"
 
 class document_state;
 class sid_monitor_motion;
@@ -34,12 +35,23 @@ public:
 	// Bumped whenever the session is torn down or superseded. An open that completes after a bump has
 	// lost the display and must close what it was handed, not publish it. UI thread only.
 	uint32_t _av_generation = 0;
+	// The position a display with no session draws at; see playback_position.
+	std::optional<double> _position_override;
 
 	core::blob _selected_item_data;
 	// The panel's document of a file with no viewer: _selected_item_data decoded as text, or a dump of
 	// it. Set with the bytes, and keeps its selection while the panel is rebuilt.
 	std::shared_ptr<document_state> _document;
 	std::vector<archive_item> _archive_items;
+	// What the user made of each table the stack shows - the widths dragged and the column sorted by - by the
+	// table's name, so the table a rebuilt stack makes for the same selection carries on from them. UI thread only.
+	struct table_choice
+	{
+		std::vector<double> sizes;
+		int sort_column = -1;
+		bool ascending = true;
+	};
+	std::map<std::string, table_choice, std::less<>> _table_choices;
 	av_media_info _player_media_info;
 	// Set once the full-file metadata scan (or player open) has completed for this display item.
 	// Reading the whole file finishes hydrating a cloud-only placeholder, so this is the point at
@@ -77,8 +89,15 @@ public:
 
 	mutable render::vertices_ptr _audio_verts;
 	mutable pointi _audio_element_offset;
+	// Where the visualizer's bars go, in the audio panel's coordinates, as it last laid them out.
 	mutable recti _audio_element_bounds;
 	mutable float _audio_element_alpha = 1.0f;
+	// The audio panel as last drawn, in the view's pixels, which holds the bars and their shadows.
+	mutable recti _audio_panel_bounds;
+	// Where what update_for_present last brought up to date is drawn, for present_bounds, and whether any of
+	// it has no such place yet.
+	mutable recti _present_bounds;
+	mutable bool _present_whole = false;
 
 	// The SID tune playing here: the session reads its samples through a WAV stream, and the SID monitor
 	// reads the chip's state beside them. The tune and the voices the user silenced are this display's
@@ -87,8 +106,32 @@ public:
 	int _sid_song = 0;
 	sid_voice_mix _sid_mix;
 	// What of the SID monitor moves with the music, as the monitor last placed it, so each present can bring
-	// it up to the session's position without the scene being rebuilt. UI thread only.
+	// it up to the session's position without the scene being rebuilt, and the monitor as last drawn, in the
+	// view's pixels. UI thread only.
 	mutable std::shared_ptr<sid_monitor_motion> _sid_motion;
+	mutable recti _sid_monitor_bounds;
+	std::shared_ptr<tracker_tune_render> _tracker;
+	tracker_channel_mix _tracker_mix;
+	// Last pattern position painted; only a changed row or meter tick earns a scene rebuild.
+	mutable double _tracker_drawn_time = -1;
+	mutable double _tracker_drawn_position = -1;
+	mutable uint64_t _tracker_drawn_revision = 0;
+	// Where the tracker monitor's pattern was left - following the playhead, or scrolled to a row - and the
+	// first of its channels shown, so a rebuilt panel carries on from them. UI thread only.
+	bool _tracker_follow = true;
+	int _tracker_top_row = 0;
+	int _tracker_first_channel = 0;
+
+	// The Commodore 64 running a program from this display's disk, tape, cartridge or program file, in place
+	// of its listing; empty while the listing shows. The keys held on it, and the texture its pictures are
+	// uploaded into, with the number of the picture last uploaded, the state last drawn and where the picture
+	// was last drawn, in the view's pixels. UI thread only.
+	std::shared_ptr<c64_session> _c64;
+	mutable c64_keyboard _c64_keyboard;
+	mutable render::texture_ptr _c64_texture;
+	mutable uint64_t _c64_frame_number = 0;
+	mutable c64_session::status _c64_drawn_status = c64_session::status::starting;
+	mutable recti _c64_picture_bounds;
 
 	// The subtitles the user picked from the menu for this item; empty while the settings choose. Kept
 	// across a reopen for another track. UI thread only.
@@ -157,53 +200,60 @@ public:
 
 	ui::animate_alpha _loading_alpha_animation;
 
-	explicit display_state_t(async_strategy& async, common_display_state_t& common)
-		: _async(async), _common(common)
+	explicit display_state_t(async_strategy& async, common_display_state_t& common) : _async(async), _common(common) {}
+
+	// A display left with its machine still running ends it: nothing else would.
+	~display_state_t()
 	{
+		if (_c64) _c64->stop();
 	}
+
+	display_state_t(const display_state_t&) = delete;
+	display_state_t& operator=(const display_state_t&) = delete;
 
 	void populate(const view_state& state);
 
-	bool is_one() const
-	{
-		return _is_one;
-	}
+	bool is_one() const { return _is_one; }
 
-	bool is_two() const
-	{
-		return _is_two;
-	}
+	bool is_two() const { return _is_two; }
 
 	// Two selected files is cardinality; comparison is the separate claim that the pair is like with like.
-	bool is_comparison() const
-	{
-		return _is_two && _comparison_eligible;
-	}
+	bool is_comparison() const { return _is_two && _comparison_eligible; }
 
 	render_valid update_for_present(double time_now) const;
+	// Where what the last update_for_present brought up to date is drawn, in the view's pixels, when it said
+	// present: the window shows it again there alone. Empty when that is not known, for the whole view.
+	recti present_bounds() const { return _present_whole ? recti{} : _present_bounds; }
 	// Draws the subtitles on show over the video frame last drawn, scaled from the video's pixels to the
 	// picture. Lines at the bottom rise clear of the media controls while those show.
 	void draw_subtitles(render::draw_context& dc) const;
 
-	double media_pos() const
+	double media_pos() const { return _session ? _session->last_frame_time() : 0.0; }
+
+	// Where playback stands for what the monitors draw now: the session's clock, or - for a display drawn apart
+	// from any session, as Movie draws an audio clip a frame at a time - the moment that frame shows.
+	double playback_position(const double time_now) const
 	{
-		return _session ? _session->last_frame_time() : 0.0;
+		if (_position_override) return *_position_override;
+		return _session ? _session->pos(time_now) : 0.0;
 	}
 
-	double media_start() const
-	{
-		return _player_media_info.start;
-	}
+	double media_start() const { return _player_media_info.start; }
 
 	double media_end() const
 	{
-		return _player_media_info.end;
+		// A SID tune's stream is declared long enough for any tune, and the tune ends where its render says.
+		return _sid && _player_media_info.has_audio ? std::min(_player_media_info.end, _sid->end_seconds())
+		                                            : _player_media_info.end;
 	}
 
-	bool comparing() const
+	// A SID tune heard to its end, which the session cannot know of: its stream runs on in silence.
+	bool sid_has_ended(const double time_now) const
 	{
-		return _comparing;
+		return _sid && _session && _session->pos(time_now) >= _sid->end_seconds();
 	}
+
+	bool comparing() const { return _comparing; }
 
 	static constexpr size_t zoom_pane_index(const df::zoom_pane pane) noexcept
 	{
@@ -222,8 +272,8 @@ public:
 			// The pane you switch to always adopts the scale and center you were just looking at.
 			_comparison_zoom.active(pane);
 			mark_zoom_activity();
-			_async.invalidate_view(view_invalid::view_layout | view_invalid::view_redraw |
-				view_invalid::command_state | view_invalid::controller);
+			_async.invalidate_view(view_invalid::view_layout | view_invalid::view_redraw | view_invalid::command_state |
+			                       view_invalid::controller);
 		}
 	}
 
@@ -254,10 +304,7 @@ public:
 		return _is_two ? _comparison_zoom.active_state() : _common._zoom;
 	}
 
-	zoom_layout_state& current_zoom_layout() noexcept
-	{
-		return _zoom_layouts[zoom_pane_index(active_zoom_pane())];
-	}
+	zoom_layout_state& current_zoom_layout() noexcept { return _zoom_layouts[zoom_pane_index(active_zoom_pane())]; }
 
 	const zoom_layout_state& current_zoom_layout() const noexcept
 	{
@@ -269,27 +316,17 @@ public:
 		return location - current_zoom_layout().viewport_origin;
 	}
 
-	template <class Mutator>
-	void mutate_zoom(Mutator&& mutator)
+	template <class Mutator> void mutate_zoom(Mutator&& mutator)
 	{
 		if (_is_two) _comparison_zoom.mutate(std::forward<Mutator>(mutator));
 		else mutator(_common._zoom);
 	}
 
-	bool zoom() const
-	{
-		return _can_zoom && current_zoom_state().is_magnified(zoom_fit_scale());
-	}
+	bool zoom() const { return _can_zoom && current_zoom_state().is_magnified(zoom_fit_scale()); }
 
-	bool is_zoom_mode() const
-	{
-		return _can_zoom && (_temporary_zoom || !current_zoom_state().is_fit());
-	}
+	bool is_zoom_mode() const { return _can_zoom && (_temporary_zoom || !current_zoom_state().is_fit()); }
 
-	uint64_t zoom_activity_generation() const noexcept
-	{
-		return _zoom_activity_generation;
-	}
+	uint64_t zoom_activity_generation() const noexcept { return _zoom_activity_generation; }
 
 	void mark_zoom_activity() noexcept
 	{
@@ -297,10 +334,7 @@ public:
 		_zoom_activity_time = core::now();
 	}
 
-	bool zoom_interactive(const double time_now) const noexcept
-	{
-		return time_now - _zoom_activity_time < 0.15;
-	}
+	bool zoom_interactive(const double time_now) const noexcept { return time_now - _zoom_activity_time < 0.15; }
 
 	void zoom(const bool zoom)
 	{
@@ -322,7 +356,7 @@ public:
 			});
 			mark_zoom_activity();
 			_async.invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::tooltip |
-				view_invalid::controller);
+			                       view_invalid::controller);
 		}
 	}
 
@@ -354,12 +388,10 @@ public:
 		}
 
 		auto& layout = current_zoom_layout();
-		const auto source_anchor = current_zoom_state().source_point_at(
-			layout.source_extent, layout.viewport_extent, zoom_fit_scale(), anchor);
+		const auto source_anchor = current_zoom_state().source_point_at(layout.source_extent, layout.viewport_extent,
+		                                                                zoom_fit_scale(), anchor);
 		mutate_zoom([&](df::zoom_view_state& state)
-		{
-			state.step(direction, zoom_fit_scale(), layout.source_extent, layout.viewport_extent, anchor);
-		});
+		{ state.step(direction, zoom_fit_scale(), layout.source_extent, layout.viewport_extent, anchor); });
 		mark_zoom_activity();
 		if (!current_zoom_state().is_fit())
 		{
@@ -368,7 +400,7 @@ public:
 			layout.pending_reanchor = true;
 		}
 		_async.invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw |
-			view_invalid::controller);
+		                       view_invalid::controller);
 	}
 
 	void adjust_zoom_scale(const int direction)
@@ -396,12 +428,10 @@ public:
 		}
 
 		mutate_zoom([&](df::zoom_view_state& state)
-		{
-			state.step(direction, zoom_fit_scale(), layout.source_extent, layout.viewport_extent, anchor);
-		});
+		{ state.step(direction, zoom_fit_scale(), layout.source_extent, layout.viewport_extent, anchor); });
 		mark_zoom_activity();
 		_async.invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw |
-			view_invalid::controller);
+		                       view_invalid::controller);
 	}
 
 	void zoom_100()
@@ -418,19 +448,17 @@ public:
 		if (declares_equirectangular()) _common._panorama.flat = true;
 
 		auto& layout = current_zoom_layout();
-		const auto source_anchor = current_zoom_state().source_point_at(
-			layout.source_extent, layout.viewport_extent, zoom_fit_scale(), anchor);
+		const auto source_anchor = current_zoom_state().source_point_at(layout.source_extent, layout.viewport_extent,
+		                                                                zoom_fit_scale(), anchor);
 		const auto old_scale = current_zoom_state().effective_scale(zoom_fit_scale());
 		mutate_zoom([&](df::zoom_view_state& state)
-		{
-			state.set_anchored(1.0, old_scale, layout.source_extent, layout.viewport_extent, anchor);
-		});
+		{ state.set_anchored(1.0, old_scale, layout.source_extent, layout.viewport_extent, anchor); });
 		mark_zoom_activity();
 		layout.pending_source_anchor = source_anchor;
 		layout.pending_client_anchor = layout.viewport_origin + anchor;
 		layout.pending_reanchor = true;
 		_async.invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw |
-			view_invalid::controller);
+		                       view_invalid::controller);
 	}
 
 	void zoom_fit_variant(const df::zoom_scale_mode mode)
@@ -438,16 +466,13 @@ public:
 		const auto& layout = current_zoom_layout();
 		mutate_zoom([&](df::zoom_view_state& state)
 		{
-			if (mode == df::zoom_scale_mode::fit_width)
-				state.fit_width(layout.source_extent, layout.viewport_extent);
-			else if (mode == df::zoom_scale_mode::fill)
-				state.fill(layout.source_extent, layout.viewport_extent);
-			else
-				state.fit();
+			if (mode == df::zoom_scale_mode::fit_width) state.fit_width(layout.source_extent, layout.viewport_extent);
+			else if (mode == df::zoom_scale_mode::fill) state.fill(layout.source_extent, layout.viewport_extent);
+			else state.fit();
 		});
 		mark_zoom_activity();
 		_async.invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw |
-			view_invalid::controller);
+		                       view_invalid::controller);
 	}
 
 	void zoom_scale(const double scale)
@@ -456,12 +481,10 @@ public:
 		const pointd anchor{layout.viewport_extent.Width / 2.0, layout.viewport_extent.Height / 2.0};
 		const auto old_scale = current_zoom_state().effective_scale(zoom_fit_scale());
 		mutate_zoom([&](df::zoom_view_state& state)
-		{
-			state.set_anchored(scale, old_scale, layout.source_extent, layout.viewport_extent, anchor);
-		});
+		{ state.set_anchored(scale, old_scale, layout.source_extent, layout.viewport_extent, anchor); });
 		mark_zoom_activity();
 		_async.invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw |
-			view_invalid::controller);
+		                       view_invalid::controller);
 	}
 
 	double zoom_fit_scale() const
@@ -494,10 +517,7 @@ public:
 		}
 	}
 
-	const df::zoom_view_state& zoom_state() const noexcept
-	{
-		return current_zoom_state();
-	}
+	const df::zoom_view_state& zoom_state() const noexcept { return current_zoom_state(); }
 
 	const df::zoom_view_state& zoom_state(const df::zoom_pane pane) const noexcept
 	{
@@ -510,7 +530,7 @@ public:
 		_temporary_zoom = false;
 		mark_zoom_activity();
 		_async.invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw |
-			view_invalid::controller);
+		                       view_invalid::controller);
 	}
 
 	void inspect_at_100(const pointd anchor)
@@ -525,20 +545,18 @@ public:
 		}
 
 		auto& layout = current_zoom_layout();
-		const auto source_anchor = current_zoom_state().source_point_at(
-			layout.source_extent, layout.viewport_extent, zoom_fit_scale(), anchor);
+		const auto source_anchor = current_zoom_state().source_point_at(layout.source_extent, layout.viewport_extent,
+		                                                                zoom_fit_scale(), anchor);
 		const auto old_scale = current_zoom_state().effective_scale(zoom_fit_scale());
 		mutate_zoom([&](df::zoom_view_state& state)
-		{
-			state.set_anchored(1.0, old_scale, layout.source_extent, layout.viewport_extent, anchor);
-		});
+		{ state.set_anchored(1.0, old_scale, layout.source_extent, layout.viewport_extent, anchor); });
 		mark_zoom_activity();
 		layout.pending_source_anchor = source_anchor;
 		layout.pending_client_anchor = layout.viewport_origin + anchor;
 		layout.pending_reanchor = true;
 		_temporary_zoom = true;
 		_async.invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw |
-			view_invalid::controller);
+		                       view_invalid::controller);
 	}
 
 	void commit_inspect()
@@ -551,10 +569,7 @@ public:
 		}
 	}
 
-	bool is_temporary_zoom() const noexcept
-	{
-		return _temporary_zoom;
-	}
+	bool is_temporary_zoom() const noexcept { return _temporary_zoom; }
 
 	void zoom_center(const pointd center)
 	{
@@ -607,22 +622,16 @@ public:
 		// flat rather than shown wrong; vanishingly rare, because a stitcher writes the panorama the
 		// way up it means it.
 		return !setting.show_rotated || !_selected_texture1 ||
-			_selected_texture1->display_orientation() == core::orientation::top_left;
+		       _selected_texture1->display_orientation() == core::orientation::top_left;
 	}
 
 	// Whether the next magnified draw is a projection. Inspect zoom is included: zoom.md makes it and
 	// zoom mode two durations of one mechanism sharing one renderer, so press-and-hold on a declared
 	// sphere shows the sphere. The flat override is per item and visible in the zoom chrome, so this
 	// is never a hidden mode.
-	bool is_panorama_projected() const
-	{
-		return is_zoom_mode() && panorama_projects();
-	}
+	bool is_panorama_projected() const { return is_zoom_mode() && panorama_projects(); }
 
-	const panorama_session& panorama() const noexcept
-	{
-		return _common._panorama;
-	}
+	const panorama_session& panorama() const noexcept { return _common._panorama; }
 
 	panorama_request panorama_draw_request() const
 	{
@@ -663,7 +672,8 @@ public:
 	{
 		auto& session = _common._panorama;
 
-		if (session.path != path || session.source != source || session.modified != modified || session.resolved) return;
+		if (session.path != path || session.source != source || session.modified != modified || session.resolved)
+			return;
 
 		const auto resolved = prop::panorama_geometry::resolve(declared, source);
 
@@ -693,7 +703,7 @@ public:
 
 		mark_zoom_activity();
 		_async.invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw |
-			view_invalid::controller);
+		                       view_invalid::controller);
 	}
 
 	// A drag turns the world under the pointer. The whole gesture is recomputed from its origin
@@ -743,7 +753,7 @@ public:
 		_temporary_zoom = temporary;
 		mark_zoom_activity();
 		_async.invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw |
-			view_invalid::controller);
+		                       view_invalid::controller);
 	}
 
 	// Where a held pointer is aiming. Positional, like the flat inspect traversal it replaces: the
@@ -835,18 +845,13 @@ public:
 	{
 		const auto& layout = current_zoom_layout();
 		mutate_zoom([&](df::zoom_view_state& state)
-		{
-			state.zoom_region(region, layout.source_extent, layout.viewport_extent, zoom_fit_scale());
-		});
+		{ state.zoom_region(region, layout.source_extent, layout.viewport_extent, zoom_fit_scale()); });
 		mark_zoom_activity();
 		_async.invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw |
-			view_invalid::controller);
+		                       view_invalid::controller);
 	}
 
-	bool can_zoom() const
-	{
-		return _can_zoom;
-	}
+	bool can_zoom() const { return _can_zoom; }
 
 	void toggle_zoom()
 	{
@@ -859,38 +864,32 @@ public:
 		mutate_zoom([](df::zoom_view_state& state) { state.toggle_fit(); });
 		mark_zoom_activity();
 		_async.invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::view_redraw |
-			view_invalid::controller);
+		                       view_invalid::controller);
 	}
 
-	bool player_has_video() const
-	{
-		return _player_media_info.has_video;
-	}
+	bool player_has_video() const { return _player_media_info.has_video; }
 
-	bool can_play_media() const
-	{
-		return (_player_media_info.has_video || _player_media_info.has_audio) && _session;
-	}
+	bool can_play_media() const { return (_player_media_info.has_video || _player_media_info.has_audio) && _session; }
 
 	bool is_playing_media() const
 	{
 		return (_player_media_info.has_video || _player_media_info.has_audio) && _session && _session->is_playing();
 	}
 
-	bool is_playing() const
+	// A Commodore 64 is starting or running here: the display presents every frame, and the screen stays
+	// awake. One that failed to start shows only why, and holds neither.
+	bool is_running_c64() const
 	{
-		return _common._is_slideshow || is_playing_media();
+		if (!_c64) return false;
+		const auto status = _c64->state();
+		return status == c64_session::status::starting || status == c64_session::status::running;
 	}
 
-	bool is_slideshow() const
-	{
-		return _common._is_slideshow;
-	}
+	bool is_playing() const { return _common._is_slideshow || is_playing_media(); }
 
-	bool is_playing_slideshow() const
-	{
-		return _common._is_slideshow && (!_session || !_session->is_playing());
-	}
+	bool is_slideshow() const { return _common._is_slideshow; }
+
+	bool is_playing_slideshow() const { return _common._is_slideshow && (!_session || !_session->is_playing()); }
 
 	void stop_slideshow()
 	{
@@ -901,7 +900,7 @@ public:
 			// command_state too: the slideshow toggle and its related commands read this flag.
 			// screen_saver because a photo slideshow is the only thing holding sleep off.
 			_async.invalidate_view(view_invalid::view_redraw | view_invalid::command_state |
-				view_invalid::screen_saver);
+			                       view_invalid::screen_saver);
 		}
 	}
 
@@ -913,7 +912,7 @@ public:
 	int slideshow_pos() const
 	{
 		return core::mul_div(_next_photo_tick, 1000,
-		                   std::max(1, setting.slideshow_delay) * render::default_ticks_per_second);
+		                     std::max(1, setting.slideshow_delay) * render::default_ticks_per_second);
 	}
 
 	// Brings the scrubber's position and time text up to the session. Repaints only while the media controls
@@ -926,15 +925,18 @@ public:
 		{
 			auto invalid = false;
 			const auto start = info.start;
-			const auto end = info.end;
+			const auto end = media_end();
 			const auto len = end - start;
 			const auto media_pos = _session ? _session->last_frame_time() : 0.0;
 			const auto pos = static_cast<int>((media_pos - start) * _scrubber_width / std::max(1.0, len));
 			const auto endi = core::round(end);
 
+			// A SID tune's end can move once it is playing, when the scan of it finds where the tune ends.
 			if (endi != _last_duration)
 			{
+				_last_duration = endi;
 				_duration = core::format_seconds(endi);
+				invalid = true;
 			}
 
 			if (pos != _last_scrubber_pos)
@@ -960,7 +962,7 @@ public:
 	}
 
 	void load_compare_preview(int elapsed_numerator, int elapsed_denominator);
-	void load_seek_preview(int pos_numerator, int pos_denominator, std::function<void()> callback);
+	void load_seek_preview(int pos_numerator, int pos_denominator, const std::function<void()>& callback);
 
 	void preview_loaded()
 	{
@@ -968,11 +970,7 @@ public:
 		_async.invalidate_view(view_invalid::view_redraw | view_invalid::tooltip);
 	}
 
-
-	bool is_multi() const
-	{
-		return _is_multi;
-	}
+	bool is_multi() const { return _is_multi; }
 
 	bool step()
 	{

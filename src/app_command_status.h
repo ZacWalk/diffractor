@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Progress dialog and status tracking for long-running operations. Displays progress,
 // handles cancellation, and shows success/failure results for batch processing commands.
@@ -12,7 +11,6 @@
 #pragma once
 #include "ui_elements.h"
 #include "ui_dialog.h"
-
 
 struct folder_scan_item;
 
@@ -76,24 +74,21 @@ class command_status final : public std::enable_shared_from_this<command_status>
 public:
 	command_status(async_strategy& as, const dialog_ptr& dlg, const icon_index& icon, const std::string_view title,
 	               const size_t total, const std::string_view preparing = {}) :
-		_async(as),
-		_dlg(as, dlg),
-		_icon(icon),
-		_title(title),
+		_async(as), _dlg(as, dlg), _icon(icon), _title(title),
 		_progress(as, std::make_shared<ui::progress_control>(dlg->_frame, preparing.empty() ? title : preparing)),
-		_cancel(as, std::make_shared<ui::close_control>(dlg->_frame, [this, h = dlg->_frame]
-		{
-			++_cancel_version;
-			h->close(true);
-		}, tt.button_cancel)),
+		_cancel(as, std::make_shared<ui::close_control>(dlg->_frame,
+	                                                    [this, h = dlg->_frame]
+	{
+		++_cancel_version;
+		h->close(true);
+	}, tt.button_cancel)),
 		_total(static_cast<int>(total))
 	{
-		const std::vector<view_element_ptr> controls{
-			set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon, title, std::string{})),
-			std::make_shared<divider_element>(),
-			_progress.shared(),
-			_cancel.shared()
-		};
+		const std::vector<view_element_ptr> controls{set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon,
+		                                                                                             title,
+		                                                                                             std::string{})),
+		                                             std::make_shared<divider_element>(), _progress.shared(),
+		                                             _cancel.shared()};
 
 		_dlg->show_controls(controls, {44}, {44});
 	}
@@ -113,7 +108,7 @@ public:
 			const std::vector<view_element_ptr> controls = {
 				set_margin(std::make_shared<ui::title_control2>(_dlg->_frame, _icon, _title, message)),
 				std::make_shared<divider_element>(),
-				std::make_shared<ui::close_control>(_dlg->_frame)
+				std::make_shared<ui::close_control>(_dlg->_frame),
 			};
 
 			_dlg->show_modal(controls);
@@ -142,10 +137,7 @@ public:
 		});
 	}
 
-	bool is_canceled() const override
-	{
-		return _dlg->is_canceled() || _cancel_version.load() != _cancel_initial_value;
-	}
+	bool is_canceled() const override { return _dlg->is_canceled() || _cancel_version.load() != _cancel_initial_value; }
 
 	bool has_failures() const override
 	{
@@ -191,10 +183,7 @@ public:
 
 	void show_errors() override
 	{
-		publish([](pending_publication& pending)
-		{
-			pending.completion = completion_type::show_errors;
-		});
+		publish([](pending_publication& pending) { pending.completion = completion_type::show_errors; });
 	}
 
 	void wait_for_complete() const override
@@ -224,8 +213,7 @@ public:
 	}
 
 private:
-	template <typename T>
-	void publish(T update)
+	template <typename T> void publish(T update)
 	{
 		auto queue_callback = false;
 		{
@@ -297,19 +285,18 @@ private:
 		}
 
 		std::string result;
-		const auto processed_status = total
-			                              ? format_plural_text(tt.processed_x_of_x_fmt, processed_first_name,
-			                                                   processed_count, core::file_size{}, total)
-			                              : format_plural_text(tt.processed_fmt, processed_first_name,
-			                                                   processed_count, {}, total);
+		const auto processed_status = total ? format_plural_text(tt.processed_x_of_x_fmt, processed_first_name,
+		                                                         processed_count, core::file_size{}, total)
+		                                    : format_plural_text(tt.processed_fmt, processed_first_name,
+		                                                         processed_count, {}, total);
 
 		if (_dlg->is_canceled())
 		{
 			result = core::replace_tokens(tt.cancel_was_pressed_after,
-			                             [&](std::ostringstream& result, const std::string_view token)
-			                             {
-				                             if (token.empty()) result << processed_status;
-			                             });
+			                              [&](std::ostringstream& result, const std::string_view token)
+			{
+				if (token.empty()) result << processed_status;
+			});
 		}
 		else
 		{
@@ -376,7 +363,7 @@ private:
 				const std::vector<view_element_ptr> controls = {
 					set_margin(std::make_shared<ui::title_control2>(_dlg->_frame, _icon, _title, _message)),
 					std::make_shared<divider_element>(),
-					_cancel.shared()
+					_cancel.shared(),
 				};
 
 				_dlg->show_controls(controls, {44}, {44});
@@ -392,7 +379,7 @@ private:
 
 using item_results_ptr = std::shared_ptr<command_status>;
 
-static item_status to_status(const platform::file_op_result_code code)
+inline item_status to_status(const platform::file_op_result_code code)
 {
 	switch (code)
 	{
@@ -400,7 +387,7 @@ static item_status to_status(const platform::file_op_result_code code)
 	case platform::file_op_result_code::CANCELLED: return item_status::cancel;
 	case platform::file_op_result_code::FAILED: return item_status::fail;
 	case platform::file_op_result_code::ALREADY_EXISTS: return item_status::fail;
-	default: ;
+	default:;
 	}
 
 	return item_status::success;

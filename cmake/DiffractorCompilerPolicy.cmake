@@ -80,10 +80,12 @@ if (MSVC)
         set(CMAKE_${kind}_LINKER_FLAGS_RELEASE "/OPT:REF /OPT:ICF /LTCG:incremental /RELEASE")
     endforeach ()
 else ()
+    # Guarded by language like the MSVC switches: nasm assembles some of the vendored SIMD, and it
+    # reports a warning name it does not know rather than ignoring it.
     add_compile_options(
-            -Wall
-            -Wno-unknown-pragmas
-            -Wno-multichar
+            $<$<COMPILE_LANGUAGE:C,CXX>:-Wall>
+            $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unknown-pragmas>
+            $<$<COMPILE_LANGUAGE:C,CXX>:-Wno-multichar>
             # GCC 13 makes this an error by default. Accessors such as ui::surface::orientation()
             # share a name with a type in the enclosing namespace, which is ill-formed by the letter
             # of the standard and accepted by every compiler; renaming them buys nothing. C++ only:
@@ -95,10 +97,11 @@ endif ()
 # Diffractor's own code. Warnings are on, and the precompiled header is applied where it works.
 function(diffractor_apply_app_policy target)
     if (MSVC)
-        # WarningLevel Level3 and SDLCheck. Both judge source we own and can fix, so neither is
+        # WarningLevel Level4 and SDLCheck. Both judge source we own and can fix, so neither is
         # applied globally: /sdl promotes the deprecated-CRT warning to an error, which no vendored
-        # C library written before those functions were deprecated would survive.
-        target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:/W3> $<$<COMPILE_LANGUAGE:C,CXX>:/sdl>)
+        # C library written before those functions were deprecated would survive. Diffractor's own
+        # code builds without a warning at /W4 in both configurations.
+        target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:/W4> $<$<COMPILE_LANGUAGE:C,CXX>:/sdl>)
 
         # CharacterSet Unicode. This is what makes RegCreateKeyEx and its like resolve to the wide
         # entry points the code passes wchar_t strings to.

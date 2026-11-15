@@ -1,13 +1,13 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: A photo's edits applied to its pixels: perspective, straightening, crop and scale -
-// resampled with Catmull-Rom, as the edit preview draws - and then the colour adjustments.
+// Purpose: A photo's edits applied to its pixels, a byte a channel or sixteen bits: perspective,
+// straightening, crop and scale - resampled with Catmull-Rom, as the edit preview draws - and then the
+// colour adjustments.
 
 #include "pch.h"
 #include "files.h"
@@ -34,12 +34,29 @@ static simple_transform to_simple_transform(const image_edits& pe)
 	return core::simple_transform::none;
 }
 
-// get_pixel returns transparent black outside the surface, so an interpolated edge sample would drag
+// Pixels are four channels, a byte each or sixteen bits each, the fourth alpha where the format has it:
+// what follows treats the three colour channels alike, so their order does not matter to it.
+
+// get_pixel answers transparent black outside the surface, so an interpolated edge sample would drag
 // every rotated, straightened or perspective-corrected border toward black. Clamp to the edge instead.
-static __forceinline core::color32 sample_clamped(const core::surface& src, const int x, const int y)
+template <typename T> static __forceinline const T* clamped_pixel(const core::surface& src, const int x, const int y)
 {
-	return src.get_pixel(std::clamp(x, 0, static_cast<int>(src.width()) - 1),
-	                     std::clamp(y, 0, static_cast<int>(src.height()) - 1));
+	const auto cx = std::clamp(x, 0, static_cast<int>(src.width()) - 1);
+	const auto cy = std::clamp(y, 0, static_cast<int>(src.height()) - 1);
+	return std::bit_cast<const T*>(src.pixels_line(cy)) + static_cast<size_t>(cx) * 4;
+}
+
+// A pixel where it lies, or transparent black outside the surface, as get_pixel answers.
+template <typename T>
+static __forceinline void copy_pixel(const core::surface& src, const int x, const int y, T* const out)
+{
+	if (x < 0 || y < 0 || x >= static_cast<int>(src.width()) || y >= static_cast<int>(src.height()))
+	{
+		out[0] = out[1] = out[2] = out[3] = 0;
+		return;
+	}
+
+	std::memcpy(out, std::bit_cast<const T*>(src.pixels_line(y)) + static_cast<size_t>(x) * 4, 4 * sizeof(T));
 }
 
 static __forceinline double catmull_rom_weight(const double t)
@@ -52,8 +69,11 @@ static __forceinline double catmull_rom_weight(const double t)
 
 // Catmull-Rom, the same sampler the edit preview draws with, so a saved straighten keeps the detail
 // the preview showed rather than the extra softening bilinear leaves behind.
-static core::color32 sample_catmull_rom(const core::surface& src, const double x, const double y, const bool has_alpha)
+template <typename T>
+static void sample_catmull_rom(const core::surface& src, const double x, const double y, const bool has_alpha,
+                               T* const out)
 {
+	constexpr auto maximum = static_cast<double>(std::numeric_limits<T>::max());
 	const auto left_f = floor(x);
 	const auto top_f = floor(y);
 	const auto left = static_cast<int>(left_f);
@@ -70,43 +90,44 @@ static core::color32 sample_catmull_rom(const core::surface& src, const double x
 		weights_y[i] = catmull_rom_weight(offset_y - (i - 1));
 	}
 
-	auto red = 0.0;
-	auto green = 0.0;
-	auto blue = 0.0;
+	double colour[3] = {};
 	auto alpha = 0.0;
 
 	for (auto j = 0; j < 4; ++j)
 	{
 		for (auto i = 0; i < 4; ++i)
 		{
-			const auto c = sample_clamped(src, left + i - 1, top + j - 1);
+			const auto* const c = clamped_pixel<T>(src, left + i - 1, top + j - 1);
 			const auto weight = weights_x[i] * weights_y[j];
 			// Filtering straight alpha would let a transparent pixel pull its colour into the result.
-			const auto coverage = has_alpha ? weight * (core::get_a(c) / 255.0) : weight;
+			const auto coverage = has_alpha ? weight * (c[3] / maximum) : weight;
 
-			red += core::get_r(c) * coverage;
-			green += core::get_g(c) * coverage;
-			blue += core::get_b(c) * coverage;
+			for (auto channel = 0; channel < 3; ++channel) colour[channel] += c[channel] * coverage;
 			alpha += coverage;
 		}
 	}
 
 	if (alpha > 1e-6)
 	{
-		red /= alpha;
-		green /= alpha;
-		blue /= alpha;
+		for (auto& channel : colour) channel /= alpha;
 	}
 
-	return core::saturate_rgba(core::round(red), core::round(green), core::round(blue),
-	                         has_alpha ? core::round(alpha * 255.0) : 255);
+	for (auto channel = 0; channel < 3; ++channel)
+	{
+		out[channel] = static_cast<T>(std::clamp(std::round(colour[channel]), 0.0, maximum));
+	}
+
+	out[3] = static_cast<T>(has_alpha ? std::clamp(std::round(alpha * maximum), 0.0, maximum) : maximum);
 }
 
 core::const_surface_ptr apply_image_edits(const core::const_surface_ptr& source, const image_edits& photo_edits,
-                                        const core::cancel_token& token)
+                                          const core::cancel_token& token)
 {
 	const auto dimensions = source->dimensions();
 	const auto format = source->format();
+	// Sixteen bits a channel are resampled at sixteen, so a wide picture keeps its precision to the save.
+	const auto wide = core::is_wide(format);
+	const auto has_alpha = core::has_alpha(format);
 
 	if (photo_edits.has_perspective())
 	{
@@ -118,30 +139,38 @@ core::const_surface_ptr apply_image_edits(const core::const_surface_ptr& source,
 		const auto angle_sin = sin(display_angle);
 		const auto angle_cos = cos(display_angle);
 		const auto horizontal = photo_edits.perspective_horizontal() * angle_cos -
-			photo_edits.perspective_vertical() * angle_sin;
+		                        photo_edits.perspective_vertical() * angle_sin;
 		const auto vertical = photo_edits.perspective_horizontal() * angle_sin +
-			photo_edits.perspective_vertical() * angle_cos;
-		const auto has_alpha = format == core::texture_format::ARGB;
+		                      photo_edits.perspective_vertical() * angle_cos;
 
-		for (auto y = 0u; y < canvas->height(); ++y)
+		const auto correct = [&](auto channel)
 		{
-			if (token.is_cancelled()) return {};
-			auto* const dst_line = std::bit_cast<core::color32*>(canvas->pixels_line(y));
-			const auto normalized_y = (y + 0.5) / canvas->height() - 0.5;
+			using T = decltype(channel);
 
-			for (auto x = 0u; x < canvas->width(); ++x)
+			for (auto y = 0u; y < canvas->height(); ++y)
 			{
-				const auto normalized_x = (x + 0.5) / canvas->width() - 0.5;
-				const auto denominator = 1.0 + horizontal * normalized_x + vertical * normalized_y;
-				// A vanishing denominator produces infinite or NaN source coordinates, and the sampling
-				// below indexes with them.
-				if (std::abs(denominator) < 1e-12) continue;
-				const auto source_x = (0.5 + normalized_x / denominator) * dimensions.cx - 0.5;
-				const auto source_y = (0.5 + normalized_y / denominator) * dimensions.cy - 0.5;
+				if (token.is_cancelled()) return false;
+				auto* const dst_line = std::bit_cast<T*>(canvas->pixels_line(y));
+				const auto normalized_y = (y + 0.5) / canvas->height() - 0.5;
 
-				dst_line[x] = sample_catmull_rom(*source, source_x, source_y, has_alpha);
+				for (auto x = 0u; x < canvas->width(); ++x)
+				{
+					const auto normalized_x = (x + 0.5) / canvas->width() - 0.5;
+					const auto denominator = 1.0 + horizontal * normalized_x + vertical * normalized_y;
+					// A vanishing denominator produces infinite or NaN source coordinates, and the sampling
+					// below indexes with them.
+					if (std::abs(denominator) < 1e-12) continue;
+					const auto source_x = (0.5 + normalized_x / denominator) * dimensions.cx - 0.5;
+					const auto source_y = (0.5 + normalized_y / denominator) * dimensions.cy - 0.5;
+
+					sample_catmull_rom(*source, source_x, source_y, has_alpha, dst_line + static_cast<size_t>(x) * 4);
+				}
 			}
-		}
+
+			return true;
+		};
+
+		if (!(wide ? correct(uint16_t{}) : correct(uint8_t{}))) return {};
 
 		auto remaining_edits = photo_edits;
 		remaining_edits.perspective_horizontal(0);
@@ -156,10 +185,8 @@ core::const_surface_ptr apply_image_edits(const core::const_surface_ptr& source,
 	core::const_surface_ptr surface_result;
 
 	const auto rot_angle = photo_edits.rotation_angle();
-	const auto is_flip_rotate = !core::is_zero(rot_angle) &&
-		core::is_zero(fabs(fmod(rot_angle, 90))) &&
-		!photo_edits.has_crop(dimensions) &&
-		!photo_edits.has_scale();
+	const auto is_flip_rotate = !core::is_zero(rot_angle) && core::is_zero(fabs(fmod(rot_angle, 90))) &&
+	                            !photo_edits.has_crop(dimensions) && !photo_edits.has_scale();
 
 	if (is_flip_rotate)
 	{
@@ -169,8 +196,8 @@ core::const_surface_ptr apply_image_edits(const core::const_surface_ptr& source,
 	{
 		// A crop must not resample. The rectangle arrives from device coordinates and lands on
 		// fractional source pixels, so interpolating would shift and soften every pixel it keeps.
-		const auto crop = photo_edits.crop_bounds(dimensions).crop(rectd(0, 0, dimensions.cx, dimensions.cy)).
-		                              bounding_rect();
+		const auto crop =
+			photo_edits.crop_bounds(dimensions).crop(rectd(0, 0, dimensions.cx, dimensions.cy)).bounding_rect();
 		const auto extent = crop.extent().round();
 		const auto canvas_extent = sizei(std::clamp(extent.cx, 1, dimensions.cx),
 		                                 std::clamp(extent.cy, 1, dimensions.cy));
@@ -181,10 +208,12 @@ core::const_surface_ptr apply_image_edits(const core::const_surface_ptr& source,
 
 		if (canvas->alloc(canvas_extent, format))
 		{
+			const auto pixel_bytes = static_cast<size_t>(core::bytes_per_pixel(format));
+
 			for (auto y = 0; y < canvas_extent.cy; ++y)
 			{
-				memcpy(canvas->pixels_line(y), source->pixels() + (top + y) * source->stride() + left * 4,
-				       static_cast<size_t>(canvas_extent.cx) * 4);
+				memcpy(canvas->pixels_line(y), source->pixels() + (top + y) * source->stride() + left * pixel_bytes,
+				       static_cast<size_t>(canvas_extent.cx) * pixel_bytes);
 			}
 
 			surface_result = std::move(canvas);
@@ -215,8 +244,6 @@ core::const_surface_ptr apply_image_edits(const core::const_surface_ptr& source,
 
 		if (canvas->alloc(canvas_extent, format))
 		{
-			const auto has_alpha = format == core::texture_format::ARGB;
-
 			const auto dst_to_src_points0 = inc_aff.transform({0.0, 0.0});
 			const auto dst_to_src_points1 = inc_aff.transform({1.0, 0.0});
 			const auto dst_to_src_points2 = inc_aff.transform({0.0, 1.0});
@@ -226,34 +253,41 @@ core::const_surface_ptr apply_image_edits(const core::const_surface_ptr& source,
 			const auto y_dx = dst_to_src_points2.X - dst_to_src_points0.X;
 			const auto y_dy = dst_to_src_points2.Y - dst_to_src_points0.Y;
 
-			for (auto y = 0u; y < canvas->height(); y++)
+			const auto resample = [&](auto channel)
 			{
-				auto* const dst_line = std::bit_cast<core::color32*>(canvas->pixels_line(y));
+				using T = decltype(channel);
 
-				for (auto x = 0u; x < canvas->width(); x++)
+				for (auto y = 0u; y < canvas->height(); y++)
 				{
-					const pointd src_pointf = {
-						dst_to_src_points0.X + x * x_dx + y * y_dx,
-						dst_to_src_points0.Y + x * x_dy + y * y_dy
-					};
+					auto* const dst_line = std::bit_cast<T*>(canvas->pixels_line(y));
 
-					const auto leftxf = floor(src_pointf.X);
-					const auto leftx = static_cast<int>(leftxf);
-					const auto rightx = static_cast<int>(ceil(src_pointf.X));
-					const auto topyf = floor(src_pointf.Y);
-					const auto topy = static_cast<int>(topyf);
-					const auto bottomy = static_cast<int>(ceil(src_pointf.Y));
+					for (auto x = 0u; x < canvas->width(); x++)
+					{
+						const pointd src_pointf = {dst_to_src_points0.X + x * x_dx + y * y_dx,
+						                           dst_to_src_points0.Y + x * x_dy + y * y_dy};
 
-					if (leftx == rightx && topy == bottomy)
-					{
-						dst_line[x] = source->get_pixel(leftx, topy);
-					}
-					else
-					{
-						dst_line[x] = sample_catmull_rom(*source, src_pointf.X, src_pointf.Y, has_alpha);
+						const auto leftxf = floor(src_pointf.X);
+						const auto leftx = static_cast<int>(leftxf);
+						const auto rightx = static_cast<int>(ceil(src_pointf.X));
+						const auto topyf = floor(src_pointf.Y);
+						const auto topy = static_cast<int>(topyf);
+						const auto bottomy = static_cast<int>(ceil(src_pointf.Y));
+						auto* const dst = dst_line + static_cast<size_t>(x) * 4;
+
+						if (leftx == rightx && topy == bottomy)
+						{
+							copy_pixel(*source, leftx, topy, dst);
+						}
+						else
+						{
+							sample_catmull_rom(*source, src_pointf.X, src_pointf.Y, has_alpha, dst);
+						}
 					}
 				}
-			}
+			};
+
+			if (wide) resample(uint16_t{});
+			else resample(uint8_t{});
 
 			surface_result = std::move(canvas);
 		}
@@ -271,9 +305,8 @@ core::const_surface_ptr apply_image_edits(const core::const_surface_ptr& source,
 
 		render::color_adjust adjust;
 		adjust.color_params(photo_edits.vibrance(), photo_edits.saturation(), photo_edits.darks(),
-		                    photo_edits.midtones(),
-		                    photo_edits.lights(), photo_edits.contrast(), photo_edits.brightness(),
-		                    photo_edits.temperature(), photo_edits.tint());
+		                    photo_edits.midtones(), photo_edits.lights(), photo_edits.contrast(),
+		                    photo_edits.brightness(), photo_edits.temperature(), photo_edits.tint());
 
 		auto canvas = std::make_shared<core::surface>();
 

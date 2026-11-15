@@ -3704,8 +3704,8 @@ msgstr "Сортировать по дате оригинала"
 msgid "Movie mixer"
 msgstr "Микшер фильма"
 
-msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
-msgstr "Соберите выбранные фотографии и видео в один ролик. Добавляйте, удаляйте и меняйте порядок клипов на полосе ниже и обрезайте выбранный клип. Предварительный просмотр показывает то, что будет отрисовано; ничего не записывается, пока вы не выполните отрисовку или не сохраните."
+msgid "Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Соберите выбранные фотографии, видео и аудиофайлы в один ролик, с текстовыми экранами там, где они нужны. Добавляйте, удаляйте и меняйте порядок элементов на полосе ниже, а выбранный элемент редактируйте здесь. Предварительный просмотр показывает то, что будет отрисовано; ничего не записывается, пока вы не выполните отрисовку или не сохраните."
 
 msgid "Movie"
 msgstr "Фильм"
@@ -3713,50 +3713,38 @@ msgstr "Фильм"
 msgid "Selected clip"
 msgstr "Выбранный клип"
 
-msgid "Crossfade between clips"
-msgstr "Перекрёстное затухание между клипами"
+msgid "Text screen"
+msgstr "Текстовый экран"
 
-msgid "Cut between clips"
-msgstr "Склейка между клипами"
+msgid "Text"
+msgstr "Текст"
 
-msgid "Transition (tenths of a second)"
-msgstr "Переход (десятые доли секунды)"
+msgid "Caption"
+msgstr "Подпись"
 
-msgid "Fade (tenths of a second)"
-msgstr "Появление/затемнение (десятые доли секунды)"
+msgid "Shown for (tenths of a second)"
+msgstr "Длительность показа (десятые доли секунды)"
 
-msgid "Fade in from black"
-msgstr "Появление из чёрного"
+msgid "Stabilize (not applied yet)"
+msgstr "Стабилизировать (пока не применяется)"
 
-msgid "Fade out to black"
-msgstr "Затемнение в чёрное"
-
-msgid "Photo duration (tenths of a second)"
-msgstr "Длительность фотографии (десятые доли секунды)"
-
-msgid "This photo (tenths of a second)"
-msgstr "Эта фотография (десятые доли секунды)"
-
-msgid "Use the movie default"
-msgstr "Использовать значение фильма по умолчанию"
-
-msgid "Add photos and videos to build a movie."
-msgstr "Добавьте фотографии и видео, чтобы собрать фильм."
+msgid "Add photos, videos and audio files to build a movie."
+msgstr "Добавьте фотографии, видео и аудиофайлы, чтобы собрать фильм."
 
 msgid "Output {} x {} at {} fps, {} long."
 msgstr "Результат {} x {}, {} кадр/с, длительность {}."
 
-msgid "{} - clip {} of {}, starting at {}."
-msgstr "{} - клип {} из {}, начало {}."
+msgid "{} - item {} of {}, starting at {}."
+msgstr "{} - элемент {} из {}, начало {}."
+
+msgid "Item {} of {}, starting at {}."
+msgstr "Элемент {} из {}, начало {}."
 
 msgid "Movie project"
 msgstr "Проект фильма"
 
-msgid "Windows Movie Maker project"
-msgstr "Проект Windows Movie Maker"
-
-msgid "Photos and videos"
-msgstr "Фотографии и видео"
+msgid "Photos, videos and audio"
+msgstr "Фотографии, видео и аудио"
 
 msgid "Could not read the project {}."
 msgstr "Не удалось прочитать проект {}."
@@ -3764,11 +3752,17 @@ msgstr "Не удалось прочитать проект {}."
 msgid "Could not save the project {}."
 msgstr "Не удалось сохранить проект {}."
 
-msgid "Assemble the selected photos and videos into one video."
-msgstr "Собирает выбранные фотографии и видео в один ролик."
+msgid "Assemble the selected photos, videos and audio files into one video."
+msgstr "Собирает выбранные фотографии, видео и аудиофайлы в один ролик."
 
 msgid "Add files"
 msgstr "Добавить файлы"
+
+msgid "Add text screen"
+msgstr "Добавить текстовый экран"
+
+msgid "Add a screen of text on black after the selected item."
+msgstr "Добавляет после выбранного элемента экран с текстом на чёрном фоне."
 
 msgid "Remove from movie"
 msgstr "Удалить из фильма"
@@ -3781,9 +3775,6 @@ msgstr "Открыть проект"
 
 msgid "Save project"
 msgstr "Сохранить проект"
-
-msgid "Import Movie Maker project"
-msgstr "Импортировать проект Movie Maker"
 
 msgid "Video"
 msgstr "Видео"
@@ -3839,11 +3830,11 @@ msgstr "Переподключить отсутствующие файлы"
 msgid "Point clips whose source file has moved at a folder you choose."
 msgstr "Переназначает клипы, исходные файлы которых были перемещены, на выбранную вами папку."
 
-msgid "1 element of the imported project was left out because Movie cannot represent it."
-msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
-msgstr[0] "1 элемент импортированного проекта пропущен, так как Фильм не может его представить."
-msgstr[1] "{count} элемента импортированного проекта пропущены, так как Фильм не может их представить."
-msgstr[2] "{count} элементов импортированного проекта пропущено, так как Фильм не может их представить."
+msgid "1 line of the project could not be read and was left out."
+msgid_plural "{count} lines of the project could not be read and were left out."
+msgstr[0] "1 строку проекта не удалось прочитать, и она пропущена."
+msgstr[1] "{count} строки проекта не удалось прочитать, и они пропущены."
+msgstr[2] "{count} строк проекта не удалось прочитать, и они пропущены."
 
 msgid "1 clip cannot find its source file."
 msgid_plural "{count} clips cannot find their source files."
@@ -3851,15 +3842,42 @@ msgstr[0] "1 клип не может найти свой исходный фа�
 msgstr[1] "{count} клипа не могут найти свои исходные файлы."
 msgstr[2] "{count} клипов не могут найти свои исходные файлы."
 
-msgid "1 clip was relinked."
-msgid_plural "{count} clips were relinked."
-msgstr[0] "1 клип переподключён."
-msgstr[1] "{count} клипа переподключены."
-msgstr[2] "{count} клипов переподключено."
 
+msgid "Pattern"
+msgstr "Паттерн"
 
-msgid "SID monitor"
-msgstr "Монитор SID"
+msgid "Row"
+msgstr "Строка"
+
+msgid "Speed"
+msgstr "Скорость"
+
+msgid "Samples"
+msgstr "Сэмплы"
+
+msgid "Instruments"
+msgstr "Инструменты"
+
+msgid "Follow playback"
+msgstr "Следовать за воспроизведением"
+
+msgid "Notes"
+msgstr "Ноты"
+
+msgid "Range"
+msgstr "Диапазон"
+
+msgid "Compressed"
+msgstr "Сжато"
+
+msgid "Codec"
+msgstr "Кодек"
+
+msgid "Format"
+msgstr "Формат"
+
+msgid "Sidecars"
+msgstr "Сопроводительные"
 
 msgid "Voice {}"
 msgstr "Голос {}"
@@ -3878,6 +3896,21 @@ msgstr "Запись в регистры"
 
 msgid "Solo"
 msgstr "Соло"
+
+msgid "Run on an emulated Commodore 64"
+msgstr "Запустить на эмулируемом Commodore 64"
+
+msgid "Start"
+msgstr "Запустить"
+
+msgid "Joystick port {}"
+msgstr "Порт джойстика {}"
+
+msgid "Arrow keys and Space: joystick. Esc: back."
+msgstr "Стрелки и пробел: джойстик. Esc: назад."
+
+msgid "This file could not be started."
+msgstr "Не удалось запустить этот файл."
 
 msgid "Same film"
 msgstr "Тот же фильм"

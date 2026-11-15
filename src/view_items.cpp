@@ -1,14 +1,14 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Items grid/list view. Displays thumbnails in grid layout, handles
 // selection, keyboard navigation, context menus, and item interactions. Also
-// builds the selection detail pane, including the verbose metadata block tree.
+// builds the selection detail pane, including the verbose metadata block tree, and the stack of
+// panels a selection is presented as, which fullscreen shares.
 
 #include "pch.h"
 #include "model.h"
@@ -17,8 +17,10 @@
 #include "ui_view.h"
 #include "ui_dialog.h"
 #include "ui_controls.h"
+#include "ui_c64.h"
 #include "ui_document.h"
 #include "ui_sid.h"
+#include "ui_tracker.h"
 #include "view_items.h"
 #include "app_sidebar.h"
 
@@ -160,7 +162,7 @@ public:
 			// that were not going to be selected. Clipped to the grid so it never paints over the
 			// preview pane or the sidebar.
 			const auto selection = _scroller.logical_to_device(calc_logical_selection_bounds())
-			                                .intersection(_scroller.client_bounds());
+			                           .intersection(_scroller.client_bounds());
 			if (!selection.is_empty())
 			{
 				rc.draw_rect(selection, core::color(ui::style::colors.dialog_selected_background, 0.5));
@@ -168,7 +170,7 @@ public:
 		}
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_tracking = true;
 		_cancel = false;
@@ -250,8 +252,12 @@ public:
 		}
 	}
 
+	// A release selects only after a press here: the press of a click that closed a menu is the menu's, and its
+	// release alone is no click on an item.
 	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
+		if (!_tracking) return;
+
 		_last_loc = loc;
 		update_state();
 
@@ -316,7 +322,7 @@ public:
 	{
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_tracking = true;
 		_cancel = false;
@@ -345,16 +351,16 @@ public:
 	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
 	{
 		_last_loc = loc;
-		_tracking = false;
+		const auto pressed = std::exchange(_tracking, false);
 
-		if (!_drag_started && !_cancel && _hover_item)
+		if (pressed && !_drag_started && !_cancel && _hover_item)
 		{
 			_state.select(_parent._host, _hover_item, keys.control, keys.shift, false);
 			_state.stop_slideshow();
 		}
 	}
 
-	void on_mouse_left_button_double_click(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_double_click(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_last_loc = loc;
 		open_item(_hover_item);
@@ -420,16 +426,20 @@ void items_view::refresh()
 }
 
 items_view::items_view(view_state& s, view_host_ptr host) :
-	_state(s),
-	_host(std::move(host)),
-	_sidebar(std::make_shared<sidebar_host>(s))
+	_state(s), _host(std::move(host)), _sidebar(std::make_shared<sidebar_host>(s))
 {
 	_items_scroller.popup_func = [this](view_hover_element& hover, const pointi loc)
 	{
 		items_scroll_popup(hover, loc);
 	};
-	_items_scroller.changed_func = [this] { update_visible_items_list(); };
-	_media_scroller.changed_func = [this] { _state.invalidate_view(view_invalid::view_redraw); };
+	_items_scroller.changed_func = [this]
+	{
+		update_visible_items_list();
+	};
+	_media_scroller.changed_func = [this]
+	{
+		_state.invalidate_view(view_invalid::view_redraw);
+	};
 
 	_metadata_tree->invalidate = [this]
 	{
@@ -447,8 +457,8 @@ items_view::~items_view()
 
 bool items_view::sidebar_visible() const
 {
-	return setting.show_sidebar && _sidebar_width > 0 && _display && !_display->is_zoom_mode() && !_display->
-		comparing();
+	return setting.show_sidebar && _sidebar_width > 0 && _display && !_display->is_zoom_mode() &&
+	       !_display->comparing();
 }
 
 int items_view::content_left() const
@@ -458,19 +468,14 @@ int items_view::content_left() const
 
 recti items_view::sidebar_bounds() const
 {
-	return sidebar_visible()
-		       ? recti{0, 0, _sidebar_width + _sidebar_splitter_width, _client_extent.cy}
-		       : recti{};
+	return sidebar_visible() ? recti{0, 0, _sidebar_width + _sidebar_splitter_width, _client_extent.cy} : recti{};
 }
 
 recti items_view::sidebar_splitter_bounds() const
 {
-	return sidebar_visible()
-		       ? recti{
-			       _sidebar_width, 0, _sidebar_width + _sidebar_splitter_width,
-			       _sidebar->can_scroll() ? _client_extent.cy / 2 : _client_extent.cy
-		       }
-		       : recti{};
+	return sidebar_visible() ? recti{_sidebar_width, 0, _sidebar_width + _sidebar_splitter_width,
+	                                 _sidebar->can_scroll() ? _client_extent.cy / 2 : _client_extent.cy}
+	                         : recti{};
 }
 
 void items_view::sidebar_width(const int x)
@@ -496,22 +501,16 @@ public:
 		_view._sidebar_splitter_active++;
 	}
 
-	~sidebar_splitter_controller() override
-	{
-		_view._sidebar_splitter_active--;
-	}
+	~sidebar_splitter_controller() override { _view._sidebar_splitter_active--; }
 
 	void draw(render::draw_context& dc) override
 	{
 		_view.draw_splitter(dc, _view.sidebar_splitter_bounds(), true, _tracking);
 	}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::left_right;
-	}
+	platform::cursor cursor() const override { return platform::cursor::left_right; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_tracking = true;
 		_start_width = _view._sidebar_width;
@@ -523,7 +522,7 @@ public:
 		if (_tracking) _view.sidebar_width(loc.x);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		if (_tracking) _view.sidebar_width(loc.x);
 		_tracking = false;
@@ -542,7 +541,7 @@ public:
 	}
 };
 
-bool items_view::is_caption_area(const pointi loc) const
+bool items_view::is_caption_area(const pointi /*loc*/) const
 {
 	return false;
 }
@@ -556,25 +555,26 @@ view_bars items_view::bars() const
 {
 	return {
 		.navigation = true,
-		.bottom = {
-			bar_control::item_size, bar_control::item_filter, commands::filter_photos, commands::filter_videos,
-			commands::filter_audio, commands::browse_recursive, bar_control::item_totals,
-			commands::menu_group_toolbar
-		},
-		.bottom_leading = {
-			commands::options, commands::menu_tools, commands::playback_menu, commands::menu_open_status,
-		},
+		.bottom = {bar_control::item_size, bar_control::item_filter, commands::filter_photos, commands::filter_videos,
+	               commands::filter_audio, commands::browse_recursive, bar_control::item_totals,
+	               commands::menu_group_toolbar},
+		.bottom_leading =
+			{
+				commands::options,
+				commands::menu_tools,
+				commands::playback_menu,
+				commands::menu_open_status,
+			},
 	};
 }
 
 namespace
 {
-	std::shared_ptr<link_element> make_chip(std::string text, std::function<void()> invoke,
+	std::shared_ptr<link_element> make_chip(const std::string& text, std::function<void()> invoke,
 	                                        std::function<void(view_hover_element&)> tooltip, const bool latched)
 	{
-		auto chip = std::make_shared<link_element>(std::move(text), std::move(invoke), std::move(tooltip),
-		                                           render::font_face::dialog,
-		                                           render::text_style::multiline_center,
+		auto chip = std::make_shared<link_element>(text, std::move(invoke), std::move(tooltip),
+		                                           render::font_face::dialog, render::text_style::multiline_center,
 		                                           flex_item::center);
 		chip->full_background(true);
 		chip->padding = {6, 4};
@@ -585,12 +585,11 @@ namespace
 
 	// locations.md 7.3: a collapsed row still has to say what it is and how much it holds, or the
 	// user cannot tell whether opening it is worth the height it will take.
-	view_element_ptr make_row_header(const std::string_view title, const uint32_t count,
-	                                 std::function<void()> expand)
+	view_element_ptr make_row_header(const std::string_view title, const uint32_t count, std::function<void()> expand)
 	{
-		auto header = std::make_shared<link_element>(
-			std::format("{}|{}", title, core::format_count(count)), std::move(expand),
-			render::font_face::dialog, render::text_style::single_line, flex_item::center);
+		auto header = std::make_shared<link_element>(std::format("{}|{}", title, core::format_count(count)),
+		                                             std::move(expand), render::font_face::dialog,
+		                                             render::text_style::single_line, flex_item::center);
 		header->padding = {6, 4};
 		return header;
 	}
@@ -627,8 +626,8 @@ view_element_ptr items_view::build_related_header_row() const
 	auto row = std::make_shared<view_elements>(flex_item::center);
 
 	auto title = std::make_shared<text_element>(std::format("{} | {}", tt.command_related.sv(), name.sv()),
-	                                            render::font_face::dialog,
-	                                            render::text_style::single_line_center, flex_item::center);
+	                                            render::font_face::dialog, render::text_style::single_line_center,
+	                                            flex_item::center);
 	title->padding = {6, 4};
 	row->add(std::move(title));
 
@@ -641,8 +640,7 @@ view_element_ptr items_view::build_related_header_row() const
 
 		auto presence = std::make_shared<text_element>(item_presence_text(item->presence(), false),
 		                                               render::font_face::dialog,
-		                                               render::text_style::single_line_center,
-		                                               flex_item::center);
+		                                               render::text_style::single_line_center, flex_item::center);
 		presence->padding = {6, 4};
 		row->add(std::move(presence));
 		break;
@@ -659,9 +657,9 @@ view_element_ptr items_view::build_location_breakdown_row()
 	const auto current = _state.search();
 
 	const auto has_location_context = current.has_term_type(df::search_term_type::location) ||
-		current.has_term_type(df::search_term_type::area);
+	                                  current.has_term_type(df::search_term_type::area);
 	const auto want_places = has_location_context && _state.group_order() != group_by::location &&
-		timeline.places.size() > 1;
+	                         timeline.places.size() > 1;
 
 	if (!want_places) return {};
 
@@ -679,16 +677,11 @@ view_element_ptr items_view::build_location_breakdown_row()
 			// be in the width it has.
 			const auto action = df::visit_place_detail(place);
 
-			_breakdown_row.content.emplace_back(make_chip(std::move(text), [this, place]
-			                                              {
-				                                              _state.open(
-					                                              _host, df::visit_place_search(_state.search(), place),
-					                                              {});
-			                                              }, [action](const view_hover_element& hover)
-			                                              {
-				                                              hover.elements->add(
-					                                              std::make_shared<action_element>(action));
-			                                              }, false));
+			_breakdown_row.content.emplace_back(make_chip(text, [this, place] {
+				_state.open(_host, df::visit_place_search(_state.search(), place), {});
+			}, [action](const view_hover_element& hover) {
+				hover.elements->add(std::make_shared<action_element>(action));
+			}, false));
 		}
 	}
 
@@ -713,10 +706,15 @@ view_element_ptr items_view::build_location_breakdown_row()
 
 void items_view::items_changed(const bool path_changed)
 {
+	// Anchored to nothing, the listing keeps its place in proportion, which a sort within a group leaves as it was.
+	const auto hold_scroll = _state.take_items_scroll_hold();
+
 	if (!path_changed)
 	{
 		const auto focus = _state.focus_item();
-		const auto anchor = focus && is_visible(focus) ? focus : _layout_center_item;
+		const auto anchor = hold_scroll                  ? df::item_element_ptr{}
+		                    : focus && is_visible(focus) ? focus
+		                                                 : _layout_center_item;
 		_pending_items_anchor = _items_scroller.capture_anchor(anchor);
 	}
 	else
@@ -777,8 +775,7 @@ void items_view::items_changed(const bool path_changed)
 	const auto add_action = [&action_elements]<typename action_t>(const std::string_view text, action_t action)
 	{
 		auto link = std::make_shared<link_element>(text, std::move(action), render::font_face::dialog,
-		                                           render::text_style::single_line_center,
-		                                           flex_item::center, true);
+		                                           render::text_style::single_line_center, flex_item::center, true);
 		link->flex.max_size.cx = footer_message_width;
 		link->padding = {8, 6};
 		action_elements.emplace_back(std::move(link));
@@ -807,23 +804,22 @@ void items_view::items_changed(const bool path_changed)
 				const auto typed = place_term->text;
 				const auto km = place_term->float_val;
 
-				add_status(km > 0.0
-					           ? str_format(tt.nothing_within_fmt.sv(), format_distance_km(km), typed)
-					           : str_format(tt.nothing_at_place_fmt.sv(), typed),
+				add_status(km > 0.0 ? str_format(tt.nothing_within_fmt.sv(), format_distance_km(km), typed)
+				                    : str_format(tt.nothing_at_place_fmt.sv(), typed),
 				           render::font_face::dialog);
 
 				if (km > 0.0)
 				{
-					if (const auto wider = location_distance_at_detent(
-						location_nearest_distance_detent(km) + 1); wider > km)
+					if (const auto wider = location_distance_at_detent(location_nearest_distance_detent(km) + 1);
+					    wider > km)
 					{
 						add_action(str_format(tt.widen_to_fmt.sv(), format_distance_km(wider)),
 						           std::function<void()>([this, wider]
-						           {
-							           auto search = _state.search();
-							           search.set_place_distance(wider);
-							           _state.open(_host, search, {});
-						           }));
+						{
+							auto search = _state.search();
+							search.set_place_distance(wider);
+							_state.open(_host, search, {});
+						}));
 					}
 				}
 
@@ -833,24 +829,22 @@ void items_view::items_changed(const bool path_changed)
 					auto bare = typed.substr(0, comma);
 					while (!bare.empty() && bare.back() == ' ') bare.pop_back();
 
-					add_action(str_format(tt.search_all_named_fmt.sv(), bare),
-					           std::function<void()>([this, bare]
-					           {
-						           auto search = _state.search();
-						           search.set_place_name(bare);
-						           _state.open(_host, search, {});
-					           }));
+					add_action(str_format(tt.search_all_named_fmt.sv(), bare), std::function<void()>([this, bare]
+					{
+						auto search = _state.search();
+						search.set_place_name(bare);
+						_state.open(_host, search, {});
+					}));
 				}
 
 				// So a user never mistakes "not placed" for "not present".
-				add_action(tt.show_without_location.sv(),
-				           std::function<void()>([this]
-				           {
-					           auto search = _state.search();
-					           search.clear_terms();
-					           search.without(df::search_term_type::has_location);
-					           _state.open(_host, search, {});
-				           }));
+				add_action(tt.show_without_location.sv(), std::function<void()>([this]
+				{
+					auto search = _state.search();
+					search.clear_terms();
+					search.without(df::search_term_type::has_location);
+					_state.open(_host, search, {});
+				}));
 			}
 
 			// State the collection's edge, then offer the one move that widens it.
@@ -868,12 +862,9 @@ void items_view::items_changed(const bool path_changed)
 
 	if (has_items && is_date_group_order(_state.effective_group_order()))
 	{
-		add_action(setting.sort_dates_descending
-			           ? tt.command_sort_dates_ascending.sv()
-			           : tt.command_sort_dates_descending.sv(),
-		           setting.sort_dates_descending
-			           ? commands::sort_dates_ascending
-			           : commands::sort_dates_descending);
+		add_action(setting.sort_dates_descending ? tt.command_sort_dates_ascending.sv()
+		                                         : tt.command_sort_dates_descending.sv(),
+		           setting.sort_dates_descending ? commands::sort_dates_ascending : commands::sort_dates_descending);
 	}
 
 	if (!status_elements.empty() || !action_elements.empty())
@@ -926,8 +917,8 @@ public:
 	pointi _start_loc;
 	bool _tracking = false;
 
-	media_splitter_controller(const view_host_ptr& host, items_view& view,
-	                    const recti bounds) : view_controller(host, bounds), _view(view)
+	media_splitter_controller(const view_host_ptr& host, items_view& view, const recti bounds) :
+		view_controller(host, bounds), _view(view)
 	{
 		_view._splitter_active++;
 	}
@@ -947,17 +938,11 @@ public:
 		_view.draw_splitter(rc, _view.calc_spliter_bounds(), true, _tracking);
 	}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::left_right;
-	}
+	platform::cursor cursor() const override { return platform::cursor::left_right; }
 
-	void update_pos(const pointi loc) const
-	{
-		_view.splitter_pos(loc.x, _tracking);
-	}
+	void update_pos(const pointi loc) const { _view.splitter_pos(loc.x, _tracking); }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_tracking = true;
 		_start = _view.splitter_pos();
@@ -973,7 +958,7 @@ public:
 		}
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		if (_tracking)
 		{
@@ -1014,7 +999,7 @@ bool items_view::escape()
 
 // The view sees a press before any controller does, so a press on the document clears its focus here
 // and its own controller takes it back.
-void items_view::mouse_down(const pointi loc)
+void items_view::mouse_down(const pointi /*loc*/)
 {
 	release_document();
 }
@@ -1051,10 +1036,8 @@ void items_view::update_regions()
 
 	_regions.media = {left, top, std::max(left, split_x - padding), bottom};
 	_regions.items = {std::min(x_max, split_x + padding), top, _client_extent.cx, bottom};
-	_regions.splitter = {
-		split_x - control_padding, top, split_x + control_padding,
-		_media_scroller.can_scroll() ? bottom / 2 : bottom
-	};
+	_regions.splitter = {split_x - control_padding, top, split_x + control_padding,
+	                     _media_scroller.can_scroll() ? bottom / 2 : bottom};
 
 	if (_items_scroller.can_scroll()) _regions.items_scroll = _items_scroller.scroll_bounds();
 	if (_media_scroller.can_scroll()) _regions.media_scroll = _media_scroller.scroll_bounds();
@@ -1162,26 +1145,45 @@ view_controller_ptr items_view::controller_from_location(const view_host_ptr& ho
 	{
 	case view_region::sidebar_splitter:
 		return std::make_shared<sidebar_splitter_controller>(host, *this, _regions.sidebar_splitter);
-	case view_region::sidebar:
-		return _sidebar->controller_from_location(loc, ctx);
-	case view_region::splitter:
-		return std::make_shared<media_splitter_controller>(host, *this, _regions.splitter);
+	case view_region::sidebar: return _sidebar->controller_from_location(loc, ctx);
+	case view_region::splitter: return std::make_shared<media_splitter_controller>(host, *this, _regions.splitter);
 	case view_region::items_scroll:
 		return std::make_shared<scroll_controller>(host, _items_scroller, _regions.items_scroll);
 	case view_region::media_scroll:
 		return std::make_shared<scroll_controller>(host, _media_scroller, _regions.media_scroll);
-	case view_region::media:
-		return media_controller_from_location(host, loc, ctx);
-	case view_region::items:
-		return items_controller_from_location(host, loc, ctx);
-	case view_region::none:
-		break;
+	case view_region::media: return media_controller_from_location(host, loc, ctx);
+	case view_region::items: return items_controller_from_location(host, loc, ctx);
+	case view_region::none: break;
 	}
 
 	return nullptr;
 }
 
-menu_type items_view::context_menu(const pointi loc)
+// The listing's menu. Anything with a submenu of its own appears once, at the top level.
+static const view_menu s_listing_menu = {
+	.row = {commands::edit_cut, commands::edit_copy, commands::edit_paste, commands::tool_rename,
+            commands::tool_delete},
+	.list =
+		{
+			commands::menu_navigate,
+			commands::menu_open,
+			commands::menu_tools,
+			commands::menu_rate_or_label,
+			commands::menu_select,
+			commands::menu_group,
+			commands::menu_display_options,
+			commands::none,
+			commands::tool_copy_to_folder,
+			commands::tool_move_to_folder,
+			commands::edit_copy_item_path,
+			commands::none,
+			commands::refresh,
+			commands::tool_new_folder,
+		},
+};
+
+// The listing and the media pane each have a menu; the sidebar has none of its own, and so offers the frame's.
+view_menu items_view::context_menu(const pointi loc)
 {
 	const auto region = region_at(loc);
 
@@ -1191,7 +1193,7 @@ menu_type items_view::context_menu(const pointi loc)
 
 	if (region == view_region::sidebar || region == view_region::sidebar_splitter)
 	{
-		return menu_type::sidebar;
+		return {};
 	}
 
 	// The scroll bar is drawn inside the grid's rectangle and belongs to the listing, so a press on
@@ -1205,10 +1207,42 @@ menu_type items_view::context_menu(const pointi loc)
 			_state.select(_host, i, false, false, false);
 		}
 
-		return menu_type::items;
+		return s_listing_menu;
 	}
 
-	return menu_type::media;
+	return media_view_menu();
+}
+
+// A picture zoomed or compared fills the view and has the keyboard alone: the arrows pan it.
+std::vector<keyboard_region> items_view::keyboard_regions()
+{
+	if (_display && (_display->is_zoom_mode() || _display->comparing())) return {};
+
+	std::vector<keyboard_region> regions;
+
+	if (sidebar_visible())
+	{
+		const auto sidebar = _sidebar;
+		regions.push_back({keyboard_area::sidebar, sidebar->_elements, -sidebar->_scroller.scroll_offset(),
+		                   _regions.sidebar,
+		                   [sidebar](const recti r) { scroll_into_view(sidebar->_scroller, sidebar, r); }});
+	}
+
+	regions.push_back({keyboard_area::listing, _item_elements, -_items_scroller.scroll_offset(), _regions.items,
+	                   [this](const recti r) { scroll_into_view(_items_scroller, _host, r); }});
+	regions.push_back({keyboard_area::media, _media_elements, -_media_scroller.scroll_offset(), _regions.media,
+	                   [this](const recti r) { scroll_into_view(_media_scroller, _host, r); }});
+
+	return regions;
+}
+
+// The document in the media pane while it has the keyboard; otherwise the focused item, where it is drawn.
+recti items_view::keyboard_bounds() const
+{
+	if (_display && _display->_document && _display->_document->focused) return _regions.media;
+
+	const auto focus = _state.focus_item();
+	return focus && is_visible(focus) ? focus->bounds.offset(-_items_scroller.scroll_offset()) : recti{};
 }
 
 // zoom.md 11: the pointer chooses the surface and the modifier chooses which of that surface's axes
@@ -1222,13 +1256,13 @@ bool items_view::mouse_wheel(const pointi loc, const platform::wheel_notch notch
 	switch (region_at(loc))
 	{
 	case view_region::sidebar:
+		if (_sidebar->element_wheel(loc, notch.is_horizontal() ? -notch.delta : notch.delta)) return true;
 		if (!notch.is_vertical()) return false;
 		_sidebar->_scroller.offset(_sidebar, 0, -notch.delta);
 		return true;
 
 	case view_region::media:
-	case view_region::media_scroll:
-		return media_wheel(loc, notch);
+	case view_region::media_scroll: return media_wheel(loc, notch);
 
 	case view_region::items:
 	case view_region::items_scroll:
@@ -1247,8 +1281,7 @@ bool items_view::mouse_wheel(const pointi loc, const platform::wheel_notch notch
 
 	case view_region::splitter:
 	case view_region::sidebar_splitter:
-	case view_region::none:
-		break;
+	case view_region::none: break;
 	}
 
 	return false;
@@ -1260,6 +1293,12 @@ bool items_view::mouse_wheel(const pointi loc, const platform::wheel_notch notch
 bool items_view::media_wheel(const pointi loc, const platform::wheel_notch notch)
 {
 	const auto magnified = _display && (_display->is_temporary_zoom() || _display->is_zoom_mode());
+	if (!magnified && !notch.keys.control)
+	{
+		const auto offset = -_media_scroller.scroll_offset();
+		for (const auto& element : _media_elements)
+			if (element->is_visible() && element->wheel(loc, offset, notch.delta)) return true;
+	}
 
 	if (magnified)
 	{
@@ -1323,8 +1362,7 @@ bool items_view::pinch(const pointi loc, const int steps)
 		_state.invalidate_view(view_invalid::view_layout);
 		return true;
 
-	default:
-		break;
+	default: break;
 	}
 
 	return false;
@@ -1343,8 +1381,7 @@ bool items_view::step_zoom(const pointi loc, const int steps)
 	_display->active_zoom_pane_at(local);
 	const auto anchor = _display->zoom_anchor_at(local);
 
-	for (auto step = 0; step < std::abs(steps); ++step)
-		_display->adjust_zoom_scale(steps > 0 ? 1 : -1, anchor);
+	for (auto step = 0; step < std::abs(steps); ++step) _display->adjust_zoom_scale(steps > 0 ? 1 : -1, anchor);
 
 	return true;
 }
@@ -1358,10 +1395,10 @@ static df::item_elements visible_items(const std::vector<item_and_group>& visibl
 	return items;
 }
 
-static void queue_stage_thumbnails(index_state& index, df::item_elements items)
+static void queue_stage_thumbnails(index_state& index, const df::item_elements& items)
 {
 	if (items.empty()) return;
-	index.queue_stage_thumbnails(std::move(items));
+	index.queue_stage_thumbnails(items);
 }
 
 // Requests whatever thumbnail work the visible items still need. Shared by the immediate path and
@@ -1391,9 +1428,7 @@ void items_view::update_visible_items_list()
 	const auto& groups = _state.groups();
 	const auto first_group = std::lower_bound(groups.begin(), groups.end(), extended_logical_items_bounds.top,
 	                                          [](const df::item_group_ptr& group, const int top)
-	                                          {
-		                                          return group->bounds.bottom < top;
-	                                          });
+	{ return group->bounds.bottom < top; });
 
 	for (auto group_it = first_group;
 	     group_it != groups.end() && (*group_it)->bounds.top <= extended_logical_items_bounds.bottom; ++group_it)
@@ -1404,9 +1439,7 @@ void items_view::update_visible_items_list()
 			const auto& items = group->items();
 			const auto first = std::lower_bound(items.begin(), items.end(), extended_logical_items_bounds.top,
 			                                    [](const df::item_element_ptr& item, const int top)
-			                                    {
-				                                    return item->bounds.bottom < top;
-			                                    });
+			{ return item->bounds.bottom < top; });
 
 			for (auto it = first; it != items.end() && (*it)->bounds.top <= extended_logical_items_bounds.bottom; ++it)
 			{
@@ -1463,33 +1496,31 @@ void items_view::update_visible_items_list()
 			}
 		}
 
-
 		_layout_center_item = center_element;
 
 		if (!db_thumbnail_requests.empty())
 		{
 			_state._async.queue_database(
-				[&s = _state, db_thumbnail_requests = std::move(db_thumbnail_requests)](
-				const database& db) mutable
+				[&s = _state, db_thumbnail_requests = std::move(db_thumbnail_requests)](const database& db) mutable
+			{
+				db.load_thumbnails(s.item_index, db_thumbnail_requests);
+				s._async.queue_ui([&s, requests = std::move(db_thumbnail_requests)]
 				{
-					db.load_thumbnails(s.item_index, db_thumbnail_requests);
-					s._async.queue_ui([&s, requests = std::move(db_thumbnail_requests)]
+					df::item_elements current_visible;
+					current_visible.reserve(requests.size());
+					for (const auto& request : requests)
 					{
-						df::item_elements current_visible;
-						current_visible.reserve(requests.size());
-						for (const auto& request : requests)
+						const auto item = request.lifetime.lock();
+						if (item && item->path() == request.path && item->is_visible())
 						{
-							const auto item = request.lifetime.lock();
-							if (item && item->path() == request.path && item->is_visible())
-							{
-								current_visible.emplace_back(std::move(item));
-							}
+							current_visible.emplace_back(item);
 						}
+					}
 
-						queue_thumbnail_loads(s.item_index, current_visible);
-						queue_stage_thumbnails(s.item_index, std::move(current_visible));
-					});
+					queue_thumbnail_loads(s.item_index, current_visible);
+					queue_stage_thumbnails(s.item_index, current_visible);
 				});
+			});
 		}
 
 		// Items whose database query has already run are requested here rather than waiting on the
@@ -1533,10 +1564,8 @@ void items_view::retry_visible_thumbnails(const double time_now)
 
 	// A cancelled batch abandons every item it had not reached, and the visible set stops changing
 	// once scrolling stops. An outstanding claim means a batch still covers these items.
-	if (std::ranges::any_of(_visible_items, [](const item_and_group& entry)
-	{
-		return entry.i->is_loading_thumbnail();
-	}))
+	if (std::ranges::any_of(_visible_items,
+	                        [](const item_and_group& entry) { return entry.i->is_loading_thumbnail(); }))
 	{
 		return;
 	}
@@ -1560,11 +1589,10 @@ void items_view::stage_visible_thumbnails()
 		}
 	}
 
-	queue_stage_thumbnails(_state.item_index, std::move(items));
+	queue_stage_thumbnails(_state.item_index, items);
 }
 
-
-void items_view::render(render::draw_context& dc, const view_controller_ptr controller)
+void items_view::render(render::draw_context& dc, const view_controller_ptr /*controller*/)
 {
 	const auto media_offset = -_media_scroller.scroll_offset();
 
@@ -1678,6 +1706,12 @@ void items_view::render(render::draw_context& dc, const view_controller_ptr cont
 				hover.i->render_bg(dc, *hover.g, items_offset);
 				hover.i->render(dc, *hover.g, items_offset);
 			}
+
+			// After the rows, so a group's headings held at the top of the view cover the rows scrolling under them.
+			for (const auto& g : _state.groups())
+			{
+				g->render_headings(dc, items_offset, _regions.items);
+			}
 		}
 
 		if (sidebar_visible())
@@ -1700,12 +1734,27 @@ void items_view::make_visible(const df::item_element_ptr& i)
 		const auto client_bounds = _items_scroller.client_bounds();
 		const auto bounds = i->bounds;
 		auto point_offset = scroll_offset;
-		const auto logical_top = scroll_offset.y + client_bounds.top;
+		auto logical_top = scroll_offset.y + client_bounds.top;
 		const auto logical_bottom = scroll_offset.y + client_bounds.bottom;
+
+		// A detail group's headings are held at the top of the view over its rows, so an item scrolled up to the
+		// top stops below them rather than under them.
+		auto held = 0;
+
+		for (const auto& g : _state.groups())
+		{
+			if (g->shows_headings() && g->bounds.contains(bounds.top_left()))
+			{
+				held = g->_heading_height;
+				break;
+			}
+		}
+
+		logical_top += held;
 
 		if (bounds.top < logical_top)
 		{
-			point_offset.y = bounds.top - client_bounds.top;
+			point_offset.y = bounds.top - client_bounds.top - held;
 		}
 		else if (bounds.bottom > logical_bottom)
 		{
@@ -1768,8 +1817,7 @@ void items_view::update_item_scroller_sections()
 			const auto icon = group->icon;
 			const auto y = group->bounds.top;
 
-			if (core::icmp(run_text, text) != 0 ||
-				run_icon != icon)
+			if (core::icmp(run_text, text) != 0 || run_icon != icon)
 			{
 				close_run(y);
 				run_text = text;
@@ -1798,13 +1846,34 @@ void items_view::update_item_scroller_sections()
 	_items_scroller.sections(std::move(sections));
 }
 
+int layout_stacked(const std::vector<view_element_ptr>& elements, const std::vector<recti>& slots,
+                   render::measure_context& mc, const pointi origin)
+{
+	auto lift = 0;
+	auto bottom = 0;
+
+	for (auto i = 0u; i < elements.size() && i < slots.size(); ++i)
+	{
+		const auto slot = slots[i].offset(origin.x, origin.y - lift);
+		elements[i]->layout(mc, slot);
+
+		// An element that fits itself reports what it took as its bounds.
+		const auto unused = std::max(0, slot.height() - elements[i]->bounds.height());
+		lift += unused;
+		bottom = std::max(bottom, slot.bottom - unused - origin.y);
+	}
+
+	return bottom;
+}
+
 int layout_media_column(const media_column_inputs& in, render::measure_context& mc)
 {
 	flex_container_layout media_column;
 	media_column.direction = flex_direction::column;
 	media_column.wrap = flex_wrap::no_wrap;
 	media_column.align_items = flex_align::start;
-	media_column.padding.cx = 8;
+	media_column.padding.cx = ui::panel_element::content_padding;
+	media_column.gap.cy = ui::panel_element::spacing;
 
 	if (in.priority->empty())
 	{
@@ -1813,9 +1882,7 @@ int layout_media_column(const media_column_inputs& in, render::measure_context& 
 		if (extent.cy <= 0) return 0;
 
 		const auto top = std::max(0, in.bounds.height() - extent.cy) / 2;
-		const recti all_bounds{
-			in.bounds.left, in.bounds.top + top, in.bounds.right, in.bounds.top + top + extent.cy
-		};
+		const recti all_bounds{in.bounds.left, in.bounds.top + top, in.bounds.right, in.bounds.top + top + extent.cy};
 		layout_flex_elements(*in.all, mc, all_bounds, media_column);
 		return top + extent.cy;
 	}
@@ -1835,8 +1902,8 @@ int layout_media_column(const media_column_inputs& in, render::measure_context& 
 
 	if (media)
 	{
-		const auto content_width = std::max(
-			0, in.bounds.width() - core::round(media_column.padding.cx * 2 * mc.scale_factor));
+		const auto content_width = std::max(0, in.bounds.width() -
+		                                           core::round(media_column.padding.cx * 2 * mc.scale_factor));
 		const auto natural_media = media->measure(mc, content_width).cy;
 		const auto floor_px = std::min(natural_media, in.bounds.height() / 2);
 		media->flex.min_size.cy = std::max(restore_media_min, core::round(floor_px / mc.scale_factor));
@@ -1849,23 +1916,33 @@ int layout_media_column(const media_column_inputs& in, render::measure_context& 
 	// growing metadata slides the column to the top rather than snapping there.
 	const auto block = calc_flex_layout(*in.priority, mc, in.bounds.extent(), media_column);
 	const auto detail_extent = calc_flex_layout(*in.detail, mc, {in.bounds.width(), -1}, media_column).extent;
-	const auto block_top = std::max(0, in.bounds.height() - (block.extent.cy + detail_extent.cy)) / 2;
+	const auto detail_gap = block.extent.cy > 0 && detail_extent.cy > 0
+	                            ? core::round(ui::panel_element::spacing * mc.scale_factor)
+	                            : 0;
+	const auto centre = [&](const int block_height)
+	{
+		return std::max(0, in.bounds.height() - (block_height + detail_gap + detail_extent.cy)) / 2;
+	};
 
 	// Applied here rather than through flex_justify::center, because a centred line reports the
 	// container height instead of the content height, so asking where the block ended returned the
-	// bottom of the pane and left a gap the size of the free space beneath it.
-	const auto origin = pointi{in.bounds.left, in.bounds.top + block_top};
+	// bottom of the pane and left a gap the size of the free space beneath it. A monitor can take less
+	// than its slot, giving up a part to fit, so the block is centred again on what it takes.
+	auto block_top = centre(block.extent.cy);
+	auto block_height = layout_stacked(*in.priority, block.layout_bounds, mc,
+	                                   {in.bounds.left, in.bounds.top + block_top});
 
-	for (auto i = 0u; i < in.priority->size(); ++i)
+	if (block_height < block.extent.cy && centre(block_height) != block_top)
 	{
-		(*in.priority)[i]->layout(mc, block.layout_bounds[i].offset(origin));
+		block_top = centre(block_height);
+		block_height = layout_stacked(*in.priority, block.layout_bounds, mc,
+		                              {in.bounds.left, in.bounds.top + block_top});
 	}
 
 	// Detail stacks below the block at its natural height, so it scrolls off the bottom.
-	const auto detail_top = block_top + block.extent.cy;
-	const recti detail_bounds{
-		in.bounds.left, in.bounds.top + detail_top, in.bounds.right, in.bounds.top + detail_top + detail_extent.cy
-	};
+	const auto detail_top = block_top + block_height + detail_gap;
+	const recti detail_bounds{in.bounds.left, in.bounds.top + detail_top, in.bounds.right,
+	                          in.bounds.top + detail_top + detail_extent.cy};
 	layout_flex_elements(*in.detail, mc, detail_bounds, media_column);
 
 	return detail_top + detail_extent.cy;
@@ -1875,13 +1952,11 @@ void items_view::layout(render::measure_context& mc, const sizei extent)
 {
 	const auto focus = _state.focus_item();
 	const auto current_item_anchor = focus && is_visible(focus) ? focus : _layout_center_item;
-	auto item_anchor = _pending_items_anchor.valid
-		                   ? std::exchange(_pending_items_anchor, {})
-		                   : _items_scroller.capture_anchor(current_item_anchor);
+	auto item_anchor = _pending_items_anchor.valid ? std::exchange(_pending_items_anchor, {})
+	                                               : _items_scroller.capture_anchor(current_item_anchor);
 	const auto current_media_anchor = find_center_scroll_element(_media_elements, _media_scroller);
-	auto media_anchor = _pending_media_anchor.valid
-		                    ? std::exchange(_pending_media_anchor, {})
-		                    : _media_scroller.capture_anchor(current_media_anchor);
+	auto media_anchor = _pending_media_anchor.valid ? std::exchange(_pending_media_anchor, {})
+	                                                : _media_scroller.capture_anchor(current_media_anchor);
 
 	_client_extent = extent;
 	_scroll_width = mc.scroll_width;
@@ -1890,9 +1965,8 @@ void items_view::layout(render::measure_context& mc, const sizei extent)
 	_sidebar_splitter_width = mc.scroll_width;
 	const auto sidebar_min = core::round(64 * mc.scale_factor);
 	const auto sidebar_max = std::max(sidebar_min, extent.cx / 3);
-	const auto sidebar_preferred = setting.sidebar.width > 0
-		                               ? core::round(setting.sidebar.width * mc.scale_factor)
-		                               : sidebar_host::preferred_width(mc);
+	const auto sidebar_preferred = setting.sidebar.width > 0 ? core::round(setting.sidebar.width * mc.scale_factor)
+	                                                         : sidebar_host::preferred_width(mc);
 	_sidebar_width = std::clamp(sidebar_preferred, sidebar_min, sidebar_max);
 
 	// Regions must exist before anything else in layout asks for the item or media bounds.
@@ -1910,7 +1984,6 @@ void items_view::layout(render::measure_context& mc, const sizei extent)
 
 	core::assert_true(platform::is_ui_thread());
 
-
 	const auto is_zoom = _display && (_display->is_zoom_mode() || _display->comparing());
 	auto avail_media_bounds = calc_media_bounds();
 
@@ -1924,26 +1997,24 @@ void items_view::layout(render::measure_context& mc, const sizei extent)
 	}
 	else
 	{
-		const media_column_inputs media_inputs{
-			&_media_priority_elements, &_media_detail_elements, &_media_elements,
-			avail_media_bounds, _media_element
-		};
+		const media_column_inputs media_inputs{&_media_priority_elements, &_media_detail_elements, &_media_elements,
+		                                       avail_media_bounds, _media_element};
 		const auto media_height = layout_media_column(media_inputs, mc);
 
 		const auto split_x = splitter_pos();
 		const auto control_padding = mc.scroll_width / 2;
-		const recti media_scroll_bounds{
-			split_x - control_padding, _client_extent.cy / 2, split_x + control_padding,
-			_client_extent.cy
-		};
+		const recti media_scroll_bounds{split_x - control_padding, _client_extent.cy / 2, split_x + control_padding,
+		                                _client_extent.cy};
 
 		_media_scroller.layout({avail_media_bounds.width(), media_height}, avail_media_bounds, media_scroll_bounds);
 		const auto media_anchor_is_current = media_anchor.element &&
-			std::ranges::find(_media_elements, media_anchor.element) != _media_elements.end();
+		                                     std::ranges::find(_media_elements, media_anchor.element) !=
+		                                         _media_elements.end();
 		_media_scroller.restore_anchor(_host, media_anchor, media_anchor_is_current);
 
 		const auto scroll_text_width = mc.measure_text("88888", render::font_face::dialog,
-		                                               render::text_style::single_line, _client_extent.cx / 5).cx;
+		                                               render::text_style::single_line, _client_extent.cx / 5)
+		                                   .cx;
 		auto item_layout_iteration_count = 1;
 
 		for (auto i = 0; i < item_layout_iteration_count; i++)
@@ -1962,12 +2033,10 @@ void items_view::layout(render::measure_context& mc, const sizei extent)
 			item_column.wrap = flex_wrap::no_wrap;
 			item_column.align_items = flex_align::start;
 			item_column.padding = {0, core::round(mc.padding2 / mc.scale_factor)};
-			const auto items_height = layout_flex_elements(
-				_item_elements, mc, avail_item_bounds, item_column).cy;
+			const auto items_height = layout_flex_elements(_item_elements, mc, avail_item_bounds, item_column).cy;
 
-			const auto item_scroll_bounds = recti{
-				_client_extent.cx - scroll_padding, _top_chrome_height, _client_extent.cx, _client_extent.cy
-			};
+			const auto item_scroll_bounds = recti{_client_extent.cx - scroll_padding, _top_chrome_height,
+			                                      _client_extent.cx, _client_extent.cy};
 			const sizei scroll_extent = {avail_item_bounds.width(), items_height};
 			_items_scroller.layout(scroll_extent, avail_item_bounds, item_scroll_bounds);
 
@@ -1981,8 +2050,7 @@ void items_view::layout(render::measure_context& mc, const sizei extent)
 		update_item_scroller_sections();
 
 		const auto item_anchor_element = std::dynamic_pointer_cast<df::item_element>(item_anchor.element);
-		const auto item_anchor_is_current = item_anchor_element &&
-			_state.display_items().contains(item_anchor_element);
+		const auto item_anchor_is_current = item_anchor_element && _state.display_items().contains(item_anchor_element);
 		_items_scroller.restore_anchor(_host, item_anchor, item_anchor_is_current);
 	}
 	_reset_media_scroll = false;
@@ -2019,11 +2087,9 @@ class copy_clip_element final : public std::enable_shared_from_this<copy_clip_el
 	std::function<std::string()> _generate;
 
 public:
-	copy_clip_element(std::function<std::string()> generate) : view_element(
-		                                                           flex_item::right_justified |
-		                                                           view_element_style::has_tooltip |
-		                                                           view_element_style::can_invoke),
-	                                                           _generate(std::move(generate))
+	copy_clip_element(std::function<std::string()> generate) :
+		view_element(flex_item::right_justified | view_element_style::has_tooltip | view_element_style::can_invoke),
+		_generate(std::move(generate))
 	{
 	}
 
@@ -2034,7 +2100,7 @@ public:
 		xdraw_icon(dc, icon_index::edit_copy, logical_bounds, core::color(dc.colors.foreground, dc.colors.alpha), bg);
 	}
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int /*width_limit*/) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
@@ -2048,7 +2114,7 @@ public:
 		}
 	}
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		hover.elements->add(make_icon_element(icon_index::edit_copy, flex_item::no_break));
 		hover.elements->add(std::make_shared<text_element>(tt.copy_to_clipboard));
@@ -2056,8 +2122,7 @@ public:
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
@@ -2069,11 +2134,9 @@ class url_element final : public std::enable_shared_from_this<url_element>, publ
 	mutable recti _device_bounds;
 
 public:
-	url_element(std::vector<std::string> urls) noexcept : view_element(
-		                                                      flex_item::right_justified |
-		                                                      view_element_style::has_tooltip |
-		                                                      view_element_style::can_invoke),
-	                                                      _urls(std::move(urls))
+	url_element(std::vector<std::string> urls) noexcept :
+		view_element(flex_item::right_justified | view_element_style::has_tooltip | view_element_style::can_invoke),
+		_urls(std::move(urls))
 	{
 	}
 
@@ -2085,7 +2148,7 @@ public:
 		xdraw_icon(dc, icon_index::link, logical_bounds, core::color(dc.colors.foreground, dc.colors.alpha), bg);
 	}
 
-	sizei measure(render::measure_context& mc, const int width_limit) const override
+	sizei measure(render::measure_context& mc, const int /*width_limit*/) const override
 	{
 		return {mc.icon_cxy, mc.icon_cxy};
 	}
@@ -2109,65 +2172,46 @@ public:
 			auto c = std::make_shared<ui::command>();
 			c->icon = icon_index::link;
 			c->text = url;
-			c->invoke = [url] { platform::open(url); };
+			c->invoke = [url]
+			{
+				platform::open(url);
+			};
 			menu.emplace_back(std::move(c));
 		}
 
 		event.host->track_menu(_device_bounds, menu);
 	}
 
-	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		hover.elements->add(make_icon_element(icon_index::link, flex_item::no_break));
 		hover.elements->add(std::make_shared<text_element>(
-			_urls.size() == 1
-				? str_format(tt.open_link_fmt.sv(), _urls.front())
-				: std::string(tt.open_link_choose)));
+			_urls.size() == 1 ? str_format(tt.open_link_fmt.sv(), _urls.front()) : std::string(tt.open_link_choose)));
 		hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		_device_bounds = bounds.offset(element_offset);
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
 };
 
-inline view_element_ptr media_control_style(view_element_ptr e)
-{
-	e->padding(4);
-	e->margin(4, 0);
-	e->set_style_bit(view_element_style::background, true);
-	return e;
-}
-
-// Media column spacers keep their nominal height; free space centres the column instead.
-inline view_element_ptr media_padding(const int height)
-{
-	auto e = std::make_shared<padding_element>(height);
-	e->flex.grow = 0.0f;
-	return e;
-}
-
 // A section is one panel carrying its own heading, which is what the panel above it already is. Drawn
 // as a titled band over unbacked content, the heading read as a control and the sections needed a rule
 // between them to be told apart; as one panel each, the gap between panels is what separates them and
 // the rule is noise. Nothing inside grows: the column measures the section at its natural height, and
 // a child claiming free space would open a gap between the heading and its own content.
-static view_element_ptr make_section(view_element_ptr title, view_element_ptr content)
+static view_element_ptr make_section(const view_element_ptr& title, const view_element_ptr& content)
 {
-	auto section = std::make_shared<view_elements>(flex_item::stretch);
+	auto section = std::make_shared<ui::panel_element>(flex_item::stretch);
 	section->flex_container.direction = flex_direction::column;
 	section->flex_container.wrap = flex_wrap::no_wrap;
 	section->flex_container.align_items = flex_align::stretch;
 	section->flex_container.gap = {0, 4};
-	section->add(std::move(title));
-	if (content) section->add(std::move(content));
-	section->padding = {8, 8};
-	section->margin = {4, 8};
-	section->set_style_bit(view_element_style::background, true);
+	section->add(title);
+	if (content) section->add(content);
 	return section;
 }
 
@@ -2204,17 +2248,11 @@ public:
 	{
 	}
 
-	void add(const view_element_ptr& p) const
-	{
-		_controls->add(p);
-	}
+	void add(const view_element_ptr& p) const { _controls->add(p); }
 
 	// Read from the item rather than held: the surface is decoded by the render worker and dropped by
 	// resource cleanup, so a copy kept here would outlive the eviction and miss the restage.
-	core::const_surface_ptr surface() const
-	{
-		return _item ? _item->cover_art_surface() : nullptr;
-	}
+	core::const_surface_ptr surface() const { return _item ? _item->cover_art_surface() : nullptr; }
 
 	bool is_control_area(const pointi loc, const pointi element_offset) const override
 	{
@@ -2233,10 +2271,7 @@ public:
 		_controls->dispatch_event(event);
 	}
 
-	void hover(interaction_context& ic) override
-	{
-		_controls->hover(ic);
-	}
+	void hover(interaction_context& ic) override { _controls->hover(ic); }
 
 	sizei measure(render::measure_context& mc, const int cx) const override
 	{
@@ -2263,11 +2298,11 @@ public:
 		return {cx, cy};
 	}
 
-	void layout(render::measure_context& mc, const recti bounds) override
+	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
-		view_element::layout(mc, bounds);
+		view_element::layout(mc, bounds_in);
 
-		auto control_bounds = bounds;
+		auto control_bounds = bounds_in;
 		control_bounds.left += _cx_surface;
 		_controls->layout(mc, control_bounds);
 	}
@@ -2306,14 +2341,10 @@ public:
 		_controls->render(dc, element_offset);
 	}
 
-	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
-	{
-		visit(_controls);
-	}
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override { visit(_controls); }
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return _controls->controller_from_location(host, loc, element_offset, ctx);
 	}
@@ -2366,8 +2397,8 @@ public:
 
 	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
-		const auto extent = mc.measure_text("65535"sv, render::font_face::code,
-		                                    render::text_style::single_line, width_limit);
+		const auto extent = mc.measure_text("65535"sv, render::font_face::code, render::text_style::single_line,
+		                                    width_limit);
 		_line_height = extent.cy + core::round(2.0 * mc.scale_factor);
 		_cell_width = std::min(extent.cx + core::round(8.0 * mc.scale_factor), width_limit / _columns);
 		_table_width = _cell_width * _columns;
@@ -2380,7 +2411,10 @@ class metadata_tree_control;
 
 // Nesting is carried by connector lines drawn from each parent down through its children, so the
 // listing owns its own rows, measurement, hit testing and expansion rather than composing cells.
-class metadata_tree_control final : public std::enable_shared_from_this<metadata_tree_control>, public view_element
+class metadata_tree_control final :
+	public std::enable_shared_from_this<metadata_tree_control>,
+	public view_element,
+	public keyboard_parts_source
 {
 	static constexpr int col_padding = 8;
 
@@ -2433,8 +2467,8 @@ class metadata_tree_control final : public std::enable_shared_from_this<metadata
 
 public:
 	metadata_tree_control(const metadata_block& block, metadata_tree_state_ptr tree_state,
-	                      const view_element_options& options) : view_element(options),
-	                                                             _tree_state(std::move(tree_state))
+	                      const view_element_options& options) :
+		view_element(options), _tree_state(std::move(tree_state))
 	{
 		build(block.values, std::format("{}", static_cast<int>(block.standard)), block.raw);
 	}
@@ -2453,12 +2487,41 @@ public:
 	void dispatch_event(const view_element_event& event) override
 	{
 		if (event.type != view_element_event_type::free_graphics_resources &&
-			event.type != view_element_event_type::dpi_changed)
+		    event.type != view_element_event_type::dpi_changed)
 			return;
 
 		for (const auto& r : _rows)
 		{
 			if (r.detail_control) r.detail_control->dispatch_event(event);
+		}
+	}
+
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
+	{
+		for (const auto& r : _rows)
+		{
+			if (r.detail_control) visit(r.detail_control);
+		}
+	}
+
+	pointi children_offset() const override { return bounds.top_left(); }
+
+	void layout(render::measure_context& mc, const recti bounds_in) override
+	{
+		bounds = bounds_in;
+		for (const auto& r : _rows)
+		{
+			if (r.detail_control) r.detail_control->set_style_bit(view_element_style::visible, false);
+		}
+		for (const auto& v : _visible)
+		{
+			const auto& r = _rows[v.index];
+			if (v.detail_height <= 0 || !r.detail_control) continue;
+			const auto available = std::max(0, bounds.width() - _detail_left);
+			const auto width = v.detail_width > 0 ? std::min(v.detail_width, available) : available;
+			const auto left = _detail_left + (available - width) / 2;
+			r.detail_control->set_style_bit(view_element_style::visible, true);
+			r.detail_control->layout(mc, {left, v.top + _line_height, left + width, v.top + v.height});
 		}
 	}
 
@@ -2483,7 +2546,7 @@ private:
 				added.detail_control = std::make_shared<surface_element>(image->surface, 0, flex_item::center);
 			}
 			else if (const auto numeric = std::get_if<metadata_numeric_detail>(&r.detail);
-				numeric && !numeric->values.empty() && numeric->columns > 0)
+			         numeric && !numeric->values.empty() && numeric->columns > 0)
 			{
 				added.detail_control = std::make_shared<numeric_table_control>(numeric->values, numeric->columns);
 			}
@@ -2534,7 +2597,6 @@ private:
 	}
 
 public:
-
 	// Reproduces the listing as text: every row indented as drawn, hex dumps left out, and the
 	// original packet appended when the standard carries one.
 	std::string copy_text(const std::string_view title) const
@@ -2605,15 +2667,9 @@ public:
 		return -1;
 	}
 
-	int hot() const
-	{
-		return _hot;
-	}
+	int hot() const { return _hot; }
 
-	void set_hot(const int visible_index)
-	{
-		_hot = visible_index;
-	}
+	void set_hot(const int visible_index) { _hot = visible_index; }
 
 	void toggle(const int visible_index)
 	{
@@ -2625,6 +2681,20 @@ public:
 		_tree_state->expanded[r.id] = !is_open(r);
 		_hot = -1;
 		if (_tree_state->invalidate) _tree_state->invalidate();
+	}
+
+	// The line of each row that opens and closes, where row_from_location finds it.
+	std::vector<recti> keyboard_parts() const override
+	{
+		std::vector<recti> parts;
+
+		for (const auto& v : _visible)
+		{
+			if (_rows[v.index].expandable)
+				parts.emplace_back(bounds.left, bounds.top + v.top, bounds.right, bounds.top + v.top + _line_height);
+		}
+
+		return parts;
 	}
 
 	void render(render::draw_context& dc, const pointi element_offset) const override
@@ -2697,30 +2767,17 @@ public:
 				             render::font_face::dialog, render::text_style::single_line_far, clr_dim, {});
 			}
 
-			if (v.detail_height > 0)
+			if (v.detail_height > 0 && !r.detail_control)
 			{
 				const auto detail_top = top + _line_height;
-				if (r.detail_control)
-				{
-					// The child is drawn in the box it measured, centred. Handing it the whole row
-					// instead stretches any element that fills its bounds, such as an image.
-					const auto avail_width = std::max(0, logical_bounds.width() - _detail_left);
-					const auto cx = v.detail_width > 0 ? std::min(v.detail_width, avail_width) : avail_width;
-					const auto left = _detail_left + (avail_width - cx) / 2;
-
-					r.detail_control->bounds = recti(left, v.top + _line_height, left + cx, v.top + v.height);
-					r.detail_control->render(dc, {logical_bounds.left, logical_bounds.top});
-				}
-				else
-				{
-					dc.draw_text(r.detail,
-					             recti(logical_bounds.left + _detail_left, detail_top, logical_bounds.right,
-					                   detail_top + v.detail_height),
-					             r.prose ? render::font_face::dialog : render::font_face::code,
-					             render::text_style::multiline, r.prose ? clr : clr_dim, {});
-				}
+				dc.draw_text(r.detail,
+				             recti(logical_bounds.left + _detail_left, detail_top, logical_bounds.right,
+				                   detail_top + v.detail_height),
+				             r.prose ? render::font_face::dialog : render::font_face::code,
+				             render::text_style::multiline, r.prose ? clr : clr_dim, {});
 			}
 		}
+		render_children(dc, element_offset);
 	}
 
 	sizei measure(render::measure_context& mc, const int width_limit) const override
@@ -2769,19 +2826,18 @@ public:
 			v.spines = mask;
 			v.open = open;
 
-			const auto key_size = mc.measure_text(r.key, render::font_face::dialog,
-			                                      render::text_style::single_line, width_limit, _line_height);
+			const auto key_size = mc.measure_text(r.key, render::font_face::dialog, render::text_style::single_line,
+			                                      width_limit, _line_height);
 			key_natural = std::max(key_natural, r.depth * _indent + key_size.cx + col_padding);
 
-			const auto value_size = mc.measure_text(r.value, render::font_face::dialog,
-			                                        render::text_style::single_line, width_limit, _line_height);
+			const auto value_size = mc.measure_text(r.value, render::font_face::dialog, render::text_style::single_line,
+			                                        width_limit, _line_height);
 			value_natural = std::max(value_natural, value_size.cx + col_padding);
 
 			if (!r.shape.empty())
 			{
 				const auto shape_size = mc.measure_text(r.shape, render::font_face::dialog,
-				                                        render::text_style::single_line, width_limit,
-				                                        _line_height);
+				                                        render::text_style::single_line, width_limit, _line_height);
 				shape_natural = std::max(shape_natural, shape_size.cx + col_padding);
 			}
 		}
@@ -2815,10 +2871,9 @@ public:
 				else
 				{
 					v.detail_height = mc.measure_text(r.detail,
-					                                  r.prose
-						                                  ? render::font_face::dialog
-						                                  : render::font_face::code,
-					                                  render::text_style::multiline, avail_width).cy;
+					                                  r.prose ? render::font_face::dialog : render::font_face::code,
+					                                  render::text_style::multiline, avail_width)
+					                      .cy;
 				}
 			}
 
@@ -2845,8 +2900,8 @@ class metadata_tree_controller final : public view_controller
 
 public:
 	metadata_tree_controller(const view_host_ptr& host, std::shared_ptr<metadata_tree_control> control,
-	                         const pointi element_offset, const recti bounds) : view_controller(host, bounds),
-		_control(std::move(control)), _element_offset(element_offset)
+	                         const pointi element_offset, const recti bounds) :
+		view_controller(host, bounds), _control(std::move(control)), _element_offset(element_offset)
 	{
 	}
 
@@ -2871,18 +2926,15 @@ public:
 		}
 	}
 
-	void on_mouse_move(const pointi loc) override
-	{
-		update_hot(loc);
-	}
+	void on_mouse_move(const pointi loc) override { update_hot(loc); }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_last_loc = loc;
 		_pressed_row = _bounds.contains(loc) ? _control->row_from_location(loc, _element_offset) : -1;
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		// The row that was pressed is the row that toggles. Reading the release alone meant a press
 		// that drifted onto a neighbour, or off the control entirely, expanded or collapsed a row
@@ -2900,11 +2952,13 @@ public:
 	}
 };
 
-inline view_controller_ptr metadata_tree_control::controller_from_location(
-	const view_host_ptr& host, const pointi loc, const pointi element_offset,
-	hit_test_context& ctx)
+inline view_controller_ptr metadata_tree_control::controller_from_location(const view_host_ptr& host, const pointi loc,
+                                                                           const pointi element_offset,
+                                                                           hit_test_context& ctx)
 {
 	if (!is_visible() || !bounds.contains(loc - element_offset)) return nullptr;
+
+	if (auto child = view_element::controller_from_location(host, loc, element_offset, ctx)) return child;
 
 	auto result = std::make_shared<metadata_tree_controller>(host, shared_from_this(), element_offset,
 	                                                         bounds.offset(element_offset));
@@ -2953,9 +3007,10 @@ void items_view::add_metadata_elements(std::vector<view_element_ptr>& elements, 
 	// sequenced, MSVC evaluates them right to left, and capturing in one argument while moving in
 	// another left the lambda holding an emptied pointer. The listing still drew, because the
 	// section owns the tree either way - only pressing copy dereferenced null.
-	auto section_title = std::make_shared<group_title_control>(title, std::vector<view_element_ptr>{
-		std::make_shared<copy_clip_element>([tree, title] { return tree->copy_text(title); })
-	});
+	auto section_title = std::make_shared<group_title_control>(title,
+	                                                           std::vector<view_element_ptr>{
+																   std::make_shared<copy_clip_element>([tree, title]
+	{ return tree->copy_text(title); })});
 
 	elements.emplace_back(make_section(std::move(section_title), std::move(tree)));
 }
@@ -3057,9 +3112,8 @@ void items_view::add_description_elements(std::vector<view_element_ptr>& element
 		{
 			// A repeat is still worth listing -- both fields really are populated -- but not worth
 			// reading twice, so it says so and opens only if asked.
-			auto& row = rows.emplace_back(f.name, f.duplicate
-				                                      ? std::string(tt.duplicate_text)
-				                                      : single_line_preview(f.text.sv()));
+			auto& row = rows.emplace_back(f.name, f.duplicate ? std::string(tt.duplicate_text)
+			                                                  : single_line_preview(f.text.sv()));
 			row.detail = metadata_text_detail{std::string(f.text.sv())};
 			row.id = f.id;
 			row.prose = true;
@@ -3078,27 +3132,38 @@ void items_view::add_description_elements(std::vector<view_element_ptr>& element
 		content = std::move(cover);
 	}
 
-	elements.emplace_back(make_section(std::make_shared<group_title_control>(title, buttons), std::move(content)));
+	elements.emplace_back(make_section(std::make_shared<group_title_control>(title, buttons), content));
 }
 
-// What is inside the container, which is the question a media file raises before any other. It sits
-// in the primary block rather than behind the verbose toggle, because an answer below the fold is
-// not an answer.
+// Stream selection and container facts are optional detail, outside the primary media budget.
 void items_view::add_stream_elements(std::vector<view_element_ptr>& elements, const display_state_ptr& display,
                                      const df::item_element_ptr& item)
 {
 	core::assert_true(platform::is_ui_thread());
 
 	const auto table = std::make_shared<ui::table_element>(flex_item::stretch);
+	// The short columns keep their width; the title, codec and format wrap in a narrow pane rather than squeeze
+	// one another out.
 	table->no_shrink_col[0] = true;
 	table->no_shrink_col[1] = true;
-	table->no_shrink_col[2] = false;
-	table->no_shrink_col[3] = true;
 	table->no_shrink_col[4] = true;
-	table->no_shrink_col[5] = true;
-	table->no_shrink_col[6] = true;
+	table->headings({{"#", true, true, true},
+	                 stack_heading(tt.sort_by_file_type.sv()),
+	                 stack_heading(tt.prop_name_title.sv()),
+	                 stack_heading(tt.table_codec.sv()),
+	                 stack_heading("FourCC"),
+	                 stack_heading(tt.table_format.sv())});
+	keep_table_choices(table, display, "streams");
 
 	auto audio_track_number = 0;
+
+	// Tokens in the same terse form as the audio row's, which is the form the format and codec names already take.
+	const auto append = [](std::string& text, const std::string_view token)
+	{
+		if (token.empty()) return;
+		if (!text.empty()) text += "  ";
+		text += token;
+	};
 
 	for (const auto& st : display->_player_media_info.streams)
 	{
@@ -3106,14 +3171,10 @@ void items_view::add_stream_elements(std::vector<view_element_ptr>& elements, co
 
 		switch (st.type)
 		{
-		case av_stream_type::video: type = tt.video;
-			break;
-		case av_stream_type::audio: type = tt.audio;
-			break;
-		case av_stream_type::data: type = tt.data;
-			break;
-		case av_stream_type::subtitle: type = tt.subtitle;
-			break;
+		case av_stream_type::video: type = tt.video; break;
+		case av_stream_type::audio: type = tt.audio; break;
+		case av_stream_type::data: type = tt.data; break;
+		case av_stream_type::subtitle: type = tt.subtitle; break;
 		}
 
 		auto format = st.pixel_format;
@@ -3121,15 +3182,6 @@ void items_view::add_stream_elements(std::vector<view_element_ptr>& elements, co
 
 		if (st.type == av_stream_type::video)
 		{
-			// Tokens in the same terse form as the audio row's, which is the form the format and
-			// codec names already take.
-			const auto append = [](std::string& text, const std::string_view token)
-			{
-				if (token.empty()) return;
-				if (!text.empty()) text += "  ";
-				text += token;
-			};
-
 			append(codec, st.profile);
 			if (st.bit_depth > 0) append(format, std::format("{}bit", st.bit_depth));
 			if (!st.hdr_transfer.empty()) append(format, std::format("HDR {}", st.hdr_transfer));
@@ -3153,36 +3205,187 @@ void items_view::add_stream_elements(std::vector<view_element_ptr>& elements, co
 			}
 		}
 
+		// The rare turned stream says so among its format's tokens rather than holding a column empty for the rest.
+		if (st.rotation != 0.0) append(format, std::format("rotation={}", st.rotation));
+
+		// A tag that is not four printable letters - a WAV format number, written [3][0][0][0] - names nothing.
+		const auto fourcc = st.fourcc.find('[') == std::string::npos ? st.fourcc : std::string{};
+
 		auto stream = std::make_shared<stream_element>(_state, item, st, audio_track_number);
 
-		std::vector<view_element_ptr> row = {
+		const std::vector<view_element_ptr> row = {
 			std::make_shared<text_element>(core::to_string(st.index)),
 			std::make_shared<text_element>(type),
 			stream,
 			std::make_shared<text_element>(codec),
-			std::make_shared<text_element>(st.fourcc),
+			std::make_shared<text_element>(fourcc),
 			std::make_shared<text_element>(format),
-			std::make_shared<text_element>(st.rotation == 0.0
-				                               ? std::string{}
-				                               : std::format("rotation={}", st.rotation))
 		};
 
-		table->add(row);
+		const auto text_key = [](const std::string_view text)
+		{
+			return text.empty() ? ui::table_sort_key{} : ui::table_sort_key(text);
+		};
+
+		table->add_row(row, {ui::table_sort_key(st.index), text_key(type), text_key(stream->text()), text_key(codec),
+		                     text_key(fourcc), text_key(format)});
 	}
 
 	elements.emplace_back(make_section(std::make_shared<group_title_control>(tt.prop_name_streams), table));
 }
 
+media_presentation make_media_presentation(view_state& state, const display_state_ptr& display,
+                                           const view_host_ptr& host, const bool fullscreen)
+{
+	media_presentation result;
+	if (!display) return result;
+
+	const auto shows = [&result](view_element_ptr e)
+	{
+		result.media = e;
+		result.above.emplace_back(std::move(e));
+	};
+
+	// Two files stand side by side only when they compare; any other pair is summarised, as more are.
+	if (display->is_comparison())
+	{
+		shows(std::make_shared<side_by_side_control>(state, display, host));
+		result.picture = true;
+	}
+	else if (display->is_multi())
+	{
+		shows(std::make_shared<images_control2>(state, display));
+	}
+	else if (display->is_one())
+	{
+		const auto& item = display->_item1;
+		const auto* const file_type = item->file_type();
+
+		// A media file the decoder could not open has nothing to play or draw, so it falls through to the
+		// hex dump rather than presenting an empty player.
+		const auto media_unavailable = display->_av_open_failed;
+		const auto has_data = display->_document && !display->_selected_item_data.empty();
+
+		if (file_type->has_trait(file_traits::bitmap))
+		{
+			shows(std::make_shared<photo_control>(state, display, host));
+			result.picture = true;
+		}
+		else if (file_type->has_trait(file_traits::sid_tune) && !media_unavailable)
+		{
+			shows(std::make_shared<sid_monitor_control>(state, display));
+		}
+		else if (is_tracker_extension(file_type->extension) && !media_unavailable)
+		{
+			shows(std::make_shared<tracker_monitor_control>(state, display, host));
+
+			// The module's sample and instrument names are what it says rather than what it plays, so they
+			// stack below the panel as a file's streams do.
+			if (!fullscreen)
+			{
+				if (auto bank = make_tracker_bank_panel(display)) result.below.emplace_back(std::move(bank));
+			}
+		}
+		else if (file_type->has_trait(file_traits::visualize_audio) && !media_unavailable)
+		{
+			shows(std::make_shared<audio_control>(state, display, host, fullscreen));
+		}
+		else if (file_type->has_trait(file_traits::av) && !media_unavailable)
+		{
+			shows(std::make_shared<video_control>(state, display, host));
+			result.picture = true;
+		}
+		else if (file_type->has_trait(file_traits::archive))
+		{
+			// A listing runs on as long as the archive does: the items view scrolls it below the panel, and
+			// fullscreen, which does not scroll, fits what it can of it above.
+			const auto listing = std::make_shared<file_list_control>(display, flex_item::stretch);
+
+			if (fullscreen)
+			{
+				listing->flex.shrink = 1.0f;
+				result.above.emplace_back(listing);
+			}
+			else
+			{
+				result.below.emplace_back(listing);
+				result.scrolls = true;
+			}
+		}
+		else if (file_type->has_trait(file_traits::commodore))
+		{
+			if (display->_c64)
+			{
+				// The running machine is the item's media: a picture, as a video is.
+				shows(std::make_shared<c64_screen_control>(state, display));
+				result.picture = true;
+			}
+			else if (is_c64_cartridge(*file_type))
+			{
+				// A cartridge holds one thing to run, so it is drawn as itself with the way to start it.
+				if (has_data) result.above.emplace_back(std::make_shared<c64_cartridge_control>(state, display));
+			}
+			else if (!fullscreen)
+			{
+				// The listing stands where media does, above the item's panel. It can run to hundreds of rows,
+				// so nothing is held above the fold: the column scrolls as one. Fullscreen does not scroll, and
+				// shows the panel alone.
+				result.scrolls = true;
+
+				if (has_data)
+				{
+					result.above.emplace_back(
+						std::make_shared<commodore_disk_control>(state, display, flex_item::center));
+
+					// Single-file program containers also show a hex view of the content.
+					if (file_type->extension == "prg" || file_type->extension == "p00")
+					{
+						result.below.emplace_back(std::make_shared<document_control>(display, flex_item::center));
+					}
+				}
+			}
+		}
+		else if (!fullscreen)
+		{
+			result.scrolls = true;
+
+			// The head of the file, as text when it reads as text and as a hex dump when not.
+			if (has_data)
+			{
+				const auto document = std::make_shared<document_control>(display, flex_item::stretch);
+
+				if (item->file_size().to_int64() > core::one_meg)
+				{
+					document->add(std::make_shared<text_element>(tt.truncated_at_one_mb, render::font_face::dialog,
+					                                             render::text_style::multiline_center,
+					                                             flex_item::stretch));
+				}
+
+				result.below.emplace_back(document);
+			}
+		}
+	}
+
+	return result;
+}
+
 void items_view::update_media_elements()
 {
 	core::assert_true(platform::is_ui_thread());
+	const auto display = _state.display_state();
+
+	// Starting a Commodore 64 or leaving it swaps the item's media for something else entirely, so the column
+	// starts again from its top. The scroll that reached a row of the listing would otherwise be kept for the
+	// machine, which could then open with its picture scrolled out of sight.
+	const auto showed_c64 = std::dynamic_pointer_cast<c64_screen_control>(_media_element) != nullptr;
+	if (showed_c64 != (display && display->_c64)) reset_media_scroll();
+
 	if (!_reset_media_scroll)
 	{
 		_pending_media_anchor = _media_scroller.capture_anchor(
 			find_center_scroll_element(_media_elements, _media_scroller));
 	}
 
-	const auto display = _state.display_state();
 	_display = display;
 
 	// Only some selections produce a media element. Without this the previous item's control -- and
@@ -3191,167 +3394,42 @@ void items_view::update_media_elements()
 	_media_element.reset();
 
 	std::vector<view_element_ptr> elements;
-	view_element_ptr media_control_element;
 	view_element_ptr priority_end_element;
 
 	if (display)
 	{
-		media_control_element = _state.create_selection_controls();
-		priority_end_element = media_control_element;
+		auto presentation = make_media_presentation(_state, display, _host, false);
+		_media_element = presentation.media;
+		elements = std::move(presentation.above);
+
+		// The preview represents the selection, so the commands that act on the selection are drawn with the
+		// panel that describes it rather than in a bar of their own. What stands above it is held on screen
+		// with it, unless it can run on for screens.
+		const auto media_control_element = _state.create_selection_controls();
+		elements.emplace_back(media_control_element);
+		if (!presentation.scrolls) priority_end_element = media_control_element;
 
 		if (display->is_one())
 		{
 			const auto& item = display->_item1;
-			const auto* const file_type = item->file_type();
 			const auto md = item->metadata();
 
-			// A media file the decoder could not open has nothing to play or draw, so it falls through
-			// to the hex dump rather than presenting an empty player.
-			const auto media_unavailable = display->_av_open_failed;
-
-			if (file_type->has_trait(file_traits::bitmap))
-			{
-				_media_element = std::make_shared<photo_control>(_state, display, _host);
-
-				elements.emplace_back(_media_element);
-				elements.emplace_back(media_padding(4));
-				elements.emplace_back(media_control_style(media_control_element));
-			}
-			else if (file_type->has_trait(file_traits::sid_tune) && !media_unavailable)
-			{
-				_media_element = std::make_shared<sid_monitor_control>(_state, display, _host);
-
-				elements.emplace_back(_media_element);
-				elements.emplace_back(media_padding(4));
-				elements.emplace_back(media_control_style(media_control_element));
-			}
-			else if (file_type->has_trait(file_traits::visualize_audio) && !media_unavailable)
-			{
-				_media_element = std::make_shared<audio_control>(_state, display, _host);
-
-				elements.emplace_back(_media_element);
-				elements.emplace_back(media_padding(4));
-				elements.emplace_back(media_control_style(media_control_element));
-			}
-			else if (file_type->has_trait(file_traits::av) && !media_unavailable)
-			{
-				_media_element = std::make_shared<video_control>(_state, display, _host);
-
-				elements.emplace_back(_media_element);
-				elements.emplace_back(media_padding(4));
-				elements.emplace_back(media_control_style(media_control_element));
-			}
-			else if (file_type->has_trait(file_traits::archive))
-			{
-				// These panels are a stack of listings, not a media pane with details under it, so no
-				// part of them is held on screen while the rest scrolls away.
-				priority_end_element.reset();
-				elements.emplace_back(media_control_style(media_control_element));
-				elements.emplace_back(media_padding(4));
-				elements.emplace_back(std::make_shared<file_list_control>(display, flex_item::center));
-			}
-			else if (file_type->has_trait(file_traits::commodore))
-			{
-				priority_end_element.reset();
-				elements.emplace_back(media_control_style(media_control_element));
-
-				if (display && display->_document && !display->_selected_item_data.empty())
-				{
-					elements.emplace_back(media_padding(4));
-					elements.emplace_back(std::make_shared<commodore_disk_control>(display, flex_item::center));
-
-					// Single-file program containers also show a hex view of the content.
-					if (file_type->extension == "prg" || file_type->extension == "p00")
-					{
-						elements.emplace_back(media_padding(4));
-						elements.emplace_back(std::make_shared<document_control>(display, flex_item::center));
-					}
-				}
-			}
-			else
-			{
-				priority_end_element.reset();
-				elements.emplace_back(media_control_style(media_control_element));
-
-				// The head of the file, as text when it reads as text and as a hex dump when not.
-				if (display && display->_document && !display->_selected_item_data.empty())
-				{
-					elements.emplace_back(std::make_shared<document_control>(display, flex_item::center));
-
-					if (item->file_size().to_int64() > core::one_meg)
-					{
-						elements.emplace_back(std::make_shared<divider_element>());
-						auto element = std::make_shared<text_element>(tt.truncated_at_one_mb,
-						                                              render::font_face::title,
-						                                              render::text_style::multiline_center,
-						                                              flex_item::center |
-						                                              view_element_style::important);
-						element->padding = {8, 8};
-						element->margin = {8, 8};
-						elements.emplace_back(element);
-					}
-					else
-					{
-						elements.emplace_back(media_padding(32));
-					}
-				}
-			}
-
-			// The toggle only earns its place when there is something behind it to reveal. The stream
-			// summary is no longer behind it: what is inside the container is the first question a
-			// media file raises, and answering it below the fold is not answering it.
+			// The toggle only earns its place when there is something behind it to reveal.
 			const auto& media_info = display->_player_media_info;
 			const auto has_streams = !media_info.streams.empty();
 			// The same test add_metadata_elements admits a block by. A packet that could not be parsed
 			// still draws as a block reporting that, so counting values alone withheld the toggle from
 			// the one file whose metadata the reader most needs to see.
-			const auto has_verbose_content = std::ranges::any_of(media_info.metadata,
-			                                                     [](const auto& m)
-			                                                     {
-				                                                     return !m.values.empty() || !m.raw.empty() ||
-					                                                     !m.parsed;
-			                                                     });
-
-			if (has_streams)
-			{
-				add_stream_elements(elements, display, item);
-				priority_end_element = elements.back();
-			}
-
-			const auto has_long_form = md && (!is_empty(md->comment) || !is_empty(md->description) ||
-				!is_empty(md->synopsis));
-
-			// A lone affordance must not push the centred media into a scrolling pane, so with verbose
-			// metadata closed and nothing else below the priority block the toggle joins that block.
-			// Once verbose metadata is open the pane scrolls anyway and the toggle is low-value chrome,
-			// so it returns to the base of the stack rather than spending priority space. Otherwise it
-			// trails the whole optional-detail run, so Comment and Description are read as detail.
-			const auto toggle_in_priority = has_verbose_content && !setting.verbose_metadata && !has_long_form &&
-				!elements.empty() && elements.back() == priority_end_element;
-
-			auto append_verbose_toggle = [&elements]
-			{
-				// No rule above it: each section is its own panel now, so the gap between panels is what
-				// separates them and a line as well would be saying it twice.
-				auto verbose_element = std::make_shared<link_element>(
-					setting.verbose_metadata ? tt.hide_verbose_metadata : tt.show_verbose_metadata,
-					commands::verbose_metadata, render::font_face::dialog,
-					render::text_style::multiline_center, flex_item::center);
-				elements.emplace_back(verbose_element);
-				elements.emplace_back(media_padding(8));
-			};
-
-			if (toggle_in_priority)
-			{
-				append_verbose_toggle();
-				priority_end_element = elements.back();
-			}
+			const auto has_verbose_content = std::ranges::any_of(media_info.metadata, [](const auto& m)
+			{ return !m.values.empty() || !m.raw.empty() || !m.parsed; });
 
 			add_description_elements(elements, item, md);
+			std::ranges::move(presentation.below, std::back_inserter(elements));
 
 			if (setting.verbose_metadata)
 			{
-				if (display && !display->_player_media_info.metadata.empty())
+				if (has_streams) add_stream_elements(elements, display, item);
+				if (!display->_player_media_info.metadata.empty())
 				{
 					for (const auto& block : display->_player_media_info.metadata)
 					{
@@ -3360,26 +3438,18 @@ void items_view::update_media_elements()
 				}
 			}
 
-			if (has_verbose_content && !toggle_in_priority)
+			if (has_streams || has_verbose_content)
 			{
-				append_verbose_toggle();
+				elements.emplace_back(
+					std::make_shared<link_element>(setting.verbose_metadata ? tt.hide_verbose_metadata
+				                                                            : tt.show_verbose_metadata,
+				                                   commands::verbose_metadata, render::font_face::dialog,
+				                                   render::text_style::multiline_center, flex_item::center));
 			}
-		}
-		else if (display->is_two())
-		{
-			_media_element = std::make_shared<side_by_side_control>(_state, display, _host);
-			elements.emplace_back(_media_element);
-			elements.emplace_back(media_control_style(media_control_element));
-		}
-		else if (display->is_multi())
-		{
-			_media_element = std::make_shared<images_control2>(_state, display);
-			elements.emplace_back(_media_element);
-			elements.emplace_back(media_control_style(media_control_element));
 		}
 		else
 		{
-			elements.emplace_back(media_control_style(media_control_element));
+			std::ranges::move(presentation.below, std::back_inserter(elements));
 		}
 	}
 
@@ -3402,11 +3472,16 @@ void items_view::update_media_elements()
 
 void items_view::display_changed()
 {
+	reset_media_scroll();
+	_state.invalidate_view(view_invalid::view_layout);
+};
+
+void items_view::reset_media_scroll()
+{
 	_pending_media_anchor = {};
 	_reset_media_scroll = true;
 	_media_scroller.scroll_offset(_host, 0, 0);
-	_state.invalidate_view(view_invalid::view_layout);
-};
+}
 
 void items_view::line_up(const bool toggle_selection, const bool extend_selection) const
 {
@@ -3499,7 +3574,10 @@ group_and_item items_view::scroll_loc_to_item(const pointi loc) const
 		// Groups are stacked top to bottom, so binary search to the boundary and compare the two
 		// candidates either side of it instead of walking every group on each mouse move.
 		const auto& item_groups = _state.groups();
-		const auto centre = [](const df::item_group_ptr& g) { return (g->bounds.top + g->bounds.bottom) / 2; };
+		const auto centre = [](const df::item_group_ptr& g)
+		{
+			return (g->bounds.top + g->bounds.bottom) / 2;
+		};
 		const auto found = std::ranges::lower_bound(item_groups, y, {}, centre);
 
 		if (found != item_groups.end())
@@ -3519,7 +3597,10 @@ group_and_item items_view::scroll_loc_to_item(const pointi loc) const
 		// Items are ordered top to bottom, so only the row before and the row after y can hold the
 		// closest item. Binary search to that boundary instead of walking the whole group.
 		const auto& items = group->items();
-		const auto centre = [](const df::item_element_ptr& i) { return (i->bounds.top + i->bounds.bottom) / 2; };
+		const auto centre = [](const df::item_element_ptr& i)
+		{
+			return (i->bounds.top + i->bounds.bottom) / 2;
+		};
 		const auto found = std::ranges::lower_bound(items, y, {}, centre);
 
 		auto first = found;

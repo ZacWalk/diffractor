@@ -3667,8 +3667,8 @@ msgstr "Trier par date d'origine"
 msgid "Movie mixer"
 msgstr "Mixeur de film"
 
-msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
-msgstr "Assemblez les photos et vidéos sélectionnées en une seule vidéo. Ajoutez, supprimez et réorganisez les clips dans la bande ci-dessous, et rognez le clip sélectionné. L'aperçu correspond au rendu ; rien n'est écrit tant que vous n'avez pas effectué le rendu ou enregistré."
+msgid "Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Assemblez les photos, vidéos et fichiers audio sélectionnés en une seule vidéo, avec des écrans de texte là où vous le souhaitez. Ajoutez, supprimez et réorganisez les éléments dans la bande ci-dessous, et modifiez ici l'élément sélectionné. L'aperçu correspond au rendu ; rien n'est écrit tant que vous n'avez pas effectué le rendu ou enregistré."
 
 msgid "Movie"
 msgstr "Film"
@@ -3676,50 +3676,38 @@ msgstr "Film"
 msgid "Selected clip"
 msgstr "Clip sélectionné"
 
-msgid "Crossfade between clips"
-msgstr "Fondu enchaîné entre les clips"
+msgid "Text screen"
+msgstr "Écran de texte"
 
-msgid "Cut between clips"
-msgstr "Coupe franche entre les clips"
+msgid "Text"
+msgstr "Texte"
 
-msgid "Transition (tenths of a second)"
-msgstr "Transition (dixièmes de seconde)"
+msgid "Caption"
+msgstr "Légende"
 
-msgid "Fade (tenths of a second)"
-msgstr "Fondu (dixièmes de seconde)"
+msgid "Shown for (tenths of a second)"
+msgstr "Affiché pendant (dixièmes de seconde)"
 
-msgid "Fade in from black"
-msgstr "Ouverture en fondu depuis le noir"
+msgid "Stabilize (not applied yet)"
+msgstr "Stabiliser (pas encore appliqué)"
 
-msgid "Fade out to black"
-msgstr "Fermeture en fondu vers le noir"
-
-msgid "Photo duration (tenths of a second)"
-msgstr "Durée de la photo (dixièmes de seconde)"
-
-msgid "This photo (tenths of a second)"
-msgstr "Cette photo (dixièmes de seconde)"
-
-msgid "Use the movie default"
-msgstr "Utiliser la valeur par défaut du film"
-
-msgid "Add photos and videos to build a movie."
-msgstr "Ajoutez des photos et des vidéos pour créer un film."
+msgid "Add photos, videos and audio files to build a movie."
+msgstr "Ajoutez des photos, des vidéos et des fichiers audio pour créer un film."
 
 msgid "Output {} x {} at {} fps, {} long."
 msgstr "Sortie {} x {} à {} ips, durée {}."
 
-msgid "{} - clip {} of {}, starting at {}."
-msgstr "{} - clip {} sur {}, commence à {}."
+msgid "{} - item {} of {}, starting at {}."
+msgstr "{} - élément {} sur {}, commence à {}."
+
+msgid "Item {} of {}, starting at {}."
+msgstr "Élément {} sur {}, commence à {}."
 
 msgid "Movie project"
 msgstr "Projet de film"
 
-msgid "Windows Movie Maker project"
-msgstr "Projet Windows Movie Maker"
-
-msgid "Photos and videos"
-msgstr "Photos et vidéos"
+msgid "Photos, videos and audio"
+msgstr "Photos, vidéos et audio"
 
 msgid "Could not read the project {}."
 msgstr "Impossible de lire le projet {}."
@@ -3727,11 +3715,17 @@ msgstr "Impossible de lire le projet {}."
 msgid "Could not save the project {}."
 msgstr "Impossible d'enregistrer le projet {}."
 
-msgid "Assemble the selected photos and videos into one video."
-msgstr "Assemble les photos et vidéos sélectionnées en une seule vidéo."
+msgid "Assemble the selected photos, videos and audio files into one video."
+msgstr "Assemble les photos, vidéos et fichiers audio sélectionnés en une seule vidéo."
 
 msgid "Add files"
 msgstr "Ajouter des fichiers"
+
+msgid "Add text screen"
+msgstr "Ajouter un écran de texte"
+
+msgid "Add a screen of text on black after the selected item."
+msgstr "Ajoute un écran de texte sur fond noir après l'élément sélectionné."
 
 msgid "Remove from movie"
 msgstr "Retirer du film"
@@ -3744,9 +3738,6 @@ msgstr "Ouvrir un projet"
 
 msgid "Save project"
 msgstr "Enregistrer le projet"
-
-msgid "Import Movie Maker project"
-msgstr "Importer un projet Movie Maker"
 
 msgid "Video"
 msgstr "Vidéo"
@@ -3802,24 +3793,52 @@ msgstr "Reconnecter les fichiers manquants"
 msgid "Point clips whose source file has moved at a folder you choose."
 msgstr "Dirige les clips dont le fichier source a été déplacé vers un dossier de votre choix."
 
-msgid "1 element of the imported project was left out because Movie cannot represent it."
-msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
-msgstr[0] "1 élément du projet importé a été laissé de côté car Film ne peut pas le représenter."
-msgstr[1] "{count} éléments du projet importé ont été laissés de côté car Film ne peut pas les représenter."
+msgid "1 line of the project could not be read and was left out."
+msgid_plural "{count} lines of the project could not be read and were left out."
+msgstr[0] "1 ligne du projet n'a pas pu être lue et a été laissée de côté."
+msgstr[1] "{count} lignes du projet n'ont pas pu être lues et ont été laissées de côté."
 
 msgid "1 clip cannot find its source file."
 msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "1 clip ne trouve pas son fichier source."
 msgstr[1] "{count} clips ne trouvent pas leurs fichiers sources."
 
-msgid "1 clip was relinked."
-msgid_plural "{count} clips were relinked."
-msgstr[0] "1 clip a été reconnecté."
-msgstr[1] "{count} clips ont été reconnectés."
 
+msgid "Pattern"
+msgstr "Motif"
 
-msgid "SID monitor"
-msgstr "Moniteur SID"
+msgid "Row"
+msgstr "Ligne"
+
+msgid "Speed"
+msgstr "Vitesse"
+
+msgid "Samples"
+msgstr "Échantillons"
+
+msgid "Instruments"
+msgstr "Instruments"
+
+msgid "Follow playback"
+msgstr "Suivre la lecture"
+
+msgid "Notes"
+msgstr "Notes"
+
+msgid "Range"
+msgstr "Tessiture"
+
+msgid "Compressed"
+msgstr "Compressé"
+
+msgid "Codec"
+msgstr "Codec"
+
+msgid "Format"
+msgstr "Format"
+
+msgid "Sidecars"
+msgstr "Fichiers annexes"
 
 msgid "Voice {}"
 msgstr "Voix {}"
@@ -3838,6 +3857,21 @@ msgstr "Écritures de registres"
 
 msgid "Solo"
 msgstr "Solo"
+
+msgid "Run on an emulated Commodore 64"
+msgstr "Exécuter sur un Commodore 64 émulé"
+
+msgid "Start"
+msgstr "Démarrer"
+
+msgid "Joystick port {}"
+msgstr "Port joystick {}"
+
+msgid "Arrow keys and Space: joystick. Esc: back."
+msgstr "Flèches et Espace : joystick. Échap : retour."
+
+msgid "This file could not be started."
+msgstr "Impossible de démarrer ce fichier."
 
 msgid "Same film"
 msgstr "Même film"

@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The Options view: every setting the user can change, on one page that fills the window. The page
 // edits a copy of the settings, which Save options and close commits and Cancel discards; Close, Escape and
@@ -48,7 +47,7 @@ options_leave_choice ask_to_save_options(const ui::frame_ptr& parent);
 // The folders whose library type the page offers: the collection's local folders that are ticked, the other
 // folders it names by path, and any folder given a type before. Device labels and exclusions have no type.
 std::vector<core::folder_path> library_type_folders(const settings_t::index_t& collection,
-                                                  const platform::local_folders_result& local);
+                                                    const platform::local_folders_result& local);
 
 // Copies what the Options view edits from `from` to `to`, and nothing else: what the app changed while the
 // page was open - window state, recent lists, the fields a task remembers - keeps its newer value.
@@ -115,29 +114,19 @@ public:
 	static void help();
 
 	// The copy the page's controls edit; empty until the page opens.
-	const std::shared_ptr<edit_state>& editing() const
-	{
-		return _edit;
-	}
+	const std::shared_ptr<edit_state>& editing() const { return _edit; }
 
 	// Whether the page holds a change Save would commit.
 	bool has_changes() const;
 
 	view_controls_host_ptr controls(const ui::frame_ptr& owner);
 
-	void activate(sizei extent) override
-	{
-	}
+	void activate(sizei /*extent*/) override {}
 
 	// Every way out of the page passes here, so what it paused resumes however the page was left.
-	void deactivate() override
-	{
-		_media_pause.reset();
-	}
+	void deactivate() override { _media_pause.reset(); }
 
-	void refresh() override
-	{
-	}
+	void refresh() override {}
 
 	bool escape() override
 	{
@@ -145,15 +134,9 @@ public:
 		return true;
 	}
 
-	void exit() override
-	{
-		leave();
-	}
+	void exit() override { leave(); }
 
-	bool confirm_exit() override
-	{
-		return !has_changes() || leave();
-	}
+	bool confirm_exit() override { return !has_changes() || leave(); }
 
 	std::string_view title() override;
 	view_bars bars() const override;

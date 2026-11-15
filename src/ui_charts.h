@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Geometry and material shared by the sidebar's software-rendered charts - the file-type
 // pie and the history calendar. The rasterisers declared here are implemented in render_charts.cpp.
@@ -75,7 +74,7 @@ inline double chart_log_height(const uint64_t count, const uint64_t max_count)
 // an allocation behind moving the mouse.
 class chart_surface
 {
-	core::surface_ptr _pixels; // 1x ARGB, premultiplied at the silhouette by the reduction
+	core::surface_ptr _pixels;  // 1x ARGB, premultiplied at the silhouette by the reduction
 	core::surface_ptr _scratch; // the supersampled buffer the rasterisers draw into
 	std::vector<uint16_t> _ids; // 1x, one identity per pixel
 	sizei _extent;
@@ -126,7 +125,7 @@ void render_pie_chart(chart_surface& destination, const pie_chart_scene& scene);
 
 struct calendar_chart_cell
 {
-	recti cell; // the 1x rect the month owns
+	recti cell;     // the 1x rect the month owns
 	int height = 0; // 1x pixels above the cell's floor line; the caller may let it clear the cell
 	core::color32 color = 0;
 	uint16_t id = chart_surface::no_id;
@@ -140,7 +139,7 @@ struct calendar_chart_style
 	// must skew the rows the same way, or the chart has two directions of depth at once.
 	int depth_x = 4;
 	int depth_y = 5;
-	int gap = 2; // the clear space between months; the faces stop short of the cell edge by this
+	int gap = 2;  // the clear space between months; the faces stop short of the cell edge by this
 	int lift = 2; // how far a hovered block floats
 };
 

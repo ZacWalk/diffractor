@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Photo editing view. Implements pixel adjustments and comparison.
 
@@ -45,6 +44,23 @@ struct document_correction
 document_detection_result detect_document(const core::const_surface_ptr& surface, sizei source_extent);
 document_correction fit_document_correction(const std::array<pointd, 4>& corners, sizei extent,
                                             core::orientation orientation);
+
+// What Auto colour sets the controls to: the tone from the picture's luma histogram, and the white balance
+// that brings its near-neutral pixels to grey.
+struct auto_color_settings
+{
+	double brightness = 0;
+	double contrast = 0;
+	double darks = 0;
+	double lights = 0;
+	double midtones = 0;
+	double vibrance = 0;
+	double temperature = 0;
+	double tint = 0;
+};
+
+// Nothing when the picture has no opaque pixel to measure.
+std::optional<auto_color_settings> analyze_auto_color(const core::const_surface_ptr& surface);
 bool edit_load_has_source_pixels(const file_load_result& loaded);
 std::string_view edit_load_status_text(const file_load_result& loaded, bool source_loading);
 bool should_accept_edit_async_result(size_t current_display_generation, size_t result_display_generation);
@@ -208,14 +224,11 @@ class edit_view final : public view_base, public std::enable_shared_from_this<ed
 
 public:
 	edit_view(view_state& s, view_host_ptr host, edit_view_state& evs);
-	recti calc_media_bounds() const
-	{
-		return {0, 0, _extent.cx, _extent.cy};
-	}
+	recti calc_media_bounds() const { return {0, 0, _extent.cx, _extent.cy}; }
 
 	view_controls_host_ptr controls(const ui::frame_ptr& owner);
 	static core::const_surface_ptr build_preview_surface(const core::const_surface_ptr& source, sizei loaded_dimensions,
-	                                                   const image_edits& edits);
+	                                                     const image_edits& edits);
 	core::const_surface_ptr preview_surface() const;
 
 	void activate(sizei extent) override;
@@ -230,8 +243,8 @@ public:
 	void start_source_load(source_load_request request);
 	void complete_source_load(const source_load_request& request, file_load_result loaded);
 	void queue_preview_decode();
-	void start_preview_decode(preview_decode_request request);
-	void complete_preview_decode(const preview_decode_request& request, core::const_surface_ptr source,
+	void start_preview_decode(const preview_decode_request& request);
+	void complete_preview_decode(const preview_decode_request& request, const core::const_surface_ptr& source,
 	                             file_load_result::failure failure);
 	void clear_crop_interaction_bounds();
 	void draw_loading_status(render::draw_context& dc, std::string_view status) const;
@@ -240,8 +253,8 @@ public:
 	void exit() override;
 	bool escape() override;
 	void save_current();
-	void save(core::file_path src_path, core::file_path dst_path, std::string_view xmp_name,
-	          const ui::frame_ptr& owner, std::function<void(bool)> complete) const;
+	void save(core::file_path src_path, core::file_path dst_path, std::string_view xmp_name, const ui::frame_ptr& owner,
+	          std::function<void(bool)> complete) const;
 	bool has_changes() const;
 	void select_item(const df::item_element_ptr& item);
 	void render(render::draw_context& dc, view_controller_ptr controller) override;
@@ -268,8 +281,9 @@ public:
 	void rotate_reset();
 	void color_reset();
 	void report_no_result(std::string_view title) const;
-	void queue_auto_adjust(int max_dimension, std::string title,
-	                       std::function<std::function<void(edit_view_state&)>(const core::const_surface_ptr&)> analyze);
+	void queue_auto_adjust(
+		int max_dimension, std::string title,
+		std::function<std::function<void(edit_view_state&)>(const core::const_surface_ptr&)> analyze);
 	void auto_color();
 	void auto_straighten();
 	void auto_document();
@@ -295,10 +309,7 @@ public:
 		selection(sel);
 	}
 
-	quadd selection() const
-	{
-		return _edit_state._edits.effective_crop_bounds(_loaded.dimensions());
-	}
+	quadd selection() const { return _edit_state._edits.effective_crop_bounds(_loaded.dimensions()); }
 
 	void selection(const quadd& s)
 	{

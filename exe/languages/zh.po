@@ -3665,8 +3665,8 @@ msgstr "按原始日期排序"
 msgid "Movie mixer"
 msgstr "影片混编"
 
-msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
-msgstr "将选定的照片和视频合成为一个视频。在下方的胶片条中添加、移除和重新排列剪辑，并裁剪选定的剪辑。预览即为渲染结果；在渲染或保存之前不会写入任何内容。"
+msgid "Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "将选定的照片、视频和音频文件合成为一个视频，并可在任意位置加入文字画面。在下方的胶片条中添加、移除和重新排列条目，并在此处编辑选定的条目。预览即为渲染结果；在渲染或保存之前不会写入任何内容。"
 
 msgid "Movie"
 msgstr "影片"
@@ -3674,50 +3674,38 @@ msgstr "影片"
 msgid "Selected clip"
 msgstr "选定的剪辑"
 
-msgid "Crossfade between clips"
-msgstr "剪辑之间交叉淡化"
+msgid "Text screen"
+msgstr "文字画面"
 
-msgid "Cut between clips"
-msgstr "剪辑之间硬切"
+msgid "Text"
+msgstr "文本"
 
-msgid "Transition (tenths of a second)"
-msgstr "转场（十分之一秒）"
+msgid "Caption"
+msgstr "字幕"
 
-msgid "Fade (tenths of a second)"
-msgstr "淡入淡出（十分之一秒）"
+msgid "Shown for (tenths of a second)"
+msgstr "显示时长（十分之一秒）"
 
-msgid "Fade in from black"
-msgstr "从黑场淡入"
+msgid "Stabilize (not applied yet)"
+msgstr "防抖（尚未应用）"
 
-msgid "Fade out to black"
-msgstr "淡出到黑场"
-
-msgid "Photo duration (tenths of a second)"
-msgstr "照片时长（十分之一秒）"
-
-msgid "This photo (tenths of a second)"
-msgstr "此照片（十分之一秒）"
-
-msgid "Use the movie default"
-msgstr "使用影片默认值"
-
-msgid "Add photos and videos to build a movie."
-msgstr "添加照片和视频以创建影片。"
+msgid "Add photos, videos and audio files to build a movie."
+msgstr "添加照片、视频和音频文件以创建影片。"
 
 msgid "Output {} x {} at {} fps, {} long."
 msgstr "输出 {} x {}，{} fps，时长 {}。"
 
-msgid "{} - clip {} of {}, starting at {}."
-msgstr "{} - 第 {}/{} 个剪辑，开始于 {}。"
+msgid "{} - item {} of {}, starting at {}."
+msgstr "{} - 第 {}/{} 个条目，开始于 {}。"
+
+msgid "Item {} of {}, starting at {}."
+msgstr "第 {}/{} 个条目，开始于 {}。"
 
 msgid "Movie project"
 msgstr "影片项目"
 
-msgid "Windows Movie Maker project"
-msgstr "Windows Movie Maker 项目"
-
-msgid "Photos and videos"
-msgstr "照片和视频"
+msgid "Photos, videos and audio"
+msgstr "照片、视频和音频"
 
 msgid "Could not read the project {}."
 msgstr "无法读取项目 {}。"
@@ -3725,11 +3713,17 @@ msgstr "无法读取项目 {}。"
 msgid "Could not save the project {}."
 msgstr "无法保存项目 {}。"
 
-msgid "Assemble the selected photos and videos into one video."
-msgstr "将选定的照片和视频合成为一个视频。"
+msgid "Assemble the selected photos, videos and audio files into one video."
+msgstr "将选定的照片、视频和音频文件合成为一个视频。"
 
 msgid "Add files"
 msgstr "添加文件"
+
+msgid "Add text screen"
+msgstr "添加文字画面"
+
+msgid "Add a screen of text on black after the selected item."
+msgstr "在选定条目之后添加一个黑底文字画面。"
 
 msgid "Remove from movie"
 msgstr "从影片中移除"
@@ -3742,9 +3736,6 @@ msgstr "打开项目"
 
 msgid "Save project"
 msgstr "保存项目"
-
-msgid "Import Movie Maker project"
-msgstr "导入 Movie Maker 项目"
 
 msgid "Video"
 msgstr "视频"
@@ -3800,24 +3791,52 @@ msgstr "重新链接缺失的文件"
 msgid "Point clips whose source file has moved at a folder you choose."
 msgstr "将源文件已移动的剪辑指向您选择的文件夹。"
 
-msgid "1 element of the imported project was left out because Movie cannot represent it."
-msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
-msgstr[0] "导入项目中有 1 个元素因影片无法表示而被略过。"
-msgstr[1] "导入项目中有 {count} 个元素因影片无法表示而被略过。"
+msgid "1 line of the project could not be read and was left out."
+msgid_plural "{count} lines of the project could not be read and were left out."
+msgstr[0] "项目中有 1 行无法读取，已略过。"
+msgstr[1] "项目中有 {count} 行无法读取，已略过。"
 
 msgid "1 clip cannot find its source file."
 msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "有 1 个剪辑找不到其源文件。"
 msgstr[1] "有 {count} 个剪辑找不到其源文件。"
 
-msgid "1 clip was relinked."
-msgid_plural "{count} clips were relinked."
-msgstr[0] "已重新链接 1 个剪辑。"
-msgstr[1] "已重新链接 {count} 个剪辑。"
 
+msgid "Pattern"
+msgstr "乐段"
 
-msgid "SID monitor"
-msgstr "SID 监视器"
+msgid "Row"
+msgstr "行"
+
+msgid "Speed"
+msgstr "速度"
+
+msgid "Samples"
+msgstr "采样"
+
+msgid "Instruments"
+msgstr "乐器"
+
+msgid "Follow playback"
+msgstr "跟随播放"
+
+msgid "Notes"
+msgstr "音符"
+
+msgid "Range"
+msgstr "音域"
+
+msgid "Compressed"
+msgstr "压缩后"
+
+msgid "Codec"
+msgstr "编解码器"
+
+msgid "Format"
+msgstr "格式"
+
+msgid "Sidecars"
+msgstr "附属文件"
 
 msgid "Voice {}"
 msgstr "声部 {}"
@@ -3836,6 +3855,21 @@ msgstr "寄存器写入"
 
 msgid "Solo"
 msgstr "独奏"
+
+msgid "Run on an emulated Commodore 64"
+msgstr "在模拟的 Commodore 64 上运行"
+
+msgid "Start"
+msgstr "启动"
+
+msgid "Joystick port {}"
+msgstr "摇杆端口 {}"
+
+msgid "Arrow keys and Space: joystick. Esc: back."
+msgstr "方向键和空格键：摇杆。Esc：返回。"
+
+msgid "This file could not be started."
+msgstr "无法启动此文件。"
 
 msgid "Same film"
 msgstr "相同电影"

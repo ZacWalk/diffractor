@@ -2,8 +2,8 @@
 
 This document owns the path from media bytes to displayed pixels, media and sidecar writes, coherent
 read-back, and failure outcomes. [Metadata](metadata.md) owns property-to-tag mappings;
-[Rendering](rendering.md) owns texture upload; [Zoom](zoom.md) owns scale and center; and
-[Design](design.md) owns user-facing operation semantics.
+[Rendering](rendering.md) owns image budgets and presentation; [Zoom](zoom.md) owns scale and center;
+and [Design](design.md) owns user-facing operation semantics.
 
 ## Contract
 
@@ -88,6 +88,18 @@ that its packet lacks, and encodes it into the file's own boxes beside the sourc
 follows. The codestream holds the orientation the file ends with, which the EXIF is made to agree with.
 A JPEG XL moved unchanged is copied as it is.
 
+A pixel edit loads its source as `decode_intent::edit` asks - at sixteen bits a channel where the file
+holds more than eight, a 16-bit PNG or a developed raw file, and the decode budget holds that - and is
+worked at that precision: PNG and JPEG XL are saved at sixteen bits, and JPEG and WebP are rounded to a
+byte once, as they are encoded. A JPEG's gain map - Ultra HDR's, Adobe's, Apple's or ISO 21496-1's,
+which says how much brighter each part of the photo is shown on an HDR display - goes with the photo:
+it is turned, straightened, corrected for perspective, cropped and scaled as the photo is, at its own
+resolution and losslessly with a lossless turn where its blocks allow, and keeps its own values, which
+scale whatever colour the edit gave the photo. libfiles attaches it after the new photo with the
+multi-picture index and XMP signalling its metadata calls for. A gain map that cannot be edited is left
+behind, and the photo then says none follows. The metadata update after a re-encode keeps the index and
+the XMP's account of the gain map true to the file.
+
 Encoded JPEG, PNG, WebP and JPEG XL buffers transfer ownership from libfiles
 into the displayed image's blob without a second encoded-buffer copy.
 
@@ -169,7 +181,8 @@ surviving paths.
 ## Where this lives
 
 - [files.cpp](../src/files.cpp): `files::load`, `files::update`, staging, sidecars, and
-  write result publication, plus archive listing.
+  write result publication, plus archive listing; and `files::with_edited_gain_map`, which edits a
+  JPEG's gain map as its photo was and attaches it.
 - [util_zip.cpp](../src/util_zip.cpp): ZIP creation, entry names, per-entry ZIP64 headers, and entry
   timestamps.
 - [files.cpp](../src/files.cpp)'s `s_still_formats`: the still image formats recognised by signature,
@@ -177,9 +190,9 @@ surviving paths.
 - [model.cpp](../src/model.cpp), [model.h](../src/model.h) and [model_display.h](../src/model_display.h):
   `texture_state` and `display_state_t`.
 - [model_index.cpp](../src/model_index.cpp): change discovery, scanning, and thumbnail scheduling.
-- libdesktop's [files.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/files.cpp): replacement and coherent file handles.
+- libdesktop's [files.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/files.cpp):
+  replacement, coherent file handles, and the pasted clipboard bitmap's encoding and staged
+  publication.
 - [view_rename.cpp](../src/view_rename.cpp): displaced rename groups and cancellation recovery.
 - [app_util.cpp](../src/app_util.cpp): Import planning, shared companions, and write rollback.
-- libdesktop's [files.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/files.cpp): pasted clipboard bitmap encoding and staged
-  publication.
 - [metadata.cpp](../src/metadata.cpp): XMP packet and sidecar updates.

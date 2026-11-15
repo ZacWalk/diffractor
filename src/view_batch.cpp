@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
 //
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Shared preview and processing view for batch conversion, metadata, and date tools.
 
@@ -100,27 +99,21 @@ static std::vector<std::string> genre_suggestions(const view_state& s, const df:
 
 std::array<text_t, list_view::max_col_count> batch_tool_view::col_titles()
 {
-	// The last column answers a different question once the run is over: not what will change, but
-	// what happened. The columns that identify the row are the same either way.
-	if (_mode == batch_tool_mode::convert)
-		return {tt.source, tt.destination, showing_results() ? tt.status : tt.changes, {}};
-	if (_mode == batch_tool_mode::metadata) return {tt.file, tt.changes, tt.status, {}};
+	if (_mode == batch_tool_mode::convert) return {tt.source, tt.destination, tt.changes, {}};
+	// Whether a field's value is added or replaced is the action each row takes; the Status column a finished
+	// run adds is what happened.
+	if (_mode == batch_tool_mode::metadata) return {tt.file, tt.changes, tt.action, {}};
 	// Adjust dates changes Original, and the source column makes mixed provenance visible before the
 	// shift: a set where one file resolves from DateTimeOriginal and another from the file stamp is
 	// not a set the same shift means the same thing to.
-	return {
-		tt.file, tt_prep(tt.prop_name_original.sv()), showing_results() ? tt.status : tt.after,
-		tt_prep(tt.source.sv())
-	};
+	return {tt.file, tt_prep(tt.prop_name_original.sv()), tt.after, tt_prep(tt.source.sv())};
 }
 
 std::string_view batch_tool_view::title()
 {
-	const auto text = _mode == batch_tool_mode::convert
-		                  ? tt.command_convert_or_resize.sv()
-		                  : _mode == batch_tool_mode::metadata
-		                  ? tt.command_edit_metadata.sv()
-		                  : tt.command_adjust_date.sv();
+	const auto text = _mode == batch_tool_mode::convert    ? tt.command_convert_or_resize.sv()
+	                  : _mode == batch_tool_mode::metadata ? tt.command_edit_metadata.sv()
+	                                                       : tt.command_adjust_date.sv();
 	_title = std::format("{}: {}", core::app_name(), text);
 	return _title;
 }
@@ -214,20 +207,19 @@ void batch_tool_view::refresh_convert()
 	_status = std::string(tt.analyzing.sv());
 
 	const std::weak_ptr<batch_tool_view> weak_view = shared_from_this();
-	_state.queue_async(async_queue::work,
-	                   [&s = _state, weak_view, sources, write_folder, extension, policy, generation]
-	                   {
-		                   auto plan = plan_convert_outputs(write_folder, sources, extension, policy);
+	_state.queue_async(async_queue::work, [&s = _state, weak_view, sources, write_folder, extension, policy, generation]
+	{
+		auto plan = plan_convert_outputs(write_folder, sources, extension, policy);
 
-		                   s.queue_ui([weak_view, plan = std::move(plan), generation]() mutable
-		                   {
-			                   const auto view = weak_view.lock();
-			                   if (!view || generation != view->_plan_generation) return;
-			                   view->_convert_plan = std::move(plan);
-			                   view->_plan_valid = true;
-			                   view->describe_convert_plan();
-		                   });
-	                   });
+		s.queue_ui([weak_view, plan = std::move(plan), generation]() mutable
+		{
+			const auto view = weak_view.lock();
+			if (!view || generation != view->_plan_generation) return;
+			view->_convert_plan = std::move(plan);
+			view->_plan_valid = true;
+			view->describe_convert_plan();
+		});
+	});
 }
 
 void batch_tool_view::describe_convert_plan()
@@ -249,8 +241,8 @@ void batch_tool_view::describe_convert_plan()
 		const auto dimensions = entry.source.dimensions;
 		const auto max_side = setting.convert.limit_dimension ? setting.convert.max_side : 0;
 		const auto scale = max_side > 0 && std::max(dimensions.cx, dimensions.cy) > max_side
-			                   ? core::scale_dimensions(dimensions, max_side, true)
-			                   : dimensions;
+		                       ? core::scale_dimensions(dimensions, max_side, true)
+		                       : dimensions;
 
 		if (entry.collides) ++collisions;
 
@@ -283,15 +275,14 @@ void batch_tool_view::describe_convert_plan()
 		rows.emplace_back(row);
 		_row_names.emplace_back(entry.destination.name());
 	}
-	_rows = std::move(rows);
-	_status = collisions > 0
-		          ? std::format("{}   {}", format_plural_text(tt.convert_info_fmt, items),
-		                        format_collision_summary(setting.convert.collision, collisions))
-		          : format_plural_text(tt.convert_info_fmt, items);
+	review_rows(std::move(rows));
+	_status = collisions > 0 ? std::format("{}   {}", format_plural_text(tt.convert_info_fmt, items),
+	                                       format_collision_summary(setting.convert.collision, collisions))
+	                         : format_plural_text(tt.convert_info_fmt, items);
 
 	append_blocked_reason();
 	_state.invalidate_view(view_invalid::view_layout | view_invalid::controller | view_invalid::status |
-		view_invalid::command_state);
+	                       view_invalid::command_state);
 }
 
 void batch_tool_view::refresh_metadata()
@@ -340,35 +331,34 @@ void batch_tool_view::refresh_metadata()
 		row->_text[1] = field_text;
 		const auto md = item->metadata();
 		const auto overwrites = md && ((setting.set_title && !prop::is_null(md->title)) ||
-			(setting.set_comment && !prop::is_null(md->comment)) ||
-			(setting.set_synopsis && !prop::is_null(md->synopsis)) || (setting.set_rating && md->rating != 0) ||
-			(setting.set_year && md->year != 0) ||
-			(setting.set_original && md->dates.original().is_valid()) ||
-			(setting.set_created && md->dates.created().is_valid()) ||
-			(setting.set_episode && (md->episode.x != 0 || md->episode.y != 0)) ||
-			(setting.set_season && md->season != 0) ||
-			(setting.set_track && (md->track.x != 0 || md->track.y != 0)) ||
-			(setting.set_disk && (md->disk.x != 0 || md->disk.y != 0)) ||
-			(setting.set_artist && !prop::is_null(md->artist)) ||
-			(setting.set_caption && !prop::is_null(md->description)) || (setting.set_album && !prop::is_null(md->album))
-			||
-			(setting.set_album_artist && !prop::is_null(md->album_artist)) ||
-			(setting.set_genre && !prop::is_null(md->genre)) || (setting.set_tv_show && !prop::is_null(md->show)) ||
-			(setting.set_copyright_notice && !prop::is_null(md->copyright_notice)) ||
-			(setting.set_copyright_creator && !prop::is_null(md->copyright_creator)) ||
-			(setting.set_copyright_source && !prop::is_null(md->copyright_source)) ||
-			(setting.set_copyright_credit && !prop::is_null(md->copyright_credit)) ||
-			(setting.set_copyright_url && !prop::is_null(md->copyright_url)));
-		row->_text[2] = overwrites
-			                ? std::string(tt.collision_replace.sv())
-			                : std::string(tt.update.sv());
+		                               (setting.set_comment && !prop::is_null(md->comment)) ||
+		                               (setting.set_synopsis && !prop::is_null(md->synopsis)) ||
+		                               (setting.set_rating && md->rating != 0) || (setting.set_year && md->year != 0) ||
+		                               (setting.set_original && md->dates.original().is_valid()) ||
+		                               (setting.set_created && md->dates.created().is_valid()) ||
+		                               (setting.set_episode && (md->episode.x != 0 || md->episode.y != 0)) ||
+		                               (setting.set_season && md->season != 0) ||
+		                               (setting.set_track && (md->track.x != 0 || md->track.y != 0)) ||
+		                               (setting.set_disk && (md->disk.x != 0 || md->disk.y != 0)) ||
+		                               (setting.set_artist && !prop::is_null(md->artist)) ||
+		                               (setting.set_caption && !prop::is_null(md->description)) ||
+		                               (setting.set_album && !prop::is_null(md->album)) ||
+		                               (setting.set_album_artist && !prop::is_null(md->album_artist)) ||
+		                               (setting.set_genre && !prop::is_null(md->genre)) ||
+		                               (setting.set_tv_show && !prop::is_null(md->show)) ||
+		                               (setting.set_copyright_notice && !prop::is_null(md->copyright_notice)) ||
+		                               (setting.set_copyright_creator && !prop::is_null(md->copyright_creator)) ||
+		                               (setting.set_copyright_source && !prop::is_null(md->copyright_source)) ||
+		                               (setting.set_copyright_credit && !prop::is_null(md->copyright_credit)) ||
+		                               (setting.set_copyright_url && !prop::is_null(md->copyright_url)));
+		row->_text[2] = overwrites ? std::string(tt.collision_replace.sv()) : std::string(tt.update.sv());
 		if (overwrites) row->_text_color[2] = warning_color;
 		row->_order = order++;
 		row->_work_index = row->_order;
 		rows.emplace_back(row);
 		_row_names.emplace_back(item->path().name());
 	}
-	_rows = std::move(rows);
+	review_rows(std::move(rows));
 	_status = format_plural_text(tt.edit_metadata_fmt, items);
 }
 
@@ -413,7 +403,7 @@ void batch_tool_view::refresh_dates()
 		rows.emplace_back(row);
 		_row_names.emplace_back(item->path().name());
 	}
-	_rows = std::move(rows);
+	review_rows(std::move(rows));
 	_status = format_plural_text(tt.adjust_date_info_fmt, items);
 }
 
@@ -450,7 +440,7 @@ void batch_tool_view::refresh()
 
 	append_blocked_reason();
 	_state.invalidate_view(view_invalid::view_layout | view_invalid::controller | view_invalid::status |
-		view_invalid::command_state);
+	                       view_invalid::command_state);
 }
 
 void batch_tool_view::refresh_encode_settings()
@@ -468,62 +458,23 @@ void batch_tool_view::refresh_encode_settings()
 	describe_convert_plan();
 }
 
-// Each row is read against the plan entry it was built from, not against its position: the header
-// sort is offered throughout the review, so a sorted list would otherwise report every row's
-// outcome against a different file.
+// The statuses are in plan order, which is the order the rows were built in, so each lands on its own row
+// however the list was sorted meanwhile.
 void batch_tool_view::show_run_results(const std::vector<item_status>& statuses, const std::string_view error)
 {
-	const auto success_color = core::lighten(ui::style::colors.success_background, 0.55f);
-	const auto fail_color = core::lighten(ui::style::colors.warning_background, 0.55f);
-	const auto muted_color = core::darken(ui::style::colors.view_text, 0.22f);
-
 	std::vector<view_operation_result> outcomes;
-	outcomes.reserve(_rows.size());
+	outcomes.reserve(statuses.size());
 
-	for (const auto& row : _rows)
+	for (size_t i = 0; i < statuses.size(); ++i)
 	{
-		const auto work_index = row->_work_index >= 0 ? static_cast<size_t>(row->_work_index) : statuses.size();
-		const auto status = work_index < statuses.size() ? statuses[work_index] : item_status::cancel;
-		row->_text_color[1] = 0;
-
-		switch (status)
-		{
-		case item_status::success:
-			row->_text[2] = std::string(tt.result_success.sv());
-			row->_text_color[2] = success_color;
-			break;
-		case item_status::fail:
-			row->_text[2] = std::string(tt.result_failed.sv());
-			row->_text_color[2] = fail_color;
-			break;
-		case item_status::ignore:
-			row->_text[2] = std::string(tt.result_skipped.sv());
-			row->_text_color[2] = muted_color;
-			row->_text_color[1] = muted_color;
-			break;
-		case item_status::cancel:
-			row->_text[2] = std::string(tt.result_not_run.sv());
-			row->_text_color[2] = muted_color;
-			row->_text_color[1] = muted_color;
-			break;
-		}
-
-		outcomes.emplace_back(work_index < _row_names.size() ? _row_names[work_index] : row->_text[0], status);
+		outcomes.emplace_back(i < _row_names.size() ? _row_names[i] : std::string{}, statuses[i]);
 	}
 
-	_showing_results = true;
-	_status = format_operation_summary(outcomes);
+	show_results(statuses);
 
 	// The counts state what the run did; the first error states why a row failed, which a red row
 	// alone cannot.
-	if (!error.empty())
-	{
-		if (!_status.empty()) _status += "   ";
-		_status += error;
-	}
-
-	_state.invalidate_view(view_invalid::view_layout | view_invalid::controller | view_invalid::status |
-		view_invalid::command_state);
+	_status = conclude_run(format_operation_summary(outcomes), std::string(error), {});
 }
 
 void batch_tool_view::queue_run_results(const view_state& s, const std::shared_ptr<batch_tool_view>& view,
@@ -532,7 +483,7 @@ void batch_tool_view::queue_run_results(const view_state& s, const std::shared_p
                                         std::string title)
 {
 	s.queue_ui([view, generation, statuses = std::move(statuses), detach = std::move(detach), title = std::move(title),
-		fatal = std::move(fatal), first_error = std::move(first_error)]() mutable
+	            fatal = std::move(fatal), first_error = std::move(first_error)]() mutable
 	{
 		if (!view->is_processing_generation(generation)) return;
 		view->end_processing();
@@ -568,14 +519,14 @@ std::string batch_tool_view::run_blocked_reason() const
 			return std::string(tt.convert_dimension_required.sv());
 
 		// Only Block Run refuses the run; the other policies resolve the collision.
-		const auto collisions = static_cast<int>(std::ranges::count_if(
-			_convert_plan, [](const auto& item) { return item.collides; }));
+		const auto collisions = static_cast<int>(
+			std::ranges::count_if(_convert_plan, [](const auto& item) { return item.collides; }));
 		if (setting.convert.collision == collision_policy::block_run && collisions > 0)
 			return format_collision_summary(collision_policy::block_run, collisions);
 
 		// Every row resolved to Skip, so running would write nothing at all.
-		const auto skipped = static_cast<int>(std::ranges::count_if(
-			_convert_plan, [](const auto& item) { return item.skipped; }));
+		const auto skipped = static_cast<int>(
+			std::ranges::count_if(_convert_plan, [](const auto& item) { return item.skipped; }));
 		if (skipped == static_cast<int>(_convert_plan.size()))
 			return format_collision_summary(collision_policy::skip, skipped);
 
@@ -657,105 +608,99 @@ void batch_tool_view::run_convert()
 	_status = std::string(tt.processing.sv());
 	_state.queue_async(async_queue::work,
 	                   [&s = _state, view = shared_from_this(), requests = std::move(requests),
-		                   statuses = std::move(statuses), cancel_source, cancel_version, generation,
-		                   jpeg_quality, webp_quality, webp_lossless, jxl_quality, jxl_lossless, write_folder, detach,
-		                   title]() mutable
-	                   {
-		                   std::string fatal;
-		                   std::string first_error;
-		                   auto wrote_anything = false;
-		                   try
-		                   {
-			                   files ff;
+	                    statuses = std::move(statuses), cancel_source, cancel_version, generation, jpeg_quality,
+	                    webp_quality, webp_lossless, jxl_quality, jxl_lossless, write_folder, detach, title]() mutable
+	{
+		std::string fatal;
+		std::string first_error;
+		auto wrote_anything = false;
+		try
+		{
+			files ff;
 
-			                   if (const auto folder_result = platform::create_folder(write_folder); folder_result.
-				                   failed())
-			                   {
-				                   fatal = folder_result.format_error(
-					                   str_format(tt.failed_to_create_folder_fmt.sv(), write_folder));
-			                   }
-			                   else
-			                   {
-				                   for (size_t index = 0; index < requests.size() && cancel_source->load() ==
-				                        cancel_version; ++index)
-				                   {
-					                   const auto& request = requests[index];
-					                   const auto plan_index = request.plan_index;
-					                   s.queue_ui([view, generation, plan_index, index]
-					                   {
-						                   if (view->is_processing_generation(generation))
-							                   view->processing_work_item(plan_index, index + 1);
-					                   });
-					                   file_encode_params params;
-					                   params.jpeg_save_quality = jpeg_quality;
-					                   params.webp_quality = webp_quality;
-					                   params.webp_lossless = webp_lossless;
-					                   params.jxl_quality = jxl_quality;
-					                   params.jxl_lossless = jxl_lossless;
-					                   // Converting asks for these settings, so a source already in the format
-					                   // is encoded with them rather than copied as it was.
-					                   params.reencode = true;
+			if (const auto folder_result = platform::create_folder(write_folder); folder_result.failed())
+			{
+				fatal = folder_result.format_error(str_format(tt.failed_to_create_folder_fmt.sv(), write_folder));
+			}
+			else
+			{
+				for (size_t index = 0; index < requests.size() && cancel_source->load() == cancel_version; ++index)
+				{
+					const auto& request = requests[index];
+					const auto plan_index = request.plan_index;
+					s.queue_ui([view, generation, plan_index, index]
+					{
+						if (view->is_processing_generation(generation))
+							view->processing_work_item(plan_index, index + 1);
+					});
+					file_encode_params params;
+					params.jpeg_save_quality = jpeg_quality;
+					params.webp_quality = webp_quality;
+					params.webp_lossless = webp_lossless;
+					params.jxl_quality = jxl_quality;
+					params.jxl_lossless = jxl_lossless;
+					// Converting asks for these settings, so a source already in the format
+					// is encoded with them rather than copied as it was.
+					params.reencode = true;
 
-					                   // The review is a snapshot, and the write itself cannot refuse an existing
-					                   // file. A destination that filled up in between belongs to something the user
-					                   // never reviewed, so the row is left alone rather than written over - and so
-					                   // is a reviewed one that has changed since, which is no longer the file the
-					                   // user agreed to replace.
-					                   const auto destination_exists = platform::exists(request.destination);
+					// The review is a snapshot, and the write itself cannot refuse an existing
+					// file. A destination that filled up in between belongs to something the user
+					// never reviewed, so the row is left alone rather than written over - and so
+					// is a reviewed one that has changed since, which is no longer the file the
+					// user agreed to replace.
+					const auto destination_exists = platform::exists(request.destination);
 
-					                   if (destination_exists && (!request.replaces_existing ||
-						                   !unchanged_since_analysis(request.destination,
-						                                             request.destination_fi.modified,
-						                                             request.destination_fi.size)))
-					                   {
-						                   statuses[plan_index] = item_status::ignore;
-						                   continue;
-					                   }
+					if (destination_exists &&
+					    (!request.replaces_existing ||
+					     !unchanged_since_analysis(request.destination, request.destination_fi.modified,
+					                               request.destination_fi.size)))
+					{
+						statuses[plan_index] = item_status::ignore;
+						continue;
+					}
 
-					                   file_update_publish publish;
-					                   publish.fail_if_exists = !request.replaces_existing;
-					                   publish.require_unchanged_destination = request.replaces_existing;
-					                   publish.destination_attributes = request.destination_fi;
+					file_update_publish publish;
+					publish.fail_if_exists = !request.replaces_existing;
+					publish.require_unchanged_destination = request.replaces_existing;
+					publish.destination_attributes = request.destination_fi;
 
-					                   const auto result = ff.update(request.source, request.destination, {},
-					                                                 request.max_side > 0
-						                                                 ? image_edits(request.max_side)
-						                                                 : image_edits(), params, false, request.xmp,
-					                                                 {}, {}, publish);
+					const auto result = ff.update(request.source, request.destination, {},
+					                              request.max_side > 0 ? image_edits(request.max_side) : image_edits(),
+					                              params, false, request.xmp, {}, {}, publish);
 
-					                   // One unreadable or unwritable source must not decide the fate of the rest.
-					                   // The row records the failure and the run carries on, so the result list
-					                   // says exactly which items landed.
-					                   if (result.success())
-					                   {
-						                   statuses[plan_index] = item_status::success;
-						                   wrote_anything = true;
-					                   }
-					                   else
-					                   {
-						                   statuses[plan_index] = item_status::fail;
-						                   if (first_error.empty()) first_error = result.format_error();
-					                   }
-				                   }
-			                   }
+					// One unreadable or unwritable source must not decide the fate of the rest.
+					// The row records the failure and the run carries on, so the result list
+					// says exactly which items landed.
+					if (result.success())
+					{
+						statuses[plan_index] = item_status::success;
+						wrote_anything = true;
+					}
+					else
+					{
+						statuses[plan_index] = item_status::fail;
+						if (first_error.empty()) first_error = result.format_error();
+					}
+				}
+			}
 
-			                   // Convert writes files nobody has told the index about; without this they
-			                   // stay invisible until something else happens to rescan that folder.
-			                   if (wrote_anything)
-			                   {
-				                   core::unique_folders written;
-				                   written.emplace(write_folder);
-				                   s.item_index.queue_validate_changed_folders(std::move(written));
-			                   }
-		                   }
-		                   catch (const std::exception& e)
-		                   {
-			                   fatal = core::utf8_cast(e.what());
-		                   }
+			// Convert writes files nobody has told the index about; without this they
+			// stay invisible until something else happens to rescan that folder.
+			if (wrote_anything)
+			{
+				core::unique_folders written;
+				written.emplace(write_folder);
+				s.item_index.queue_validate_changed_folders(std::move(written));
+			}
+		}
+		catch (const std::exception& e)
+		{
+			fatal = core::utf8_cast(e.what());
+		}
 
-		                   queue_run_results(s, view, generation, std::move(statuses), std::move(fatal),
-		                                     std::move(first_error), std::move(detach), std::move(title));
-	                   });
+		queue_run_results(s, view, generation, std::move(statuses), std::move(fatal), std::move(first_error), detach,
+		                  title);
+	});
 }
 
 void batch_tool_view::run_metadata()
@@ -784,61 +729,56 @@ void batch_tool_view::run_metadata()
 	const auto cancel_source = processing_cancel_source();
 	const auto cancel_version = cancel_source->load();
 	_status = std::string(tt.processing.sv());
-	_state.queue_async(async_queue::work,
-	                   [&s = _state, view = shared_from_this(), requests = std::move(requests), edits, cancel_source,
-		                   cancel_version, generation, detach, title]() mutable
-	                   {
-		                   // Nothing has been attempted yet, so a row the run never reaches reports itself
-		                   // as not run.
-		                   std::vector<item_status> statuses(requests.size(), item_status::cancel);
-		                   std::string fatal;
-		                   std::string first_error;
-		                   core::unique_folders written;
-		                   try
-		                   {
-			                   files ff;
-			                   for (size_t index = 0; index < requests.size() && cancel_source->load() == cancel_version
-			                        ; ++index)
-			                   {
-				                   s.queue_ui([view, generation, index]
-				                   {
-					                   if (view->is_processing_generation(generation))
-						                   view->processing_work_item(index, index + 1);
-				                   });
-				                   const auto& request = requests[index];
+	_state.queue_async(async_queue::work, [&s = _state, view = shared_from_this(), requests = std::move(requests),
+	                                       edits, cancel_source, cancel_version, generation, detach, title]() mutable
+	{
+		// Nothing has been attempted yet, so a row the run never reaches reports itself
+		// as not run.
+		std::vector<item_status> statuses(requests.size(), item_status::cancel);
+		std::string fatal;
+		std::string first_error;
+		core::unique_folders written;
+		try
+		{
+			files ff;
+			for (size_t index = 0; index < requests.size() && cancel_source->load() == cancel_version; ++index)
+			{
+				s.queue_ui([view, generation, index]
+				{
+					if (view->is_processing_generation(generation)) view->processing_work_item(index, index + 1);
+				});
+				const auto& request = requests[index];
 
-				                   // One file that cannot be written must not decide the fate of the rest.
-				                   // The row records the failure and the run carries on - including when the
-				                   // write throws, which a refused sidecar or a codec error does.
-				                   try
-				                   {
-					                   const auto result = ff.update(request.path, edits, {}, file_encode_params{},
-					                                                 false, request.xmp);
-					                   statuses[index] = apply_batch_update_result(written, request.path.folder(),
-					                                                                first_error, result);
-				                   }
-				                   catch (const std::exception& e)
-				                   {
-					                   statuses[index] = item_status::fail;
-					                   if (first_error.empty()) first_error = core::utf8_cast(e.what());
-				                   }
-			                   }
-		                   }
-		                   catch (const std::exception& e)
-		                   {
-			                   fatal = core::utf8_cast(e.what());
-		                   }
+				// One file that cannot be written must not decide the fate of the rest.
+				// The row records the failure and the run carries on - including when the
+				// write throws, which a refused sidecar or a codec error does.
+				try
+				{
+					const auto result = ff.update(request.path, edits, {}, file_encode_params{}, false, request.xmp);
+					statuses[index] = apply_batch_update_result(written, request.path.folder(), first_error, result);
+				}
+				catch (const std::exception& e)
+				{
+					statuses[index] = item_status::fail;
+					if (first_error.empty()) first_error = core::utf8_cast(e.what());
+				}
+			}
+		}
+		catch (const std::exception& e)
+		{
+			fatal = core::utf8_cast(e.what());
+		}
 
-		                   // Outside the try: the write is invisible to the index until the folder is validated,
-		                   // and a run that ended early still wrote everything it reported as written.
-		                   if (!written.empty())
-		                   {
-			                   s.item_index.queue_validate_changed_folders(std::move(written));
-		                   }
+		// Outside the try: the write is invisible to the index until the folder is validated,
+		// and a run that ended early still wrote everything it reported as written.
+		if (!written.empty())
+		{
+			s.item_index.queue_validate_changed_folders(std::move(written));
+		}
 
-		                   queue_run_results(s, view, generation, std::move(statuses), std::move(fatal),
-		                                     std::move(first_error), std::move(detach), std::move(title));
-	                   });
+		queue_run_results(s, view, generation, std::move(statuses), std::move(fatal), std::move(first_error), detach,
+		                  title);
+	});
 }
 
 void batch_tool_view::run_dates()
@@ -872,63 +812,58 @@ void batch_tool_view::run_dates()
 	_status = std::string(tt.processing.sv());
 	_state.queue_async(async_queue::work,
 	                   [&s = _state, view = shared_from_this(), requests = std::move(requests), new_start,
-		                   original_start, cancel_source, cancel_version, generation, detach, title]() mutable
-	                   {
-		                   // Nothing has been attempted yet, so a row the run never reaches reports itself
-		                   // as not run.
-		                   std::vector<item_status> statuses(requests.size(), item_status::cancel);
-		                   std::string fatal;
-		                   std::string first_error;
-		                   core::unique_folders written;
-		                   try
-		                   {
-			                   files ff;
-			                   for (size_t index = 0; index < requests.size() && cancel_source->load() == cancel_version
-			                        ; ++index)
-			                   {
-				                   s.queue_ui([view, generation, index]
-				                   {
-					                   if (view->is_processing_generation(generation))
-						                   view->processing_work_item(index, index + 1);
-				                   });
-				                   const auto& request = requests[index];
-				                   const auto date = adjusted_item_date(request.media_created, new_start,
-				                                                        original_start);
-				                   metadata_edits edits;
-				                   edits.date_original = date;
+	                    original_start, cancel_source, cancel_version, generation, detach, title]() mutable
+	{
+		// Nothing has been attempted yet, so a row the run never reaches reports itself
+		// as not run.
+		std::vector<item_status> statuses(requests.size(), item_status::cancel);
+		std::string fatal;
+		std::string first_error;
+		core::unique_folders written;
+		try
+		{
+			files ff;
+			for (size_t index = 0; index < requests.size() && cancel_source->load() == cancel_version; ++index)
+			{
+				s.queue_ui([view, generation, index]
+				{
+					if (view->is_processing_generation(generation)) view->processing_work_item(index, index + 1);
+				});
+				const auto& request = requests[index];
+				const auto date = adjusted_item_date(request.media_created, new_start, original_start);
+				metadata_edits edits;
+				edits.date_original = date;
 
-				                   // One file that cannot be written must not decide the fate of the rest.
-				                   // The row records the failure and the run carries on - including when the
-				                   // write throws, which a refused sidecar or a codec error does.
-				                   try
-				                   {
-					                   const auto result = ff.update(request.path, edits, {}, file_encode_params{},
-					                                                 false, request.xmp);
-					                   statuses[index] = apply_batch_update_result(written, request.path.folder(),
-					                                                                first_error, result);
-				                   }
-				                   catch (const std::exception& e)
-				                   {
-					                   statuses[index] = item_status::fail;
-					                   if (first_error.empty()) first_error = core::utf8_cast(e.what());
-				                   }
-			                   }
-		                   }
-		                   catch (const std::exception& e)
-		                   {
-			                   fatal = core::utf8_cast(e.what());
-		                   }
+				// One file that cannot be written must not decide the fate of the rest.
+				// The row records the failure and the run carries on - including when the
+				// write throws, which a refused sidecar or a codec error does.
+				try
+				{
+					const auto result = ff.update(request.path, edits, {}, file_encode_params{}, false, request.xmp);
+					statuses[index] = apply_batch_update_result(written, request.path.folder(), first_error, result);
+				}
+				catch (const std::exception& e)
+				{
+					statuses[index] = item_status::fail;
+					if (first_error.empty()) first_error = core::utf8_cast(e.what());
+				}
+			}
+		}
+		catch (const std::exception& e)
+		{
+			fatal = core::utf8_cast(e.what());
+		}
 
-		                   // Outside the try: the write is invisible to the index until the folder is validated,
-		                   // and a run that ended early still wrote everything it reported as written.
-		                   if (!written.empty())
-		                   {
-			                   s.item_index.queue_validate_changed_folders(std::move(written));
-		                   }
+		// Outside the try: the write is invisible to the index until the folder is validated,
+		// and a run that ended early still wrote everything it reported as written.
+		if (!written.empty())
+		{
+			s.item_index.queue_validate_changed_folders(std::move(written));
+		}
 
-		                   queue_run_results(s, view, generation, std::move(statuses), std::move(fatal),
-		                                     std::move(first_error), std::move(detach), std::move(title));
-	                   });
+		queue_run_results(s, view, generation, std::move(statuses), std::move(fatal), std::move(first_error), detach,
+		                  title);
+	});
 }
 
 view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
@@ -949,84 +884,62 @@ view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
 		controls.emplace_back(std::make_shared<text_element>(tt.destination_folder));
 		controls.emplace_back(std::make_shared<ui::folder_picker_control>(frame, setting.write_folder, false,
 		                                                                  [this](std::string_view) { refresh(); }));
-		auto jpeg = std::make_shared<ui::check_control>(frame, tt.platform_text.jpeg_best, setting.convert.to_jpeg, true, false,
-		                                                [this](const bool checked)
-		                                                {
-			                                                if (checked)
-				                                                setting.convert.to_png = setting.convert.to_webp =
-					                                                setting.convert.to_jxl = false;
-			                                                refresh();
-		                                                },
-		                                                radio_group_format);
+		auto jpeg = std::make_shared<ui::check_control>(frame, tt.platform_text.jpeg_best, setting.convert.to_jpeg,
+		                                                true, false, [this](const bool checked)
+		{
+			if (checked) setting.convert.to_png = setting.convert.to_webp = setting.convert.to_jxl = false;
+			refresh();
+		}, radio_group_format);
 		const auto jpeg_options = std::make_shared<ui::group_control>();
 		jpeg_options->add(std::make_shared<text_element>(tt.options_jpeg_quality));
 		jpeg_options->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, setting.convert.jpeg_quality,
-		                                                       1,
-		                                                       100, [this] { refresh_encode_settings(); }));
+		                                                       1, 100, [this] { refresh_encode_settings(); }));
 		jpeg->child(jpeg_options);
 		controls.emplace_back(jpeg);
-		controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.platform_text.png_best, setting.convert.to_png, true,
-		                                                          false,
+		controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.platform_text.png_best,
+		                                                          setting.convert.to_png, true, false,
 		                                                          [this](const bool checked)
-		                                                          {
-			                                                          if (checked)
-				                                                          setting.convert.to_jpeg = setting.convert.
-					                                                          to_webp = setting.convert.to_jxl = false;
-			                                                          refresh();
-		                                                          },
-		                                                          radio_group_format));
-		auto webp = std::make_shared<ui::check_control>(frame, tt.platform_text.webp_best, setting.convert.to_webp, true, false,
-		                                                [this](const bool checked)
-		                                                {
-			                                                if (checked)
-				                                                setting.convert.to_jpeg = setting.convert.to_png =
-					                                                setting.convert.to_jxl = false;
-			                                                refresh();
-		                                                },
-		                                                radio_group_format);
+		{
+			if (checked) setting.convert.to_jpeg = setting.convert.to_webp = setting.convert.to_jxl = false;
+			refresh();
+		}, radio_group_format));
+		auto webp = std::make_shared<ui::check_control>(frame, tt.platform_text.webp_best, setting.convert.to_webp,
+		                                                true, false, [this](const bool checked)
+		{
+			if (checked) setting.convert.to_jpeg = setting.convert.to_png = setting.convert.to_jxl = false;
+			refresh();
+		}, radio_group_format);
 		const auto webp_options = std::make_shared<ui::group_control>();
 		webp_options->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, setting.convert.webp_quality,
-		                                                       1,
-		                                                       100, [this] { refresh_encode_settings(); }));
+		                                                       1, 100, [this] { refresh_encode_settings(); }));
 		webp_options->add(std::make_shared<ui::check_control>(frame, tt.lossless_compression,
-		                                                      setting.convert.webp_lossless, false, false, [this](bool)
-		                                                      {
-			                                                      refresh_encode_settings();
-		                                                      }));
+		                                                      setting.convert.webp_lossless, false, false,
+		                                                      [this](bool) { refresh_encode_settings(); }));
 		webp->child(webp_options);
 		controls.emplace_back(webp);
-		auto jxl = std::make_shared<ui::check_control>(frame, tt.platform_text.jxl_best, setting.convert.to_jxl, true, false,
-		                                               [this](const bool checked)
-		                                               {
-			                                               if (checked)
-				                                               setting.convert.to_jpeg = setting.convert.to_png =
-					                                               setting.convert.to_webp = false;
-			                                               refresh();
-		                                               },
-		                                               radio_group_format);
+		auto jxl = std::make_shared<ui::check_control>(frame, tt.platform_text.jxl_best, setting.convert.to_jxl, true,
+		                                               false, [this](const bool checked)
+		{
+			if (checked) setting.convert.to_jpeg = setting.convert.to_png = setting.convert.to_webp = false;
+			refresh();
+		}, radio_group_format);
 		const auto jxl_options = std::make_shared<ui::group_control>();
-		jxl_options->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, setting.convert.jxl_quality,
-		                                                      1,
+		jxl_options->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, setting.convert.jxl_quality, 1,
 		                                                      100, [this] { refresh_encode_settings(); }));
 		jxl_options->add(std::make_shared<ui::check_control>(frame, tt.lossless_compression,
-		                                                     setting.convert.jxl_lossless, false, false, [this](bool)
-		                                                     {
-			                                                     refresh_encode_settings();
-		                                                     }));
+		                                                     setting.convert.jxl_lossless, false, false,
+		                                                     [this](bool) { refresh_encode_settings(); }));
 		jxl->child(jxl_options);
 		controls.emplace_back(jxl);
 		controls.emplace_back(std::make_shared<divider_element>());
 		auto dimension = std::make_shared<ui::check_control>(frame, tt.limit_output_dimensions,
-		                                                     setting.convert.limit_dimension, false, false, [this](bool)
-		                                                     {
-			                                                     refresh_encode_settings();
-		                                                     });
+		                                                     setting.convert.limit_dimension, false, false,
+		                                                     [this](bool) { refresh_encode_settings(); });
 		dimension->child(std::make_shared<ui::num_control>(frame, std::string_view{}, setting.convert.max_side, false,
 		                                                   [this](int) { refresh_encode_settings(); }));
 		controls.emplace_back(dimension);
 		controls.emplace_back(std::make_shared<divider_element>());
-		controls.emplace_back(
-			create_collision_policy_control(frame, setting.convert.collision, [this] { refresh(); }));
+		controls.emplace_back(create_collision_policy_control(frame, setting.convert.collision, [this] { refresh(); }));
 	}
 	else if (_mode == batch_tool_mode::metadata)
 	{
@@ -1042,11 +955,10 @@ view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
 		{
 			auto check = std::make_shared<ui::check_control>(frame, label, selected, false, false,
 			                                                 [this, weak_controls](bool)
-			                                                 {
-				                                                 refresh();
-				                                                 if (const auto host = weak_controls.lock())
-					                                                 host->scroll_controls();
-			                                                 });
+			{
+				refresh();
+				if (const auto host = weak_controls.lock()) host->scroll_controls();
+			});
 			return check;
 		};
 		auto add_field = [&](const text_t& label, bool& selected, std::string& value, const bool multiline = false)
@@ -1090,8 +1002,8 @@ view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
 		// A date field carries what the item holds now, inside the checkbox: the value a run is about
 		// to replace is worth seeing beside its replacement, and worth nothing while the field is not
 		// in the run.
-		auto add_date_field = [&](const text_t& label, bool& selected, core::date_t& value,
-		                          const prop::date_concept kind)
+		auto add_date_field =
+			[&](const text_t& label, bool& selected, core::date_t& value, const prop::date_concept kind)
 		{
 			const auto group = std::make_shared<ui::group_control>();
 			group->add(std::make_shared<ui::date_control>(frame, value, true, [this] { refresh(); }));
@@ -1111,22 +1023,24 @@ view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
 		               prop::date_concept::created);
 		// Modified is a fact about the file rather than a field, so the editor reports it and does not
 		// offer it. Named only where the whole selection agrees, for the reason above.
-		if (const auto modified = agreed_date(items, tt_prep(tt.prop_name_modified.sv()),
-		                                      prop::date_concept::modified))
+		if (const auto modified = agreed_date(items, tt_prep(tt.prop_name_modified.sv()), prop::date_concept::modified))
 		{
 			const auto table = std::make_shared<ui::table_element>();
 			table->add(modified->label, modified->value, modified->source);
 			controls.emplace_back(table);
 		}
 		add_control_field(tt.prop_name_episode, setting.set_episode,
-		                  std::make_shared<ui::num_pair_control>(frame, std::string_view{}, _metadata_episode));
+		                  std::make_shared<ui::num_pair_control>(frame, std::string_view{}, _metadata_episode,
+		                                                         [this] { refresh(); }));
 		add_control_field(tt.prop_name_season, setting.set_season,
 		                  std::make_shared<ui::num_control>(frame, std::string_view{}, _metadata_season, true,
 		                                                    [this](int) { refresh(); }));
 		add_control_field(tt.prop_name_track, setting.set_track,
-		                  std::make_shared<ui::num_pair_control>(frame, std::string_view{}, _metadata_track));
+		                  std::make_shared<ui::num_pair_control>(frame, std::string_view{}, _metadata_track,
+		                                                         [this] { refresh(); }));
 		add_control_field(tt.prop_name_disk, setting.set_disk,
-		                  std::make_shared<ui::num_pair_control>(frame, std::string_view{}, _metadata_disk));
+		                  std::make_shared<ui::num_pair_control>(frame, std::string_view{}, _metadata_disk,
+		                                                         [this] { refresh(); }));
 		add_field(tt.copyright_notice, setting.set_copyright_notice, setting.copyright_notice, true);
 		add_field(tt.copyright_creator, setting.set_copyright_creator, setting.copyright_creator);
 		add_field(tt.copyright_source, setting.set_copyright_source, setting.copyright_source);

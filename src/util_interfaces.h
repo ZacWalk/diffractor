@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Common interfaces and abstract types. Defines shared interfaces
 // used across modules for decoupling and extensibility.
@@ -84,9 +83,9 @@ constexpr bool is_valid_repeat_mode(const uint32_t value) noexcept
 // design.md "Play and Slideshow": what a tick does when the displayed item reaches its end.
 enum class playback_advance
 {
-	none, // nothing has ended yet
-	stop, // the sequence cannot continue
-	hold, // stay on this item - repeat one, or a wrap that lands back on it
+	none,    // nothing has ended yet
+	stop,    // the sequence cannot continue
+	hold,    // stay on this item - repeat one, or a wrap that lands back on it
 	advance, // move to the next item
 };
 
@@ -100,7 +99,8 @@ struct playback_tick
 	bool media_ended = false;
 	bool photo_delay_elapsed = false;
 
-	// False when a command is running, nothing is displayed, or the view cannot play.
+	// False when nothing is displayed, or the view cannot play. A running command or an open menu does not
+	// reach here: the item waits at its end until it has gone.
 	bool can_next = false;
 
 	bool has_next = false; // a next media item without wrapping
@@ -140,7 +140,7 @@ inline playback_advance calc_playback_advance(const playback_tick& t)
 	return playback_advance::stop;
 }
 
-// Closed product ontology (docs/design.md): every destination-writing operation resolves
+// docs/design.md#metadata-editing-and-files: every destination-writing operation resolves
 // destination collisions with exactly one explicitly named policy. Block Run is the
 // conservative default - the run is refused and the reason is stated.
 enum class collision_policy
@@ -158,7 +158,6 @@ enum class item_status
 	ignore,
 	cancel
 };
-
 
 enum class async_queue
 {
@@ -184,12 +183,12 @@ enum class async_queue
 	index_search_single,
 	web,
 	map_tile,
+	// A running Commodore 64: one task for as long as it runs, so its own thread, started on first use.
+	emulator,
 };
-
 
 constexpr auto thumbnail_quality = 85;
 constexpr auto thumbnail_webp_quality = 80;
-
 
 struct metadata_text_detail
 {
@@ -238,29 +237,17 @@ struct metadata_kv
 
 	metadata_kv() = default;
 
-	metadata_kv(std::string k, std::string v) noexcept : key(std::move(k)), value(std::move(v))
-	{
-	}
+	metadata_kv(std::string k, std::string v) noexcept : key(std::move(k)), value(std::move(v)) {}
 
-	metadata_kv(const std::string_view k, const std::string_view v) : key(k), value(v)
-	{
-	}
+	metadata_kv(const std::string_view k, const std::string_view v) : key(k), value(v) {}
 
-	metadata_kv(const std::string_view k, const char* v) : key(k), value(v)
-	{
-	}
+	metadata_kv(const std::string_view k, const char* v) : key(k), value(v) {}
 
-	metadata_kv(const core::cached k, std::string v) : key(k.sv()), value(std::move(v))
-	{
-	}
+	metadata_kv(const core::cached k, std::string v) : key(k.sv()), value(std::move(v)) {}
 
-	metadata_kv(const core::cached k, const std::string_view v) : key(k.sv()), value(v)
-	{
-	}
+	metadata_kv(const core::cached k, const std::string_view v) : key(k.sv()), value(v) {}
 
-	metadata_kv(const core::cached k, const char* v) : key(k.sv()), value(v)
-	{
-	}
+	metadata_kv(const core::cached k, const char* v) : key(k.sv()), value(v) {}
 };
 
 using metadata_kv_list = std::vector<metadata_kv>;

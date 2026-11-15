@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Tests for text and localization (app_text, util_spell, po catalogs) -- translated month names, po catalog loading and plural form selection.
 
@@ -23,7 +22,7 @@ static void should_parse_translated_short_month()
 
 	// Storage that outlives the reads below, which is the contract core::text_t::publish states.
 	const std::string oct_ru = "\xd0\xbe\xd0\xba\xd1\x82"; // ru, 6 bytes
-	const std::string jan_fr = "janv"; // fr, 4 bytes
+	const std::string jan_fr = "janv";                     // fr, 4 bytes
 
 	tt.words.month_short_oct.publish(&oct_ru);
 	tt.words.month_short_jan.publish(&jan_fr);
@@ -91,7 +90,7 @@ static void should_select_slavic_plural_forms()
 	// Czech (and Polish, Russian, Ukrainian) declare a third plural form:
 	// msgstr[2]. load_po must capture it, and plural_form must select it for
 	// "many" counts while keeping the binary behavior for other languages.
-	const auto path = _temps.next_path(".po");
+	const auto path = test_temps.next_path(".po");
 
 	{
 		std::ofstream fs(platform::to_stream_path(path));
@@ -191,35 +190,35 @@ static void should_reject_unsupported_plural_indices()
 		fs << indexed_line << "\n";
 	};
 
-	const auto accepted = _temps.next_path(".po");
+	const auto accepted = test_temps.next_path(".po");
 	write_catalog(accepted, "msgstr[2] \"{count} apples many\"");
 	const auto accepted_report = load_po_report(accepted);
 	assert_equal(true, accepted_report.errors.empty(), "highest supported plural index is accepted");
 	assert_equal(1_z, accepted_report.entries.front().str_extra.size(), "supported extra form is retained");
 
-	const auto fourth = _temps.next_path(".po");
+	const auto fourth = test_temps.next_path(".po");
 	write_catalog(fourth, "msgstr[3] \"{count} apples fourth\"");
 	const auto fourth_report = load_po_report(fourth);
 	assert_equal(true, fourth_report.errors.empty(), "shipped fourth plural index is accepted");
 	assert_equal(2_z, fourth_report.entries.front().str_extra.size(), "supported fourth form is retained");
 
-	const auto unsupported = _temps.next_path(".po");
+	const auto unsupported = test_temps.next_path(".po");
 	write_catalog(unsupported, "msgstr[4] \"{count} apples unsupported\"");
 	const auto unsupported_report = load_po_report(unsupported);
 	assert_equal(false, unsupported_report.errors.empty(), "one beyond supported plural index is rejected");
 	assert_equal(0_z, unsupported_report.entries.front().str_extra.size(), "unsupported form is not allocated");
 
-	const auto large = _temps.next_path(".po");
+	const auto large = test_temps.next_path(".po");
 	write_catalog(large, "msgstr[2147483647] \"{count} apples huge\"");
 	const auto large_report = load_po_report(large);
 	assert_equal(false, large_report.errors.empty(), "large plural index is rejected before allocation");
 	assert_equal(0_z, large_report.entries.front().str_extra.size(), "large plural index is not allocated");
 
-	const auto negative = _temps.next_path(".po");
+	const auto negative = test_temps.next_path(".po");
 	write_catalog(negative, "msgstr[-1] \"{count} apples negative\"");
 	assert_equal(false, load_po_report(negative).errors.empty(), "negative plural index is rejected");
 
-	const auto malformed = _temps.next_path(".po");
+	const auto malformed = test_temps.next_path(".po");
 	write_catalog(malformed, "msgstr[2x] \"{count} apples malformed\"");
 	assert_equal(false, load_po_report(malformed).errors.empty(), "malformed plural index is rejected");
 }
@@ -284,8 +283,8 @@ static void should_load_spelling_dictionaries_asynchronously()
 {
 	auto& checker = spell();
 	deferred_async_strategy async;
-	const auto shipped_folder = _temps.next_folder("spell-shipped");
-	const auto user_folder = _temps.next_folder("spell-user");
+	const auto shipped_folder = test_temps.next_folder("spell-shipped");
+	const auto user_folder = test_temps.next_folder("spell-user");
 	auto load_started = false;
 
 	write_minimal_dictionary(shipped_folder, true);
@@ -328,8 +327,8 @@ static void should_reload_spelling_after_dictionary_download()
 {
 	auto& checker = spell();
 	deferred_async_strategy async;
-	const auto shipped_folder = _temps.next_folder("spell-download-shipped");
-	const auto user_folder = _temps.next_folder("spell-download-user");
+	const auto shipped_folder = test_temps.next_folder("spell-download-shipped");
+	const auto user_folder = test_temps.next_folder("spell-download-user");
 
 	write_minimal_dictionary(shipped_folder, false);
 
@@ -363,8 +362,8 @@ static void should_report_custom_dictionary_persistence_results()
 {
 	auto& checker = spell();
 	deferred_async_strategy async;
-	const auto shipped_folder = _temps.next_folder("custom-dic-shipped");
-	const auto user_folder = _temps.next_folder("custom-dic-user");
+	const auto shipped_folder = test_temps.next_folder("custom-dic-shipped");
+	const auto user_folder = test_temps.next_folder("custom-dic-user");
 
 	checker.configure_paths_for_tests(shipped_folder, user_folder);
 	checker.clear_test_hooks();
@@ -377,10 +376,8 @@ static void should_report_custom_dictionary_persistence_results()
 	});
 
 	std::vector<custom_dictionary_add_result> results;
-	checker.add_word("persisted", [&results](const custom_dictionary_add_result result)
-	{
-		results.emplace_back(result);
-	});
+	checker.add_word("persisted",
+	                 [&results](const custom_dictionary_add_result& result) { results.emplace_back(result); });
 
 	assert_equal(1_z, async.pending_worker_count(async_queue::work), "custom dictionary write is queued");
 	assert_equal(0_z, results.size(), "persistence is not reported before storage completes");
@@ -393,14 +390,10 @@ static void should_report_custom_dictionary_persistence_results()
 	assert_equal(true, platform::exists(checker.custom_dictionary_path()), "the test custom dictionary was written");
 
 	checker.set_custom_dictionary_writer_for_tests([](const core::file_path&, std::string_view)
-	{
-		return custom_dictionary_add_result{custom_dictionary_add_status::failed, "flush failed"};
-	});
+	{ return custom_dictionary_add_result{custom_dictionary_add_status::failed, "flush failed"}; });
 
-	checker.add_word("failed", [&results](const custom_dictionary_add_result result)
-	{
-		results.emplace_back(result);
-	});
+	checker.add_word("failed",
+	                 [&results](const custom_dictionary_add_result& result) { results.emplace_back(result); });
 	assert_equal(true, async.run_next(async_queue::work), "the failing writer runs on a worker");
 	async.drain_ui();
 
@@ -408,10 +401,7 @@ static void should_report_custom_dictionary_persistence_results()
 	             "flush failure is reported");
 	assert_equal("flush failed", results.back().message, "the bounded failure message is preserved");
 
-	checker.add_word("stale", [&results](const custom_dictionary_add_result result)
-	{
-		results.emplace_back(result);
-	});
+	checker.add_word("stale", [&results](const custom_dictionary_add_result& result) { results.emplace_back(result); });
 	checker.configure_paths_for_tests(shipped_folder, user_folder);
 	assert_equal(true, async.run_next(async_queue::work), "the stale writer runs");
 	async.drain_ui();
@@ -424,8 +414,8 @@ static void should_flush_pending_custom_dictionary_words_on_shutdown()
 {
 	auto& checker = spell();
 	deferred_async_strategy async;
-	const auto shipped_folder = _temps.next_folder("custom-dic-flush-shipped");
-	const auto user_folder = _temps.next_folder("custom-dic-flush-user");
+	const auto shipped_folder = test_temps.next_folder("custom-dic-flush-shipped");
+	const auto user_folder = test_temps.next_folder("custom-dic-flush-user");
 
 	checker.configure_paths_for_tests(shipped_folder, user_folder);
 	checker.clear_test_hooks();
@@ -438,10 +428,8 @@ static void should_flush_pending_custom_dictionary_words_on_shutdown()
 	});
 
 	std::vector<custom_dictionary_add_result> results;
-	checker.add_word("queued-before-close", [&results](const custom_dictionary_add_result result)
-	{
-		results.emplace_back(result);
-	});
+	checker.add_word("queued-before-close",
+	                 [&results](const custom_dictionary_add_result& result) { results.emplace_back(result); });
 
 	assert_equal(1_z, async.pending_worker_count(async_queue::work), "the custom dictionary write is queued");
 	checker.flush_pending_custom_words();
@@ -451,7 +439,7 @@ static void should_flush_pending_custom_dictionary_words_on_shutdown()
 	assert_equal(0_z, results.size(), "worker completion is not faked by the shutdown flush");
 }
 
-void register_text_tests(view_state& state, test_registry& tests)
+void register_text_tests(view_state& /*state*/, test_registry& tests)
 {
 	//
 	// Formatting

@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Localization and internationalization support. Loads language files (PO format)
 // and provides text translation services for the entire application.
@@ -42,7 +41,10 @@ std::string format_plural_text(const plural_text& fmt, const std::string_view fi
 		template_text = extra.empty() ? std::string_view(fmt.plural) : extra;
 	}
 
-	const auto number = [](const int64_t n) { return platform::format_number(core::to_string(n)); };
+	const auto number = [](const int64_t n)
+	{
+		return platform::format_number(core::to_string(n));
+	};
 
 	auto substitute = [&](std::ostringstream& result, const std::string_view token)
 	{
@@ -221,23 +223,27 @@ static std::string un_escape(const std::string_view text)
 		{
 			switch (body[i + 1])
 			{
-			case 'n': result += '\n';
+			case 'n':
+				result += '\n';
 				++i;
 				break;
-			case 't': result += '\t';
+			case 't':
+				result += '\t';
 				++i;
 				break;
-			case 'r': result += '\r';
+			case 'r':
+				result += '\r';
 				++i;
 				break;
-			case '"': result += '"';
+			case '"':
+				result += '"';
 				++i;
 				break;
-			case '\\': result += '\\';
+			case '\\':
+				result += '\\';
 				++i;
 				break;
-			default: result += body[i];
-				break;
+			default: result += body[i]; break;
 			}
 		}
 		else
@@ -374,7 +380,7 @@ po_load_result load_po_report(const core::file_path lang_file)
 				if (parse_state == parse_po_state::id && !entry.is_empty() && line[0] != u8'\"')
 				{
 					result.entries.emplace_back(std::move(entry));
-					entry.clear();
+					entry = {};
 				}
 
 				auto value = un_escape(line);
@@ -411,7 +417,6 @@ std::vector<po_entry> load_po(const core::file_path lang_file)
 	return std::move(result.entries);
 }
 
-
 namespace
 {
 	// Lightweight plural-form rule table. Each function maps a count to a
@@ -427,7 +432,10 @@ namespace
 	// to form 1 whenever count != 1. Czech and Polish put only n == 1 in form 0,
 	// so that clamp never affects them and they keep the full CLDR distinction.
 
-	int plural_binary(const int64_t n) { return n == 1 ? 0 : 1; }
+	int plural_binary(const int64_t n)
+	{
+		return n == 1 ? 0 : 1;
+	}
 
 	int plural_cs(int64_t n)
 	{
@@ -455,7 +463,7 @@ namespace
 		return 2;
 	}
 
-	using plural_rule_fn = int(*)(int64_t);
+	using plural_rule_fn = int (*)(int64_t);
 
 	plural_rule_fn plural_rule_for(const std::string_view code)
 	{
@@ -466,16 +474,15 @@ namespace
 	}
 }
 
-int app_text_t::plural_form(const int64_t count) const
+int app_text_t::plural_form(const int64_t n) const
 {
 	const auto rule = _plural_rule ? _plural_rule : plural_binary;
-	int idx = rule(count);
+	int idx = rule(n);
 	// Never reuse the singular (msgstr[0]) form for counts other than 1; see the
 	// rule-table note above.
-	if (idx == 0 && count != 1) idx = 1;
+	if (idx == 0 && n != 1) idx = 1;
 	return idx;
 }
-
 
 app_text_t::app_text_t()
 {
@@ -520,7 +527,6 @@ void app_text_t::load_lang(const std::string_view lang_file, const std::vector<p
 			extra_map[entry.id_plural] = &entry.str_extra;
 		}
 	}
-
 
 	// A partly-translated catalog is missing hundreds of strings, which would otherwise be one log
 	// line each on every launch. The count is what a bug report needs; app_validate_po lists them.
@@ -582,8 +588,8 @@ void app_text_t::load_lang(const std::string_view lang_file, const std::vector<p
 		// Extra Slavic plural forms (msgstr[2..]); none for binary languages.
 		const auto found_extra = extra_map.find(p.get().plural.text);
 		p.get().extra_forms.store(found_extra != extra_map.end()
-			                          ? &_plural_form_storage.emplace_back(*found_extra->second)
-			                          : nullptr,
+		                              ? &_plural_form_storage.emplace_back(*found_extra->second)
+		                              : nullptr,
 		                          std::memory_order_release);
 	}
 
@@ -609,8 +615,7 @@ void app_text_t::clear()
 
 void app_text_t::calc_text_mapping()
 {
-	_all_texts = std::vector<std::reference_wrapper<text_t>>
-	{
+	_all_texts = std::vector<std::reference_wrapper<text_t>>{
 		about_info,
 		add_folder,
 		adjust_date_help1,
@@ -708,20 +713,16 @@ void app_text_t::calc_text_mapping()
 		movie_info,
 		movie_settings_title,
 		movie_clip_title,
-		movie_crossfade,
-		movie_cut,
-		movie_transition_length,
-		movie_fade_length,
-		movie_fade_in,
-		movie_fade_out,
-		movie_photo_duration,
-		movie_clip_duration,
-		movie_use_default,
+		movie_screen_title,
+		movie_screen_text,
+		movie_caption_title,
+		movie_text_length,
+		movie_stabilize,
 		movie_empty,
 		movie_output_fmt,
 		movie_clip_fmt,
+		movie_screen_fmt,
 		movie_project_files,
-		movie_maker_files,
 		movie_media_files,
 		movie_open_failed_fmt,
 		movie_save_failed_fmt,
@@ -746,11 +747,12 @@ void app_text_t::calc_text_mapping()
 		command_movie_relink,
 		tooltip_movie_relink,
 		command_movie_add,
+		command_movie_add_text,
+		tooltip_movie_add_text,
 		command_movie_remove,
 		command_movie_send_to_end,
 		command_movie_open,
 		command_movie_save,
-		command_movie_import,
 		convert_info,
 		edit_metadata_info,
 		adjust_date_info,
@@ -1671,13 +1673,29 @@ void app_text_t::calc_text_mapping()
 		resetting,
 		retro,
 		retro_title,
-		sid_monitor,
 		sid_voice_fmt,
 		sid_output,
 		sid_filter,
 		sid_volume,
 		sid_register_writes,
 		sid_solo,
+		tracker_pattern,
+		tracker_row,
+		tracker_speed,
+		tracker_samples,
+		tracker_instruments,
+		tracker_follow,
+		tracker_notes,
+		tracker_range,
+		table_compressed,
+		table_codec,
+		table_format,
+		table_sidecars,
+		c64_run_tooltip,
+		c64_start,
+		c64_joystick_port_fmt,
+		c64_keys_help,
+		c64_failed,
 		rotate_confirm_single,
 		saturation,
 		perspective_horizontal,
@@ -1899,8 +1917,7 @@ void app_text_t::calc_text_mapping()
 		view_empty_message,
 	};
 
-	_all_plurals = std::vector<std::reference_wrapper<plural_text>>
-	{
+	_all_plurals = std::vector<std::reference_wrapper<plural_text>>{
 		rotate_info_fmt,
 		title_folder_count_fmt,
 		title_item_count_fmt,
@@ -1933,9 +1950,8 @@ void app_text_t::calc_text_mapping()
 		share_info_fmt,
 		would_overwrite_fmt,
 		gps_overwrite_count_fmt,
-		movie_ignored_fmt,
+		movie_skipped_lines_fmt,
 		movie_missing_fmt,
-		movie_relink_fmt,
 		sidebar_kept_fmt,
 	};
 
@@ -1944,28 +1960,27 @@ void app_text_t::calc_text_mapping()
 	for (auto&& e : _all_texts)
 	{
 		mapping.insert(
-			std::make_pair<std::string_view, std::reference_wrapper<text_t>>(
-				std::string_view{e.get().text}, e.get()));
+			std::make_pair<std::string_view, std::reference_wrapper<text_t>>(std::string_view{e.get().text}, e.get()));
 	}
 
 	for (auto&& p : _all_plurals)
 	{
 		mapping.insert(
-			std::make_pair<std::string_view, std::reference_wrapper<text_t>>(
-				std::string_view{p.get().one.text}, p.get().one));
+			std::make_pair<std::string_view, std::reference_wrapper<text_t>>(std::string_view{p.get().one.text},
+		                                                                     p.get().one));
 		mapping.insert(
-			std::make_pair<std::string_view, std::reference_wrapper<text_t>>(
-				std::string_view{p.get().plural.text}, p.get().plural));
+			std::make_pair<std::string_view, std::reference_wrapper<text_t>>(std::string_view{p.get().plural.text},
+		                                                                     p.get().plural));
 	}
 
 	_text_mapping = std::move(mapping);
 }
 
-std::string app_text_t::translate_text(const std::string& text, const std::string_view scope) const
+std::string app_text_t::translate_text(const std::string& text, const std::string_view text_scope) const
 {
-	if (!scope.empty())
+	if (!text_scope.empty())
 	{
-		const auto found = _text_mapping.find(std::format("{}//{}", text, scope));
+		const auto found = _text_mapping.find(std::format("{}//{}", text, text_scope));
 
 		if (found != _text_mapping.end())
 		{
@@ -1974,13 +1989,11 @@ std::string app_text_t::translate_text(const std::string& text, const std::strin
 	}
 
 	const auto found = _text_mapping.find(text);
-	return found != _text_mapping.end()
-		       ? std::string(tt_prep(found->second.get().sv()))
-		       : std::string(tt_prep(text));
+	return found != _text_mapping.end() ? std::string(tt_prep(found->second.get().sv())) : std::string(tt_prep(text));
 }
 
 std::vector<std::string> app_text_t::add_translate_text(const std::vector<core::cached>& text,
-                                                        const std::string_view scope) const
+                                                        const std::string_view text_scope) const
 {
 	core::hash_set<std::string, core::ihash, core::ieq> result;
 	result.reserve(text.size() * 2);
@@ -1988,7 +2001,7 @@ std::vector<std::string> app_text_t::add_translate_text(const std::vector<core::
 	for (const auto& t : text)
 	{
 		result.emplace(t.sv());
-		result.emplace(translate_text(t.str(), scope));
+		result.emplace(translate_text(t.str(), text_scope));
 	}
 
 	return {result.begin(), result.end()};
@@ -2004,6 +2017,7 @@ std::vector<std::string> app_text_t::known_genres(const genre_kind kinds) const
 	constexpr auto gp = genre_kind::photo;
 
 	const std::pair<std::reference_wrapper<const text_t>, genre_kind> table[] = {
+		// clang-format off
 		{genre_a_capella, ga}, {genre_abstract, gp}, {genre_acidjazz, ga}, {genre_acidpunk, ga},
 		{genre_acid, ga}, {genre_acoustic, ga}, {genre_action_adventure, gv}, {genre_action, gv},
 		{genre_aerial, gp}, {genre_alternative, ga}, {genre_alternrock, ga}, {genre_ambient, ga},
@@ -2062,6 +2076,7 @@ std::vector<std::string> app_text_t::known_genres(const genre_kind kinds) const
 		{genre_trip_hop, ga}, {genre_ultraviolet, gp}, {genre_underwater, gp},
 		{genre_unknown, genre_kind::any}, {genre_urban, ga | gp}, {genre_vernacular, gp},
 		{genre_vintage, gp}, {genre_vocal, ga}, {genre_war, gv}, {genre_western, gv}, {genre_world, ga},
+		// clang-format on
 	};
 
 	std::vector<std::string> result;
@@ -2079,9 +2094,8 @@ std::vector<std::string> app_text_t::known_genres(const genre_kind kinds) const
 	return result;
 }
 
-
 app_text_t tt;
 
 // The foundation and the platform layer write their words and messages with tt's translations of them.
-[[maybe_unused]] static const auto s_text_installed =
-	(core::install_words(&tt.words), platform::install_text(&tt.platform_text), true);
+[[maybe_unused]] static const auto s_text_installed = (core::install_words(&tt.words),
+                                                       platform::install_text(&tt.platform_text), true);

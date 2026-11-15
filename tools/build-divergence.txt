@@ -5,7 +5,7 @@
 # of why the CMake build looks the way it does, and because each entry is a thing that would
 # otherwise be "tidied up" by someone who could no longer see where it came from.
 #
-# See docs/linux.md, 'Retiring MSBuild'.
+# See docs/linux.md, 'One build description'.
 
 == Transcribed into the build, and load-bearing
 

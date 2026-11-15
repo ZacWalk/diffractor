@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: View state coordination and navigation. view_state owns the scope and query, results,
 // grouping, filtering, selection and history, and the current display - whose type, with its media
@@ -72,12 +71,12 @@ inline const rate_label_def* find_rate_label_def(const std::string_view label)
 
 // One badge definition for every surface: the thumbnail flag, the detail row, and the selection
 // panel control all draw the same mark for the same state.
-void draw_rate_label_badge(render::draw_context& dc, std::string_view label, int rating, recti logical_bounds, float alpha);
+void draw_rate_label_badge(render::draw_context& dc, std::string_view label, int rating, recti logical_bounds,
+                           float alpha);
 
 // The pin mark is the same orange badge wherever it appears, so the held item reads the same in the
 // item grid, the selection collage and the panel control.
 void draw_pin_badge(render::draw_context& dc, recti logical_bounds, float alpha);
-
 
 class location_cache;
 class database;
@@ -88,16 +87,17 @@ class files;
 class scrubber_element;
 class display_state_t;
 struct sid_voice_mix;
+struct tracker_channel_mix;
 struct subtitle_choice;
 
 using display_state_ptr = std::shared_ptr<display_state_t>;
 
 render::texture_sampler calc_sampler(sizei draw_extent, sizei texture_extent, const core::orientation& orientation,
-                                 bool interactive = false, bool provisional = false);
+                                     bool interactive = false, bool provisional = false);
 // The sampler for a video frame drawn into picture_extent: bilinear when it is minified, otherwise as
 // calc_sampler chooses for the picture's own extent.
-render::texture_sampler calc_video_sampler(sized picture_extent, sizei texture_extent, const core::orientation& orientation,
-                                       bool interactive = false);
+render::texture_sampler calc_video_sampler(sized picture_extent, sizei texture_extent,
+                                           const core::orientation& orientation, bool interactive = false);
 void draw_texture_info(render::draw_context& rc, recti media_bounds, const render::texture_ptr& tex,
                        core::orientation orientation, render::texture_sampler sampler, float alpha);
 core::unique_paths make_unique_paths(core::paths selection);
@@ -154,7 +154,7 @@ struct media_preview_state
 // The async_queue enum defines specialized queues for different workloads:
 // - scan_folder, scan_modified_items : File system scanning
 // - load, load_raw                   : Image/media loading
-// - crc                              : File hash computation  
+// - crc                              : File hash computation
 // - index, index_predictions         : Search index operations
 // - web, cloud, map_tile             : Network operations
 // - query, auto_complete             : Search and suggestions
@@ -183,13 +183,9 @@ public:
 	// Long-running work reports how far it has got so it also shows outside its own dialog or view,
 	// on the application's taskbar button. Each source reports under its own key until it finishes;
 	// a total of zero means the amount is not known yet. UI thread only.
-	virtual void work_progress(const void* source, int64_t done, int64_t total)
-	{
-	}
+	virtual void work_progress(const void* /*source*/, int64_t /*done*/, int64_t /*total*/) {}
 
-	virtual void work_finished(const void* source)
-	{
-	}
+	virtual void work_finished(const void* /*source*/) {}
 };
 
 // The work the taskbar button shows. A task view and a progress dialog can both be running, so each
@@ -234,13 +230,10 @@ private:
 // queue truncation each worker performs as it exits. This guard hands that final reference back to
 // queue_ui instead, so teardown always runs on the owning context. app_frame joins every worker
 // before draining _ui_queue, which is what makes the shutdown hand-back land on the UI thread.
-template <typename T>
-class ui_owned_ptr
+template <typename T> class ui_owned_ptr
 {
 public:
-	ui_owned_ptr(async_strategy& async, std::shared_ptr<T> p) noexcept : _async(&async), _p(std::move(p))
-	{
-	}
+	ui_owned_ptr(async_strategy& async, std::shared_ptr<T> p) noexcept : _async(&async), _p(std::move(p)) {}
 
 	ui_owned_ptr(const ui_owned_ptr&) = default;
 	ui_owned_ptr& operator=(const ui_owned_ptr&) = default;
@@ -255,9 +248,7 @@ public:
 		// hop costs one queued message that releases a reference and does nothing else.
 		if (_p && !platform::is_ui_thread())
 		{
-			_async->queue_ui([p = std::move(_p)]
-			{
-			});
+			_async->queue_ui([p = std::move(_p)] {});
 		}
 	}
 
@@ -273,8 +264,7 @@ private:
 	std::shared_ptr<T> _p;
 };
 
-template <typename T>
-ui_owned_ptr<T> ui_owned(async_strategy& async, std::shared_ptr<T> p)
+template <typename T> ui_owned_ptr<T> ui_owned(async_strategy& async, std::shared_ptr<T> p)
 {
 	return ui_owned_ptr<T>(async, std::move(p));
 }
@@ -354,10 +344,7 @@ public:
 
 	recent_state() = default;
 
-	const std::vector<std::string>& items() const
-	{
-		return _items;
-	}
+	const std::vector<std::string>& items() const { return _items; }
 
 	void count_strings(core::string_counts& results, const int weight, const std::string_view prefix = {}) const
 	{
@@ -430,31 +417,15 @@ public:
 		}
 	}
 
-	template <class t>
-	void add_items(t&& v)
-	{
-		add_list(_items, v);
-	}
+	template <class t> void add_items(t&& v) { add_list(_items, v); }
 
-	static std::string combine(const std::vector<std::string>& strings)
-	{
-		return core::combine(strings);
-	}
+	static std::string combine(const std::vector<std::string>& strings) { return core::combine(strings); }
 
-	static std::string combine(const std::vector<core::folder_path>& strings)
-	{
-		return combine_paths(strings);
-	}
+	static std::string combine(const std::vector<core::folder_path>& strings) { return combine_paths(strings); }
 
-	static int compare(const std::string_view l, const std::string_view r)
-	{
-		return core::icmp(l, r);
-	}
+	static int compare(const std::string_view l, const std::string_view r) { return core::icmp(l, r); }
 
-	static int compare(const core::folder_path l, const core::folder_path r)
-	{
-		return l.compare(r);
-	}
+	static int compare(const core::folder_path l, const core::folder_path r) { return l.compare(r); }
 
 	// Builds before 1.27.3 wrote these lists to the INI unquoted, and the reader strips one quote pair
 	// from each end of a value, so a list that began and ended with quoted entries came back with the
@@ -468,8 +439,7 @@ public:
 		return entry.find("\"'") != std::string_view::npos || entry.find("'\"") != std::string_view::npos;
 	}
 
-	void read(const std::string_view section, const std::string_view key,
-	          const platform::setting_file_ptr& properties)
+	void read(const std::string_view section, const std::string_view key, const platform::setting_file_ptr& properties)
 	{
 		std::string str;
 		properties->read(section, key, str);
@@ -541,25 +511,13 @@ public:
 		}
 	}
 
-	bool can_browse_forward() const
-	{
-		return _pos + 1 < static_cast<int>(_history.size());
-	}
+	bool can_browse_forward() const { return _pos + 1 < static_cast<int>(_history.size()); }
 
-	bool can_browse_back() const
-	{
-		return _pos > 0;
-	}
+	bool can_browse_back() const { return _pos > 0; }
 
-	const history_entry& back_entry() const
-	{
-		return _history[_pos - 1];
-	}
+	const history_entry& back_entry() const { return _history[_pos - 1]; }
 
-	const history_entry& forward_entry() const
-	{
-		return _history[_pos + 1];
-	}
+	const history_entry& forward_entry() const { return _history[_pos + 1]; }
 
 	bool move_history_pos(const int n, core::paths selected, history_entry& result)
 	{
@@ -628,7 +586,6 @@ public:
 		_pos = static_cast<int>(_history.size()) - 1;
 	}
 };
-
 
 // The extent a texture's destination is shaped by. A decoded video frame can carry non-square
 // pixels, so the stored frame is not the shape to fill: the container's declared display
@@ -780,11 +737,17 @@ public:
 	display_problem _display_problem = display_problem::none;
 
 	// Where the last draw put a video frame, in the view's pixels, and how opaque it was: what subtitles
-	// are placed on. Empty until a frame has been drawn.
+	// are placed on. Empty until a frame has been drawn. The pixels the frame covered, turned or cut for a
+	// comparison as it was, are where a new frame of the video is shown again.
 	recti _last_picture_bounds;
 	float _last_picture_alpha = 0.0f;
+	recti _last_picture_drawn;
 
 	texture_state(async_strategy& async, const df::item_element_ptr& i);
+
+	// Brings the picture up to date, as draw does first, and says whether there is one to draw. A panel that
+	// would rather show nothing than the box a photo waits behind draws only when this answers true.
+	bool prepare_picture(render::draw_context& rc);
 
 	void load_image(const df::item_element_ptr& i);
 	void load_raw();
@@ -812,25 +775,13 @@ public:
 	void fade_out();
 	void display_dimensions(sizei dims);
 
-	sizei display_dimensions() const
-	{
-		return _display_dimensions;
-	}
+	sizei display_dimensions() const { return _display_dimensions; }
 
-	core::orientation display_orientation() const
-	{
-		return _display_orientation;
-	}
+	core::orientation display_orientation() const { return _display_orientation; }
 
-	const file_load_result& loaded() const
-	{
-		return _loaded;
-	}
+	const file_load_result& loaded() const { return _loaded; }
 
-	bool step()
-	{
-		return _display_alpha_animation.step();
-	}
+	bool step() { return _display_alpha_animation.step(); }
 
 	void free_graphics_resources();
 
@@ -844,27 +795,15 @@ public:
 	void cancel_pending_decode();
 	sizei calc_scale_hint() const;
 
-	bool can_preview() const
-	{
-		return _is_raw;
-	}
+	bool can_preview() const { return _is_raw; }
 
 	render::texture_ptr zoom_texture(render::draw_context& rc, sizei extent);
 
-	recti display_bounds() const
-	{
-		return _display_bounds;
-	}
+	recti display_bounds() const { return _display_bounds; }
 
-	bool is_preview() const
-	{
-		return !_loaded.is_empty() && _loaded.is_preview;
-	}
+	bool is_preview() const { return !_loaded.is_empty() && _loaded.is_preview; }
 
-	bool is_preview_rendering() const
-	{
-		return _preview_rendering != 0;
-	}
+	bool is_preview_rendering() const { return _preview_rendering != 0; }
 
 	// Whether the next draw has something to show. False is phase 0 - the shaped grey rectangle - which
 	// every seeding path exists to keep off the screen.
@@ -902,7 +841,8 @@ public:
 		const auto add = [&seen, &seen_count, &bytes](const core::const_surface_ptr& s)
 		{
 			if (!s) return;
-			for (size_t i = 0; i < seen_count; ++i) if (seen[i] == s.get()) return;
+			for (size_t i = 0; i < seen_count; ++i)
+				if (seen[i] == s.get()) return;
 			seen[seen_count++] = s.get();
 			bytes += s->size();
 		};
@@ -981,10 +921,7 @@ struct common_display_state_t
 	}
 
 	// Nothing here is on screen; the displayed textures are held by the display state itself.
-	void clear_retained_textures()
-	{
-		_recent_textures.clear();
-	}
+	void clear_retained_textures() { _recent_textures.clear(); }
 };
 
 struct group_and_item
@@ -1002,25 +939,13 @@ class filter_t
 public:
 	filter_t() = default;
 
-	bool match_group(const file_group_ref group) const
-	{
-		return _groups.empty() || _groups.contains(group);
-	}
+	bool match_group(const file_group_ref group) const { return _groups.empty() || _groups.contains(group); }
 
-	bool has_group(const file_group_ref group) const
-	{
-		return _groups.contains(group);
-	}
+	bool has_group(const file_group_ref group) const { return _groups.contains(group); }
 
-	const std::unordered_set<file_group_ref>& groups() const
-	{
-		return _groups;
-	}
+	const std::unordered_set<file_group_ref>& groups() const { return _groups; }
 
-	void add_group(const file_group_ref group)
-	{
-		_groups.emplace(group);
-	}
+	void add_group(const file_group_ref group) { _groups.emplace(group); }
 
 	bool match_text(const core::cached text) const
 	{
@@ -1068,15 +993,9 @@ public:
 		}
 	}
 
-	[[nodiscard]] std::string text() const
-	{
-		return _input_text;
-	}
+	[[nodiscard]] std::string text() const { return _input_text; }
 
-	bool is_empty() const
-	{
-		return _text.empty() && _groups.empty();
-	}
+	bool is_empty() const { return _text.empty() && _groups.empty(); }
 };
 
 // Serialize the media-type groups of a filter to a stable comma-separated string
@@ -1213,6 +1132,13 @@ private:
 	sort_by _sort_order = sort_by::def;
 	view_type _view_mode = view_type::none;
 
+	// What the user made of each detail group's headings - the column it sorts by, the widths dragged - by the
+	// group's key, so a group built again for the same key keeps them; for the session, not saved. Choosing a
+	// sort order from the toolbar sets the sorts aside. UI thread only.
+	std::map<df::group_key, df::detail_group_choice> _detail_choices;
+	// Set by a heading's sort until the items view has rebuilt for it.
+	bool _hold_items_scroll = false;
+
 	// Bumped whenever the search or grouping changes. Group titles are derived from both, so this
 	// stamp lets them be reused across the group_layout passes that only reshuffle items.
 	uint32_t _group_title_generation = 1;
@@ -1345,10 +1271,7 @@ public:
 		_drawn_region.region = region;
 	}
 
-	bool drawing_region() const noexcept
-	{
-		return _drawn_region.dragging;
-	}
+	bool drawing_region() const noexcept { return _drawn_region.dragging; }
 
 	// A drag hides the region's buttons, which would otherwise sit under the pointer moving the
 	// rectangle they belong to. A draw replaces what was there and keeps it as what a cancel puts
@@ -1360,15 +1283,9 @@ public:
 		_drawn_region = {path, replaces ? rectd{} : previous, previous, true};
 	}
 
-	void end_region_drag() noexcept
-	{
-		_drawn_region.dragging = false;
-	}
+	void end_region_drag() noexcept { _drawn_region.dragging = false; }
 
-	rectd region_drag_restore() const noexcept
-	{
-		return _drawn_region.restore;
-	}
+	rectd region_drag_restore() const noexcept { return _drawn_region.restore; }
 
 	view_state(state_strategy& ev, async_strategy& ac, index_state& item_index, std::shared_ptr<av_player> player);
 	~view_state();
@@ -1377,28 +1294,16 @@ public:
 	// queue a rescan so the items-view thumbnail and index (online status, hash) update.
 	void rescan_hydrated_display_item();
 
-	const df::item_element_ptr& focus_item() const
-	{
-		return _focus;
-	}
+	const df::item_element_ptr& focus_item() const { return _focus; }
 
-	const df::item_element_ptr& hover_item() const
-	{
-		return _hover;
-	}
+	const df::item_element_ptr& hover_item() const { return _hover; }
 
 	// Marks (or unmarks) an item as hovered, keeping the cached hover item in sync with the style bit.
 	void hover_item(const view_host_base_ptr& view, const df::item_element_ptr& i, bool is_hover);
 
-	bool search_is_favorite() const
-	{
-		return _search_is_favorite;
-	}
+	bool search_is_favorite() const { return _search_is_favorite; }
 
-	bool search_is_in_collection() const
-	{
-		return _search_is_in_collection;
-	}
+	bool search_is_in_collection() const { return _search_is_in_collection; }
 
 	bool has_error_items() const
 	{
@@ -1432,10 +1337,7 @@ public:
 	void make_visible(const df::item_element_ptr& i) const { _events.make_visible(i); }
 	void invalidate_view(const view_invalid invalid) const { _async.invalidate_view(invalid); }
 
-	bool has_pin() const
-	{
-		return _pin_item != nullptr;
-	}
+	bool has_pin() const { return _pin_item != nullptr; }
 
 	view_elements_ptr create_selection_controls(bool compact = false);
 	view_element_ptr create_selection_description();
@@ -1455,10 +1357,7 @@ public:
 	// locations.md 6.2 / 7.2: the published visit nodes and place breakdown for the current
 	// results. Empty until the worker answers, which keeps the strip out of the first paint after
 	// a search rather than letting it appear and then re-shape itself.
-	const df::visit_timeline& visits() const
-	{
-		return _visits;
-	}
+	const df::visit_timeline& visits() const { return _visits; }
 
 	// Takes the detached snapshot on the UI thread and queues the derivation.
 	void refresh_visits();
@@ -1468,15 +1367,9 @@ public:
 		_events.command_hover(c, window_bounds);
 	}
 
-	bool is_command_checked(const commands cmd) const
-	{
-		return _events.is_command_checked(cmd);
-	}
+	bool is_command_checked(const commands cmd) const { return _events.is_command_checked(cmd); }
 
-	ui::command_ptr find_command(const commands cmd) const
-	{
-		return _events.find_command(cmd);
-	}
+	ui::command_ptr find_command(const commands cmd) const { return _events.find_command(cmd); }
 
 	void track_menu(const ui::frame_ptr& parent, const recti recti, const std::vector<ui::command_ptr>& commands) const
 	{
@@ -1487,15 +1380,11 @@ public:
 
 	uint64_t count_total(file_group_ref fg) const;
 
-	const df::item_set& display_items() const
-	{
-		return _display_items;
-	}
+	const df::item_set& display_items() const { return _display_items; }
 
 	void reset();
 	void update_search_is_favorite_or_collection_root();
 	void update_pixel_difference() const;
-
 
 	bool is_full_screen = false;
 
@@ -1511,10 +1400,7 @@ public:
 	void queue_async(const async_queue q, std::function<void()> f) const { _async.queue_async(q, std::move(f)); }
 	void queue_location(std::function<void(location_cache&)> f) const { _async.queue_location(std::move(f)); }
 
-	display_state_ptr display_state() const
-	{
-		return _display;
-	}
+	display_state_ptr display_state() const { return _display; }
 
 	// Adopts the image a write just produced for the displayed item, so the edit that changed the
 	// pixels does not have to be read back off disk to be seen.
@@ -1544,56 +1430,46 @@ public:
 
 	core::string_counts selected_tags() const;
 
-	group_by group_order() const
-	{
-		return _group_order;
-	}
+	group_by group_order() const { return _group_order; }
 
 	// What the visible groups are actually built from. A related search groups by relation whatever
 	// the user last chose, and leaves that choice intact for the next ordinary search.
-	group_by effective_group_order() const
+	group_by effective_group_order() const { return _search.has_related() ? group_by::related : _group_order; }
+
+	uint32_t group_title_generation() const { return _group_title_generation; }
+
+	void display_language_changed() { ++_group_title_generation; }
+
+	sort_by sort_order() const { return _sort_order; }
+
+	// What the user has made of a detail group's headings this session, by the group's key; null for a group
+	// whose headings are as they started.
+	const df::detail_group_choice* detail_choice(const df::group_key& key) const
 	{
-		return _search.has_related() ? group_by::related : _group_order;
+		const auto found = _detail_choices.find(key);
+		return found == _detail_choices.end() ? nullptr : &found->second;
 	}
 
-	uint32_t group_title_generation() const
-	{
-		return _group_title_generation;
-	}
-
-	void display_language_changed()
-	{
-		++_group_title_generation;
-	}
-
-	sort_by sort_order() const
-	{
-		return _sort_order;
-	}
+	// A click on a heading sorts that group alone by its column: first the column's own way, then the other.
+	void sort_detail_group(const df::group_key& key, df::detail_column column, bool first_ascending);
+	// A heading's sort reorders only its group's rows, and the group stays where it is, so the rebuild that follows
+	// keeps the listing where it is scrolled to rather than following the focus to its new row. True once, for that
+	// rebuild.
+	bool take_items_scroll_hold() { return std::exchange(_hold_items_scroll, false); }
+	// Zero fits the column to what it holds again.
+	void size_detail_column(const df::group_key& key, df::detail_column column, double logical_width);
 
 	std::string next_path(bool forward) const;
 	bool has_next_path(bool forward) const;
 	void open_next_path(const view_host_base_ptr& view, bool forward);
 
-	view_type view_mode() const
-	{
-		return _view_mode;
-	}
+	view_type view_mode() const { return _view_mode; }
 
-	bool is_items_or_media_view() const
-	{
-		return _view_mode == view_type::items || _view_mode == view_type::media;
-	}
+	bool is_items_or_media_view() const { return _view_mode == view_type::items || _view_mode == view_type::media; }
 
-	bool has_display_items() const
-	{
-		return !_item_groups.empty();
-	}
+	bool has_display_items() const { return !_item_groups.empty(); }
 
-	bool has_selection() const
-	{
-		return !_selected.empty();
-	}
+	bool has_selection() const { return !_selected.empty(); }
 
 	struct selection_status_result
 	{
@@ -1618,10 +1494,7 @@ public:
 	bool can_edit_media() const;
 	bool should_show_overlays() const;
 
-	const df::search_t& search() const
-	{
-		return _search;
-	}
+	const df::search_t& search() const { return _search; }
 
 	void map_locations(const std::vector<map_location_area>& locations)
 	{
@@ -1632,25 +1505,13 @@ public:
 		}
 	}
 
-	const filter_t& filter() const
-	{
-		return _filter;
-	}
+	const filter_t& filter() const { return _filter; }
 
-	filter_t& filter()
-	{
-		return _filter;
-	}
+	filter_t& filter() { return _filter; }
 
-	const df::item_set& search_items() const
-	{
-		return _search_items;
-	}
+	const df::item_set& search_items() const { return _search_items; }
 
-	const df::item_set& selected_items() const
-	{
-		return _selected;
-	}
+	const df::item_set& selected_items() const { return _selected; }
 
 	bool has_gps() const
 	{
@@ -1677,7 +1538,7 @@ public:
 			{
 				const auto coordinate = md->coordinate;
 				platform::open(core::print("https://www.google.com/maps/place/%f,%f", coordinate.latitude(),
-				                          coordinate.longitude()));
+				                           coordinate.longitude()));
 				return;
 			}
 		}
@@ -1707,30 +1568,17 @@ public:
 		}
 	}
 
-	const df::file_group_histogram& summary_shown() const
-	{
-		return _summary_shown;
-	}
+	const df::file_group_histogram& summary_shown() const { return _summary_shown; }
 
-	const df::item_groups& groups() const
-	{
-		return _item_groups;
-	}
+	const df::item_groups& groups() const { return _item_groups; }
 
 	void browse_back(const view_host_base_ptr& view);
 	void browse_forward(const view_host_base_ptr& view);
 	void close() const;
 
+	df::search_parent parent_search() const { return _parent_search; }
 
-	df::search_parent parent_search() const
-	{
-		return _parent_search;
-	}
-
-	bool has_parent_search() const
-	{
-		return !_parent_search.parent.is_empty();
-	}
+	bool has_parent_search() const { return !_parent_search.parent.is_empty(); }
 
 	void open(const view_host_base_ptr& view, std::string_view text);
 	void open(const view_host_base_ptr& view, core::file_path path);
@@ -1749,12 +1597,25 @@ public:
 	void select_sid_song(int song) const;
 	// Silences voices of the playing SID tune; see sid_voice_mix.
 	void mix_sid_voices(const sid_voice_mix& mix) const;
+	void mix_tracker_channels(const tracker_channel_mix& mix) const;
+	// Runs what a row of the displayed Commodore 64 file's listing names - a disk's or a tape's program, the
+	// cartridge, the program file - in a machine shown in place of the listing; see c64_session.
+	void start_c64(size_t row) const;
+	// Ends the running machine and shows the listing again.
+	void stop_c64() const;
+	// Hands a key to the running machine. False when none is running or the key is not the C64's, so the
+	// application keeps it. Escape leaves the machine.
+	bool c64_key_down(char32_t key, platform::key_state keys) const;
+	void c64_joystick_port(int port) const;
 	// The only way to publish a player session onto a display; see display_state_t::_av_generation.
 	// An open handle, when supplied, is moved into the session instead of opening the path again.
 	void open_av_session(const std::shared_ptr<display_state_t>& d, const df::item_element_ptr& i, bool auto_play,
 	                     int video_track, int audio_track, bool use_last_played_pos,
 	                     platform::file_ptr file = {}) const;
+	// Play and Pause, which the next file selected follows: what they do to the media is remembered as Autoplay,
+	// so moving between files keeps playing, or keeps waiting, without either pressed again.
 	void play(const view_host_base_ptr& view);
+	void pause();
 	void toggle_slideshow(const view_host_base_ptr& view);
 
 	df::unique_items existing_items() const;
@@ -1773,10 +1634,7 @@ public:
 	// Same test as can_process_selection, but keeps the reason so a disabled command can explain itself.
 	df::process_result selection_process_result(df::process_items_type file_types) const;
 
-	size_t selected_count() const
-	{
-		return _selected.size();
-	}
+	size_t selected_count() const { return _selected.size(); }
 
 	void select_all(const view_host_base_ptr& view);
 	void select_nothing(const view_host_base_ptr& view);
@@ -1857,17 +1715,13 @@ public:
 	void modify_items(const df::results_ptr& results, const df::item_elements& items_to_modify,
 	                  const batch_edit_spec& spec, const view_host_base_ptr& view);
 
-	void invoke(const commands id) const
-	{
-		_events.invoke(id);
-	}
+	void invoke(const commands id) const { _events.invoke(id); }
 
 	void stop_slideshow() const;
 
 	void load_hover_thumb(const df::item_element_ptr& drawable_item, double pos_numerator, double pos_denominator);
 	void clear_hover_codec();
 };
-
 
 class detach_file_handles
 {
@@ -1885,7 +1739,6 @@ public:
 	detach_file_handles& operator=(const detach_file_handles& other) = delete;
 	detach_file_handles& operator=(detach_file_handles&& other) noexcept = delete;
 };
-
 
 // The Movie view's durable state. Held by the application so a timeline survives leaving Movie and
 // coming back; UI-thread-owned, and read by nothing else. docs/movie.md owns the behaviour.
@@ -1910,36 +1763,28 @@ public:
 	double playhead = 0;
 	double clip_playhead = 0;
 
-	// What the last project read carried that Movie has no answer for. Kept because it is stated in
-	// the explainer: a project that imported as a silently different movie is exactly the hidden
-	// state the product promise forbids.
-	int import_ignored = 0;
-	// How many clips the last import pointed at a collection file instead of the path the project
-	// stored. Stated in the explainer for the same reason.
-	int import_relinked = 0;
+	// What the last project read could not use: the lines of a .dfv it skipped. Kept because it is
+	// stated in the explainer: a project that opened as a silently different movie is exactly the
+	// hidden state the product promise forbids.
+	int load_problems = 0;
 
-	// The photos and videos the timeline was built from, in listing order. Entering with the same ones
-	// returns to it; entering with others starts a new one. A project opened in Movie keeps the
+	// The photos, videos and audio files the timeline was built from, in listing order. Entering with the same
+	// ones returns to it; entering with others starts a new one. A project opened in Movie keeps the
 	// selection of the timeline it replaced.
 	std::vector<core::file_path> built_from;
 
 	bool is_playing() const { return playing != playing_t::nothing; }
 
-	// The dialog controls bind to int and bool references, so the settings are held here in the
-	// units those controls speak and pushed into the document whenever one of them changes.
-	bool crossfade = true;
-	bool cut = false;
-	int transition_tenths = 10;
-	bool fade_in = true;
-	bool fade_out = true;
-	int photo_tenths = 40;
-	int clip_hold_tenths = 40;
-	bool clip_hold_is_default = true;
+	// The dialog controls bind to int, bool and string references, so the focused item is held here in
+	// the units those controls speak and pushed into the document whenever one of them changes: how long
+	// a photo or a text screen shows, a screen's words or a clip's caption, and whether a video is to be
+	// stabilized.
+	int hold_tenths = 40;
+	std::string item_text;
+	bool stabilize = false;
 
 	void read_from_project();
-	movie_settings to_settings() const;
 };
-
 
 class edit_view_state
 {
@@ -1964,19 +1809,11 @@ public:
 	image_edits _edits;
 	image_edits _original_edits;
 
-	edit_view_state(view_state& s) : _state(s)
-	{
-	}
+	edit_view_state(view_state& s) : _state(s) {}
 
-	quadd selection() const
-	{
-		return _edits.crop_bounds();
-	}
+	quadd selection() const { return _edits.crop_bounds(); }
 
-	void selection(const quadd& s)
-	{
-		_edits.crop_bounds(s);
-	}
+	void selection(const quadd& s) { _edits.crop_bounds(s); }
 
 	void color_reset()
 	{
@@ -1993,10 +1830,7 @@ public:
 
 	void reset(const prop::item_metadata_const_ptr& md, sizei dimensions, core::orientation orientation);
 
-	bool has_pixel_changes() const
-	{
-		return _edits != _original_edits;
-	}
+	bool has_pixel_changes() const { return _edits != _original_edits; }
 
 	static quadd initial_crop(const sizei dimensions, const core::orientation orientation)
 	{
@@ -2010,7 +1844,7 @@ public:
 		metadata_edits result;
 
 		if (has_pixel_changes && stored_orientation != core::orientation::top_left &&
-			stored_orientation != core::orientation::none)
+		    stored_orientation != core::orientation::none)
 		{
 			result.orientation = core::orientation::top_left;
 		}
@@ -2031,9 +1865,8 @@ public:
 		const auto width = static_cast<double>(flips ? dimensions.cy : dimensions.cx);
 		const auto height = static_cast<double>(flips ? dimensions.cx : dimensions.cy);
 
-		const rectd displayed{
-			normalised.X * width, normalised.Y * height, normalised.Width * width, normalised.Height * height
-		};
+		const rectd displayed{normalised.X * width, normalised.Y * height, normalised.Width * width,
+		                      normalised.Height * height};
 
 		auto stored = displayed;
 
@@ -2056,9 +1889,7 @@ public:
 
 			const auto a = to_stored({displayed.left(), displayed.top()});
 			const auto b = to_stored({displayed.right(), displayed.bottom()});
-			stored = {
-				std::min(a.X, b.X), std::min(a.Y, b.Y), std::abs(b.X - a.X), std::abs(b.Y - a.Y)
-			};
+			stored = {std::min(a.X, b.X), std::min(a.Y, b.Y), std::abs(b.X - a.X), std::abs(b.Y - a.Y)};
 		}
 
 		return quadd(stored).transform(to_simple_transform_inv(orientation));
@@ -2072,7 +1903,7 @@ public:
 		return s;
 	}
 
-	void changed(const sizei extent, const bool straighten_tracking)
+	void changed(const sizei /*extent*/, const bool straighten_tracking)
 	{
 		if (_state._edit_item && _state._edit_item->file_type()->has_trait(file_traits::bitmap))
 		{

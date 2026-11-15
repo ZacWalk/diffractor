@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The date pack. Holds every date a media file carries, grouped by value with the tags
 // each was read from, and resolves those to the three dates a user sees. docs/metadata.md#dates
@@ -189,57 +188,30 @@ namespace prop
 	public:
 		date_pack() noexcept = default;
 
-		void clear()
-		{
-			*this = {};
-		}
+		void clear() { *this = {}; }
 
-		bool is_empty() const
-		{
-			return _count == 0;
-		}
+		bool is_empty() const { return _count == 0; }
 
-		int group_count() const
-		{
-			return _count;
-		}
+		int group_count() const { return _count; }
 
-		core::date_t group_value(const int i) const
-		{
-			return _values[i];
-		}
+		core::date_t group_value(const int i) const { return _values[i]; }
 
 		// What the group reads as on a clock, which is what grouping and display want.
-		core::date_t group_wall_clock(const int i) const
-		{
-			return to_wall_clock(_values[i], _offsets[i]);
-		}
+		core::date_t group_wall_clock(const int i) const { return to_wall_clock(_values[i], _offsets[i]); }
 
-		date_source group_sources(const int i) const
-		{
-			return static_cast<date_source>(_sources[i]);
-		}
+		date_source group_sources(const int i) const { return static_cast<date_source>(_sources[i]); }
 
-		int16_t group_offset(const int i) const
-		{
-			return _offsets[i];
-		}
+		int16_t group_offset(const int i) const { return _offsets[i]; }
 
 		// Sources present in the file whose distinct value did not fit. add() overflows on arrival, not
 		// on authority, so this is not merely the least authoritative readings - with five or more
 		// distinct values a source that would have resolved can be the one dropped. Recorded so the count
 		// is not a lie, and so a pack that lost a reading says which one.
-		date_source overflow() const
-		{
-			return static_cast<date_source>(_overflow);
-		}
+		date_source overflow() const { return static_cast<date_source>(_overflow); }
 
 		// Only for restoring a stored pack. The groups are replayed through add(), which cannot rebuild
 		// a mask whose values were never written, so the mask is carried across as itself.
-		void restore_overflow(const date_source s)
-		{
-			_overflow |= static_cast<uint64_t>(s);
-		}
+		void restore_overflow(const date_source s) { _overflow |= static_cast<uint64_t>(s); }
 
 		date_source all_sources() const
 		{
@@ -248,10 +220,7 @@ namespace prop
 			return static_cast<date_source>(result);
 		}
 
-		bool has_source(const date_source s) const
-		{
-			return all_sources() && s;
-		}
+		bool has_source(const date_source s) const { return all_sources() && s; }
 
 		// The pack less one source, for storing a pack whose derived readings are not stored.
 		date_pack without(const date_source source) const
@@ -325,10 +294,7 @@ namespace prop
 		}
 
 		// A container creation time or filesystem stamp, which are instants rather than readings.
-		void add_utc(const date_source source, const core::date_t instant)
-		{
-			add(source, instant, utc_instant);
-		}
+		void add_utc(const date_source source, const core::date_t instant) { add(source, instant, utc_instant); }
 
 		core::date_t resolve(const date_concept kind) const
 		{
@@ -405,9 +371,8 @@ namespace prop
 
 			for (auto i = 0; i < lhs._count; ++i)
 			{
-				if (lhs._values[i] != rhs._values[i] ||
-					lhs._sources[i] != rhs._sources[i] ||
-					lhs._offsets[i] != rhs._offsets[i])
+				if (lhs._values[i] != rhs._values[i] || lhs._sources[i] != rhs._sources[i] ||
+				    lhs._offsets[i] != rhs._offsets[i])
 					return false;
 			}
 
@@ -533,9 +498,7 @@ namespace prop
 	inline bool shows_own_file_stamp_row(const date_pack& dates, const date_source stamp,
 	                                     const core::date_t stamp_value = {})
 	{
-		constexpr date_concept kinds[] = {
-			date_concept::original, date_concept::created, date_concept::modified
-		};
+		constexpr date_concept kinds[] = {date_concept::original, date_concept::created, date_concept::modified};
 
 		for (const auto kind : kinds)
 		{

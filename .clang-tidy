@@ -1,0 +1,42 @@
+# House lint: clang-tidy's bug-finding and performance checks, less those that flag idioms used deliberately here
+# (SIMD pointer casts, Win32 handle casts, zero-initialised API descriptors, pixel rounding, public control classes
+# that forward to their one implementation by name, pixel offsets within a row computed in int - row offsets are
+# widened where they are formed - integer geometry that truncates on purpose before it meets a float, loops that step
+# time or coordinates in floating point, and lenient atoi-style parsing an emulator reproduces) or that need a
+# behaviour change to satisfy (exception specifications, allocation failure). Compiler warnings come from /W4.
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-bitwise-pointer-cast,
+  -bugprone-branch-clone,
+  -bugprone-casting-through-void,
+  -bugprone-crtp-constructor-accessibility,
+  -bugprone-derived-method-shadowing-base-method,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-empty-catch,
+  -bugprone-exception-escape,
+  -bugprone-float-loop-counter,
+  -bugprone-implicit-widening-of-multiplication-result,
+  -bugprone-inc-dec-in-conditions,
+  -bugprone-incorrect-roundings,
+  -bugprone-integer-division,
+  -bugprone-invalid-enum-default-initialization,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -bugprone-narrowing-conversions,
+  -bugprone-random-generator-seed,
+  -bugprone-switch-missing-default-case,
+  -bugprone-throwing-static-initialization,
+  -bugprone-unchecked-optional-access,
+  -bugprone-unchecked-string-to-number-conversion,
+  -bugprone-unhandled-exception-at-new,
+  -performance-enum-size,
+  -performance-no-int-to-ptr
+WarningsAsErrors: ''
+FormatStyle: file
+CheckOptions:
+  # Configuration macros the Windows SDK, the CRT and the C libraries document for their users to define.
+  bugprone-reserved-identifier.AllowedIdentifiers: '^_WIN32_(WINNT|WINDOWS|IE|DCOM)$;^_WINSOCKAPI_$;^_CRT_[A-Z_]+$;^_SCL_SECURE_NO_WARNINGS$;^_USE_MATH_DEFINES$;^_(SILENCE|ENABLE)_[A-Z0-9_]+$;^_HAS_[A-Z_]+$;^_ITERATOR_DEBUG_LEVEL$;^_(ATL|WTL)_[A-Z0-9_]+$;^_UNICODE$;^_(GNU|DEFAULT|POSIX_C|XOPEN|LARGEFILE64)_SOURCE$;^_FILE_OFFSET_BITS$'
+  # Functions that take the end or the length of the text separately, so a string_view's data() is safe to pass.
+  bugprone-suspicious-stringview-data-usage.AllowedCallees: '::std::from_chars;::MultiByteToWideChar;::webvis::nicmp'

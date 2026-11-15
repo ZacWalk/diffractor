@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The metadata blocks a file carries - EXIF, IPTC, XMP and ICC profiles - which libfiles reads,
 // writes and lists: the EXIF written with a re-encoded or turned image, the edits Diffractor makes
@@ -24,6 +23,7 @@ inline core::blob make_orientation_exif(core::orientation orientation)
 	// One IFD and nothing after it. The block used to link an empty IFD1 whose next-IFD offset was
 	// cut to two of its four bytes, so every reader following the chain read past the end of it.
 	core::blob exif_block = {
+		// clang-format off
 		0x49, 0x49,
 		0x2A, 0x00,
 		0x08, 0x00, 0x00, 0x00, // ifd0 offset
@@ -31,6 +31,7 @@ inline core::blob make_orientation_exif(core::orientation orientation)
 		0x12, 0x01, 0x03, 0x00, 0x01, 0x00, 0x00, 0x00, static_cast<uint8_t>(orientation), 0x00, 0x00, 0x00,
 		// orientation
 		0x00, 0x00, 0x00, 0x00, // no next ifd
+		// clang-format on
 	};
 
 	return exif_block;
@@ -38,8 +39,7 @@ inline core::blob make_orientation_exif(core::orientation orientation)
 
 namespace metadata_exif
 {
-	template <typename T>
-	class rational_t
+	template <typename T> class rational_t
 	{
 	public:
 		T numerator = 0;
@@ -52,9 +52,7 @@ namespace metadata_exif
 		rational_t(rational_t&&) noexcept = default;
 		rational_t& operator=(rational_t&&) noexcept = default;
 
-		rational_t(const T n, const T d) noexcept : numerator(n), denominator(d)
-		{
-		}
+		rational_t(const T n, const T d) noexcept : numerator(n), denominator(d) {}
 
 		void clear()
 		{
@@ -72,19 +70,12 @@ namespace metadata_exif
 
 		friend bool operator==(const rational_t& lhs, const rational_t& rhs)
 		{
-			return lhs.numerator == rhs.numerator
-				&& lhs.denominator == rhs.denominator;
+			return lhs.numerator == rhs.numerator && lhs.denominator == rhs.denominator;
 		}
 
-		friend bool operator!=(const rational_t& lhs, const rational_t& rhs)
-		{
-			return !(lhs == rhs);
-		}
+		friend bool operator!=(const rational_t& lhs, const rational_t& rhs) { return !(lhs == rhs); }
 
-		bool operator<(const rational_t& other) const
-		{
-			return to_real() < other.to_real();
-		}
+		bool operator<(const rational_t& other) const { return to_real() < other.to_real(); }
 
 		double to_real() const
 		{
@@ -98,15 +89,9 @@ namespace metadata_exif
 			return core::mul_div(m, numerator, denominator);
 		}
 
-		bool is_empty() const
-		{
-			return numerator == 0 || denominator == 0;
-		}
+		bool is_empty() const { return numerator == 0 || denominator == 0; }
 
-		int round() const
-		{
-			return core::round(to_real());
-		}
+		int round() const { return core::round(to_real()); }
 
 		int64_t to_int64() const
 		{
@@ -187,7 +172,7 @@ namespace metadata_xmp
 	// libjxl writes as it encodes. Read as update() reads the source, with the edit applied and, where the
 	// format changes, what the source shows that its packet lacks. Empty when the packet would hold nothing.
 	core::blob encoded_packet(core::file_path src_path, core::file_path dst_path, const metadata_edits& edits,
-	                        std::string_view src_xmp_name);
+	                          std::string_view src_xmp_name);
 	// Stages a metadata-only edit at stage_path, a new file, with the edit already in it, when the file
 	// keeps its packet in a format libfiles writes: a copy patched where the edit fits the space the file
 	// holds, otherwise one pass over the source. Nothing, with nothing written, for any other file; the

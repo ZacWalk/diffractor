@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The search index - an immutable snapshot of the collection laid out to answer a search a set
 // at a time - and its evaluation. Items are numbered in path order, the distinct values free-text and tag
@@ -36,25 +35,13 @@ namespace df
 			if (fill) clear_tail();
 		}
 
-		uint32_t size() const
-		{
-			return _size;
-		}
+		uint32_t size() const { return _size; }
 
-		void set(const uint32_t doc)
-		{
-			_words[doc >> 6] |= uint64_t{1} << (doc & 63);
-		}
+		void set(const uint32_t doc) { _words[doc >> 6] |= uint64_t{1} << (doc & 63); }
 
-		void reset(const uint32_t doc)
-		{
-			_words[doc >> 6] &= ~(uint64_t{1} << (doc & 63));
-		}
+		void reset(const uint32_t doc) { _words[doc >> 6] &= ~(uint64_t{1} << (doc & 63)); }
 
-		bool test(const uint32_t doc) const
-		{
-			return (_words[doc >> 6] >> (doc & 63) & 1) != 0;
-		}
+		bool test(const uint32_t doc) const { return (_words[doc >> 6] >> (doc & 63) & 1) != 0; }
 
 		void set_range(uint32_t first, uint32_t count);
 		void reset_range(uint32_t first, uint32_t count);
@@ -66,8 +53,7 @@ namespace df
 		// The documents in both, counted without building the intersection.
 		uint64_t count_and(const doc_set& other) const;
 
-		template <typename Fn>
-		void for_each(Fn&& fn) const
+		template <typename Fn> void for_each(Fn&& fn) const
 		{
 			for (size_t w = 0; w < _words.size(); ++w)
 			{
@@ -81,10 +67,7 @@ namespace df
 			}
 		}
 
-		size_t byte_size() const
-		{
-			return _words.capacity() * sizeof(uint64_t);
-		}
+		size_t byte_size() const { return _words.capacity() * sizeof(uint64_t); }
 
 	private:
 		void clear_tail()
@@ -117,10 +100,7 @@ namespace df
 			for (const auto doc : docs(value)) set.set(doc);
 		}
 
-		size_t byte_size() const
-		{
-			return (_offsets.capacity() + _docs.capacity()) * sizeof(uint32_t);
-		}
+		size_t byte_size() const { return (_offsets.capacity() + _docs.capacity()) * sizeof(uint32_t); }
 	};
 
 	// Collects (value, document) pairs in document order and lays them out as value_docs, each value's
@@ -130,10 +110,7 @@ namespace df
 		std::vector<std::pair<uint32_t, uint32_t>> _pairs;
 
 	public:
-		void add(const uint32_t value, const uint32_t doc)
-		{
-			_pairs.emplace_back(value, doc);
-		}
+		void add(const uint32_t value, const uint32_t doc) { _pairs.emplace_back(value, doc); }
 
 		value_docs freeze(uint32_t value_count);
 	};
@@ -164,56 +141,29 @@ namespace df
 		// answers those terms by asking each document.
 		static std::string current_format_signature();
 
-		uint32_t doc_count() const
-		{
-			return static_cast<uint32_t>(_files.size());
-		}
+		uint32_t doc_count() const { return static_cast<uint32_t>(_files.size()); }
 
-		uint64_t generation() const
-		{
-			return _generation;
-		}
+		uint64_t generation() const { return _generation; }
 
-		size_t byte_size() const
-		{
-			return _bytes;
-		}
+		size_t byte_size() const { return _bytes; }
 
-		const std::string& format_signature() const
-		{
-			return _format_signature;
-		}
+		const std::string& format_signature() const { return _format_signature; }
 
-		std::span<const folder_entry> folders() const
-		{
-			return _folders;
-		}
+		std::span<const folder_entry> folders() const { return _folders; }
 
 		// Every document but sidecars, which a search lists only beside a related item.
-		const doc_set& listed_docs() const
-		{
-			return _listed_docs;
-		}
+		const doc_set& listed_docs() const { return _listed_docs; }
 
 		std::optional<uint32_t> folder_of(const index_folder_item* node) const;
 		std::optional<uint32_t> find_folder(core::folder_path path) const;
 		// The document holding this file, when its folder is one the snapshot read.
 		std::optional<uint32_t> find_doc(uint32_t folder, core::cached name) const;
 
-		uint32_t doc_folder(const uint32_t doc) const
-		{
-			return _doc_folder[doc];
-		}
+		uint32_t doc_folder(const uint32_t doc) const { return _doc_folder[doc]; }
 
-		const index_file_item& file(const uint32_t doc) const
-		{
-			return *_files[doc];
-		}
+		const index_file_item& file(const uint32_t doc) const { return *_files[doc]; }
 
-		const prop::item_metadata* metadata(const uint32_t doc) const
-		{
-			return _metadata[doc].get();
-		}
+		const prop::item_metadata* metadata(const uint32_t doc) const { return _metadata[doc].get(); }
 
 		core::file_path path(const uint32_t doc) const
 		{
@@ -230,13 +180,11 @@ namespace df
 		                      bool formats_current, bool dates_current, const core::cancel_token& token) const;
 
 		// The day the snapshot was read on.
-		uint32_t date_day() const
-		{
-			return _date_day;
-		}
+		uint32_t date_day() const { return _date_day; }
 
 	private:
-		doc_set evaluate_text(const search_matcher& matcher, const search_term& term, const core::cancel_token& token) const;
+		doc_set evaluate_text(const search_matcher& matcher, const search_term& term,
+		                      const core::cancel_token& token) const;
 		doc_set evaluate_tag(const search_term& term) const;
 		doc_set evaluate_each(const search_matcher& matcher, const search_term& term, const doc_set& within,
 		                      const core::cancel_token& token) const;
@@ -313,31 +261,16 @@ namespace df
 
 		bool is_clean(const search_index& index, const index_folder_item* node) const;
 
-		bool is_clean_entry(const uint32_t folder) const
-		{
-			return _clean[folder] != 0;
-		}
+		bool is_clean_entry(const uint32_t folder) const { return _clean[folder] != 0; }
 
-		const std::vector<uint32_t>& unclean_folders() const
-		{
-			return _unclean_folders;
-		}
+		const std::vector<uint32_t>& unclean_folders() const { return _unclean_folders; }
 
-		const doc_set& clean_docs() const
-		{
-			return _clean_docs;
-		}
+		const doc_set& clean_docs() const { return _clean_docs; }
 
-		uint64_t clean_doc_count() const
-		{
-			return _clean_doc_count;
-		}
+		uint64_t clean_doc_count() const { return _clean_doc_count; }
 
 		// Every document the collection holds now, answered by the snapshot or not.
-		uint64_t collection_doc_count() const
-		{
-			return _collection_doc_count;
-		}
+		uint64_t collection_doc_count() const { return _collection_doc_count; }
 
 		// Read by the snapshot but changed since, plus held now but never read by it.
 		uint64_t stale_doc_count(const search_index& index) const
@@ -347,10 +280,7 @@ namespace df
 
 		// Most of the collection is as the snapshot read it. Past that, scanning the changed folders on top
 		// would cost more than the scan the snapshot exists to replace.
-		bool is_useful() const
-		{
-			return _clean_doc_count * 2 >= _collection_doc_count;
-		}
+		bool is_useful() const { return _clean_doc_count * 2 >= _collection_doc_count; }
 	};
 
 	// Answers searches against one snapshot and one view of it. A term repeated across the searches one
@@ -389,21 +319,12 @@ namespace df
 	public:
 		search_index_evaluator(std::shared_ptr<const search_index> index, const search_index::folder_list& folders);
 
-		const search_index& index() const
-		{
-			return *_index;
-		}
+		const search_index& index() const { return *_index; }
 
-		const search_index_view& view() const
-		{
-			return _view;
-		}
+		const search_index_view& view() const { return _view; }
 
 		// Answers only while its view is useful.
-		bool is_useful() const
-		{
-			return _view.is_useful();
-		}
+		bool is_useful() const { return _view.is_useful(); }
 
 		// The snapshot documents a related-free, selector-free search matches: in a clean folder, not a
 		// sidecar, through the presence prefilter, and matched by its terms combined as the matcher

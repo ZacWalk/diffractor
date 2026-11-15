@@ -1,13 +1,13 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Audio spectrum visualization using FFT. Transforms audio samples into frequency
-// data and renders animated bar visualizations synchronized with playback.
+// data and renders animated bar visualizations synchronized with playback, glowing where the
+// renderer can light them.
 
 #pragma once
 
@@ -24,7 +24,7 @@ private:
 	uint32_t reversed[FFT_BUFFER_SIZE];
 
 	// The next two tables could be made to use less space in memory, since they
-	//overlap hugely, but hey.
+	// overlap hugely, but hey.
 	float sintable[FFT_BUFFER_SIZE / 2];
 	float costable[FFT_BUFFER_SIZE / 2];
 	float window[FFT_BUFFER_SIZE];
@@ -44,17 +44,17 @@ private:
 	}
 
 	/*
-	* Take result of an FFT and calculate the intensities of each frequency
-	* Note: only produces half as many data points as the input had.
-	* This is roughly a consequence of the Nyquist sampling theorem.
-	* (FIXME - make this comment better, and helpful.)
-	*
-	* The two divisions by 4 are also a consequence of this: the contributions
-	* returned for each frequency are split into two parts, one at i in the
-	* table, and the other at FFT_BUFFER_SIZE - i, except for i = 0 and
-	* FFT_BUFFER_SIZE which would otherwise get float (and then 4* when squared)
-	* the contributions.
-	*/
+	 * Take result of an FFT and calculate the intensities of each frequency
+	 * Note: only produces half as many data points as the input had.
+	 * This is roughly a consequence of the Nyquist sampling theorem.
+	 * (FIXME - make this comment better, and helpful.)
+	 *
+	 * The two divisions by 4 are also a consequence of this: the contributions
+	 * returned for each frequency are split into two parts, one at i in the
+	 * table, and the other at FFT_BUFFER_SIZE - i, except for i = 0 and
+	 * FFT_BUFFER_SIZE which would otherwise get float (and then 4* when squared)
+	 * the contributions.
+	 */
 	static void calc_output(const float* re, const float* im, float* output)
 	{
 		auto* outputptr = output;
@@ -70,14 +70,14 @@ private:
 			imagptr++;
 		}
 		/* Do divisions to keep the constant and highest frequency terms in scale
-		* with the other terms. */
+		 * with the other terms. */
 		*output /= 4;
 		*endptr /= 4;
 	}
 
 	/*
-	* Actually perform the FFT
-	*/
+	 * Actually perform the FFT
+	 */
 	void calculate(float* re, float* im) const
 	{
 		/* Set up some variables to reduce calculation in the loops */
@@ -88,16 +88,16 @@ private:
 		for (uint32_t i = FFT_BUFFER_SIZE_LOG; i != 0; i--)
 		{
 			/* In this step, we have 2 ^ (i - 1) exchange groups, each with
-			* 2 ^ (FFT_BUFFER_SIZE_LOG - i) exchanges
-			*/
+			 * 2 ^ (FFT_BUFFER_SIZE_LOG - i) exchanges
+			 */
 			/* Loop through the exchanges in a group */
 			for (uint32_t j = 0; j != exchanges; j++)
 			{
 				/* Work out factor for this exchange
-				* factor ^ (exchanges) = -1
-				* So, real = cos(j * PI / exchanges),
-				*     imag = sin(j * PI / exchanges)
-				*/
+				 * factor ^ (exchanges) = -1
+				 * So, real = cos(j * PI / exchanges),
+				 *     imag = sin(j * PI / exchanges)
+				 */
 				const float fact_real = costable[j * factfact];
 				const float fact_imag = sintable[j * factfact];
 
@@ -106,8 +106,8 @@ private:
 				{
 					const int k1 = k + exchanges;
 					/* newval[k]  := val[k] + factor * val[k1]
-					* newval[k1] := val[k] - factor * val[k1]
-					**/
+					 * newval[k1] := val[k] - factor * val[k1]
+					 **/
 					/* FIXME - potential scope for more optimization here? */
 					const float tmp_real = fact_real * re[k1] - fact_imag * im[k1];
 					const float tmp_imag = fact_real * im[k1] + fact_imag * re[k1];
@@ -152,13 +152,11 @@ public:
 		}
 	}
 
-	~fast_fft()
-	{
-	}
+	~fast_fft() {}
 
 	void calc(const sound_sample* input, float* output)
 	{
-		// Temporary data stores to perform FFT in. 
+		// Temporary data stores to perform FFT in.
 		float real[FFT_BUFFER_SIZE];
 		float imag[FFT_BUFFER_SIZE];
 
@@ -172,7 +170,6 @@ public:
 		calc_output(real, imag, output);
 	}
 };
-
 
 class av_visualizer
 {
@@ -195,10 +192,7 @@ class av_visualizer
 		frame(frame&&) noexcept = default;
 		frame& operator=(frame&&) noexcept = default;
 
-		explicit frame(const double t = 0) noexcept : _time(t)
-		{
-			memset(_data, 0, sizeof(_data));
-		}
+		explicit frame(const double t = 0) noexcept : _time(t) { memset(_data, 0, sizeof(_data)); }
 
 		frame(const frame& other) noexcept : _time(other._time)
 		{
@@ -207,8 +201,11 @@ class av_visualizer
 
 		frame& operator=(const frame& other) noexcept
 		{
-			_time = other._time;
-			memcpy_s(_data, sizeof(_data), other._data, sizeof(_data));
+			if (this != &other)
+			{
+				_time = other._time;
+				memcpy_s(_data, sizeof(_data), other._data, sizeof(_data));
+			}
 			return *this;
 		}
 
@@ -250,10 +247,7 @@ class av_visualizer
 			return changed;
 		}
 
-		bool operator<(const frame& other) const
-		{
-			return _time < other._time;
-		}
+		bool operator<(const frame& other) const { return _time < other._time; }
 	};
 
 	class frame_queue
@@ -262,13 +256,9 @@ class av_visualizer
 		frame _current;
 
 	public:
-		frame_queue()
-		{
-		}
+		frame_queue() {}
 
-		~frame_queue()
-		{
-		}
+		~frame_queue() {}
 
 		void clear()
 		{
@@ -283,10 +273,8 @@ class av_visualizer
 			constexpr size_t max_queued_frames = 1024;
 			if (_q.size() >= max_queued_frames) _q.pop_front();
 
-			const auto found = std::lower_bound(_q.begin(), _q.end(), frame, [](auto&& l, auto&& r)
-			{
-				return l._time < r._time;
-			});
+			const auto found = std::lower_bound(_q.begin(), _q.end(), frame,
+			                                    [](auto&& l, auto&& r) { return l._time < r._time; });
 
 			_q.emplace(found, frame); // .emplace_back(frame);
 		}
@@ -314,35 +302,39 @@ class av_visualizer
 	_Guarded_by_(_mutex) double _last_step_time = -1.0;
 
 public:
-	av_visualizer()
-	{
-	}
+	// The bars across a rect render draws in: the steps it divides the rect's width into are one more than this.
+	static constexpr int bar_count = num_bars;
+
+	av_visualizer() {}
 
 	void update(audio_buffer& buffer_in)
 	{
-		auto* data = buffer_in.data + buffer_in.start_pos;
-		auto data_avail = buffer_in.used_bytes() / 4;
-		auto time_in = buffer_in.time;
-		auto bytes_processed = 0;
+		const auto* const data = std::bit_cast<const int16_t*>(buffer_in.data + buffer_in.start_pos);
+		const auto used = update(data, buffer_in.used_bytes() / 4, static_cast<int>(buffer_in.format.sample_rate),
+		                         buffer_in.time);
+		buffer_in.remove(static_cast<uint32_t>(used * 4));
+	}
 
+	// Interleaved 16-bit stereo whose first sample is heard at `time`: a frame of bars for each whole window of it,
+	// queued for step to reach. Answers how many of the sample pairs it took; the rest wait for more to follow them.
+	size_t update(const int16_t* stereo, const size_t frames, const int sample_rate, double time)
+	{
 		int16_t lBuffer[FFT_BUFFER_SIZE];
 		int16_t rBuffer[FFT_BUFFER_SIZE];
+		size_t used = 0;
 
-		while (data_avail >= FFT_BUFFER_SIZE)
+		while (frames - used >= FFT_BUFFER_SIZE)
 		{
-			auto* l = lBuffer;
-			auto* r = rBuffer;
-			const auto* p = std::bit_cast<const uint16_t*>(data);
+			const auto* p = stereo + used * 2;
 
 			for (uint32_t i = 0; i < FFT_BUFFER_SIZE; i++)
 			{
-				*l++ = *p++;
-				*r++ = *p++;
+				lBuffer[i] = *p++;
+				rBuffer[i] = *p++;
 			}
 
-			const auto sample_rate = buffer_in.format.sample_rate;
 			const auto window_center = sample_rate > 0 ? FFT_BUFFER_SIZE * 0.5 / sample_rate : 0.0;
-			frame frame(time_in + window_center);
+			frame frame(time + window_center);
 
 			calc_bars(lBuffer, frame._data[0]);
 			calc_bars(rBuffer, frame._data[1]);
@@ -352,19 +344,14 @@ public:
 				_frames.push(frame);
 			}
 
-			bytes_processed += FFT_BUFFER_SIZE * 4;
-			data += FFT_BUFFER_SIZE * 4;
-			data_avail -= FFT_BUFFER_SIZE;
-			time_in += FFT_BUFFER_SIZE * 4.0 / static_cast<double>(buffer_in.bytes_per_second());
+			used += FFT_BUFFER_SIZE;
+			time += sample_rate > 0 ? static_cast<double>(FFT_BUFFER_SIZE) / sample_rate : 0.0;
 		}
 
-		buffer_in.remove(bytes_processed);
+		return used;
 	}
 
-	static constexpr uint32_t min_sample_bytes()
-	{
-		return FFT_BUFFER_SIZE * 4;
-	}
+	static constexpr uint32_t min_sample_bytes() { return FFT_BUFFER_SIZE * 4; }
 
 	bool step(const double time)
 	{
@@ -382,8 +369,10 @@ public:
 		_last_step_time = -1.0;
 	}
 
+	// The bars across the rect: as wide as it divides them, but no wider than a sixth of its height, so a band
+	// far wider than it is tall keeps them in proportion and centres them.
 	void render(const render::vertices_ptr& verts, const recti rect, const pointi offset, const float alpha,
-	            const double time) const
+	            const double /*time*/) const
 	{
 		std::array<render::vertex_rect, num_bars> bars;
 
@@ -394,9 +383,11 @@ public:
 			const double hh = rect.height() / 2.0;
 			const double y = static_cast<double>(rect.top + rect.bottom) / 2.0;
 			const double step = std::clamp(static_cast<double>(rect.width()) / (static_cast<double>(num_bars) + 1.0),
-			                               3.0, 16.0);
-			double x = static_cast<double>(rect.left) + (static_cast<double>(rect.width()) - (static_cast<double>(
-				num_bars) + 1.0) * static_cast<double>(step)) / 2.0;
+			                               3.0, std::max(3.0, rect.height() / 6.0));
+			double x = static_cast<double>(rect.left) +
+			           (static_cast<double>(rect.width()) -
+			            (static_cast<double>(num_bars) + 1.0) * static_cast<double>(step)) /
+			               2.0;
 
 			for (auto i = 0; i < num_bars; i++)
 			{
@@ -470,17 +461,13 @@ private:
 
 			y >>= 12;
 			if (y > 0)
-				y = static_cast<int>(log(static_cast<float>(y)) * 28.0f * (1.8f + static_cast<float>(i) /
-					num_bars));
+				y = static_cast<int>(log(static_cast<float>(y)) * 28.0f * (1.8f + static_cast<float>(i) / num_bars));
 
 			bars[i] = y;
 		}
 	}
 
-	static float linear_interpolate(const float a, const float b, const float t)
-	{
-		return a * (1.0f - t) + b * t;
-	}
+	static float linear_interpolate(const float a, const float b, const float t) { return a * (1.0f - t) + b * t; }
 
 	static core::color interpolate(const core::color ca, const core::color cb, const float t, const float a)
 	{

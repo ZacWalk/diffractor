@@ -1,8 +1,8 @@
 # Zoom
 
 This document owns current image magnification, panning, comparison linking, panorama projection,
-input, and navigator behavior. [Rendering](rendering.md) owns backend implementation and
-[File I/O](file-io.md) owns the decoded representations zoom consumes.
+input, and navigator behavior. The draw backends are libdesktop's, [Rendering](rendering.md) owns
+image budgets, and [File I/O](file-io.md) owns the decoded representations zoom consumes.
 
 ## Model
 

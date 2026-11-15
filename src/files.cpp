@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Diffractor's file handling over libfiles: loading, saving and format detection for images and
 // media files; the still formats libfiles names from their signatures; scanning stills, audio and video
@@ -49,7 +48,6 @@ df_assert_move_only(libfiles::metadata_blocks);
 df_assert_movable(metadata_kv_list);
 df_assert_movable(file_load_result);
 
-
 std::string file_group::display_name(const bool is_plural) const
 {
 	const auto result = is_plural && !core::is_empty(plural_name) ? plural_name : name;
@@ -66,9 +64,7 @@ struct file_type_config
 	// Replaced whole, never edited in place. parse_file_group reads it on workers - auto-complete and
 	// query - while a language switch registers that language's spellings on the UI thread, and an
 	// insert that rehashed under a lookup left the reader walking freed buckets.
-	std::atomic<std::shared_ptr<const file_group_by_name>> groups_by_name{
-		std::make_shared<const file_group_by_name>()
-	};
+	std::atomic<std::shared_ptr<const file_group_by_name>> groups_by_name{std::make_shared<const file_group_by_name>()};
 	file_type_by_extension types_by_name;
 
 	std::vector<file_group_ref> groups;
@@ -131,37 +127,35 @@ void register_file_group_spellings()
 	s_config.groups_by_name.store(std::shared_ptr<const file_group_by_name>(std::move(groups)));
 }
 
-static constexpr file_traits photo_traits = file_traits::bitmap | file_traits::cache_metadata |
-	file_traits::zoom | file_traits::hide_overlays |
-	file_traits::thumbnail | file_traits::photo_metadata;
-static constexpr file_traits video_traits = file_traits::av | file_traits::preview_video |
-	file_traits::cache_metadata | file_traits::hide_overlays |
-	file_traits::thumbnail | file_traits::video_metadata;
+static constexpr file_traits photo_traits = file_traits::bitmap | file_traits::cache_metadata | file_traits::zoom |
+                                            file_traits::hide_overlays | file_traits::thumbnail |
+                                            file_traits::photo_metadata;
+static constexpr file_traits video_traits = file_traits::av | file_traits::preview_video | file_traits::cache_metadata |
+                                            file_traits::hide_overlays | file_traits::thumbnail |
+                                            file_traits::video_metadata;
 static constexpr file_traits audio_traits = file_traits::av | file_traits::visualize_audio |
-	file_traits::cache_metadata | file_traits::music_metadata;
+                                            file_traits::cache_metadata | file_traits::music_metadata;
 
 static constexpr file_traits commodore_traits = file_traits::commodore | file_traits::no_metadata_grouping;
 static constexpr file_traits archive_traits = file_traits::archive | file_traits::no_metadata_grouping;
 
-file_group file_group::other("other", "others", 0x5E5E5E, icon_index::document,
-                             file_traits::no_metadata_grouping, group_key_type::other, {});
-file_group file_group::folder("folder", "folders", 0x18A59C, icon_index::folder,
-                              file_traits::no_metadata_grouping, group_key_type::folder, {});
-file_group file_group::photo("photo", "photos", 0x18A549, icon_index::photo, photo_traits,
-                             group_key_type::photo, {"xmp"});
+file_group file_group::other("other", "others", 0x5E5E5E, icon_index::document, file_traits::no_metadata_grouping,
+                             group_key_type::other, {});
+file_group file_group::folder("folder", "folders", 0x18A59C, icon_index::folder, file_traits::no_metadata_grouping,
+                              group_key_type::folder, {});
+file_group file_group::photo("photo", "photos", 0x18A549, icon_index::photo, photo_traits, group_key_type::photo,
+                             {"xmp"});
 // Subtitles travel with the video they belong to, as its sidecars: text (srt, vtt, ass, ssa, smi, mpl2) and
 // images (sub with its idx, sup); so does the .nfo a media manager or a release keeps about it.
-file_group file_group::video("video", "videos", 0xA55018, icon_index::video, video_traits,
-                             group_key_type::video,
+file_group file_group::video("video", "videos", 0xA55018, icon_index::video, video_traits, group_key_type::video,
                              {"srt", "smi", "vtt", "ass", "ssa", "sub", "idx", "sup", "mpl2", "thm", "xmp", "nfo"});
 
 bool is_subtitle_extension(std::string_view ext)
 {
 	if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
 
-	static const core::hash_set<std::string_view, core::ihash, core::ieq> extensions{
-		"srt", "vtt", "ass", "ssa", "smi", "sub", "idx", "sup", "mpl2"
-	};
+	static const core::hash_set<std::string_view, core::ihash, core::ieq> extensions{"srt", "vtt", "ass", "ssa", "smi",
+	                                                                                 "sub", "idx", "sup", "mpl2"};
 
 	return extensions.contains(ext);
 }
@@ -172,13 +166,14 @@ bool is_subtitle_suffix(const std::string_view word)
 	return flags.contains(word) || is_language_word(word);
 }
 
-core::file_path moved_sidecar_path(const core::file_path primary, const core::file_path destination, const core::file_path sidecar)
+core::file_path moved_sidecar_path(const core::file_path primary, const core::file_path destination,
+                                   const core::file_path sidecar)
 {
 	const auto stem = primary.file_name_without_extension();
 	const auto name = sidecar.name().sv();
 	// A sidecar named for another file - the RAW an XMP describes - keeps only its extension, as it always has.
 	const auto after_stem = name.size() > stem.size() && name[stem.size()] == '.' &&
-		core::icmp(name.substr(0, stem.size()), stem) == 0;
+	                        core::icmp(name.substr(0, stem.size()), stem) == 0;
 	const auto tail = after_stem ? name.substr(stem.size()) : sidecar.extension();
 	return destination.folder().combine_file(std::string(destination.file_name_without_extension()).append(tail));
 }
@@ -186,9 +181,8 @@ file_group file_group::audio("audio", {}, 0xA5184B, icon_index::audio, audio_tra
 
 file_group file_group::archive("archive", "archives", 0x5588DD, icon_index::archive, archive_traits,
                                group_key_type::archive, {});
-file_group file_group::commodore("commodore", {}, 0xFF8811, icon_index::retro, commodore_traits,
-                                 group_key_type::retro, {});
-
+file_group file_group::commodore("commodore", {}, 0xFF8811, icon_index::retro, commodore_traits, group_key_type::retro,
+                                 {});
 
 file_type file_type::folder(file_group::folder, {}, {}, {});
 file_type file_type::other(file_group::other, {}, {}, {});
@@ -196,13 +190,8 @@ file_type file_type::other(file_group::other, {}, {}, {});
 void load_file_types()
 {
 	s_config.groups = {
-		file_group::folder,
-		file_group::photo,
-		file_group::video,
-		file_group::audio,
-		file_group::archive,
-		file_group::commodore,
-		file_group::other
+		file_group::folder,  file_group::photo,     file_group::video, file_group::audio,
+		file_group::archive, file_group::commodore, file_group::other,
 	};
 
 	s_config.types = {
@@ -242,15 +231,11 @@ void load_file_types()
 		{file_group::photo, "arw,arq,sr2,srf", "Sony raw", file_traits::raw | file_traits::edit},
 		{file_group::photo, "bay", "Casio raw", file_traits::raw | file_traits::edit},
 		{file_group::photo, "cap", "Phase One raw", file_traits::raw | file_traits::edit},
-		{
-			file_group::video, "asf", "Windows Media",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
-		},
+		{file_group::video, "asf", "Windows Media",
+	     file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata},
 		{file_group::video, "ast", "Audio Stream", {}},
-		{
-			file_group::video, "avi", "Audio Visual Interleave",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
-		},
+		{file_group::video, "avi", "Audio Visual Interleave",
+	     file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata},
 		{file_group::video, "avr", {}, {}},
 		{file_group::video, "avs", {}, {}},
 		{file_group::video, "avs2", {}, {}},
@@ -277,10 +262,8 @@ void load_file_types()
 		{file_group::audio, "digi", {}, {}},
 		{file_group::video, "divx", "DivX video", {}},
 		{file_group::audio, "dmf", {}, {}},
-		{
-			file_group::photo, "dng", "Adobe Digital Negative",
-			file_traits::raw | file_traits::edit | file_traits::embedded_xmp | file_traits::in_place_metadata
-		},
+		{file_group::photo, "dng", "Adobe Digital Negative",
+	     file_traits::raw | file_traits::edit | file_traits::embedded_xmp | file_traits::in_place_metadata},
 		{file_group::video, "dnxhd", {}, {}},
 		{file_group::video, "dnxhr", {}, {}},
 		{file_group::video, "drc", {}, {}},
@@ -304,10 +287,8 @@ void load_file_types()
 		{file_group::video, "fits", {}, {}},
 		{file_group::audio, "flac", "Free Lossless Audio", {}},
 		{file_group::video, "flm", {}, {}},
-		{
-			file_group::video, "flv", "Flash video",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
-		},
+		{file_group::video, "flv", "Flash video",
+	     file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata},
 		{file_group::video, "fsb", {}, {}},
 		{file_group::video, "fwse", {}, {}},
 		{file_group::video, "g722", {}, {}},
@@ -389,42 +370,22 @@ void load_file_types()
 		{file_group::audio, "mo3", {}, {}},
 		{file_group::audio, "mod", {}, {}},
 		{file_group::photo, "mos", "Leaf raw", file_traits::raw | file_traits::edit},
-		{
-			file_group::audio, "mp3", "MPEG Layer 3",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::thumbnail | file_traits::in_place_metadata
-		},
-		{
-			file_group::video, "mov", {},
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
-		},
-		{
-			file_group::video, "mp4,mp4a,mp4v,m4v,m4b,f4v,3g2,3gp2,3gp,3gpp,crm", "MPEG-4",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
-		},
-		{
-			file_group::video, "crm", "Canon Cinema RAW Light",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
-		},
-		{
-			file_group::audio, "m4a,mp4a,m4r", "MPEG-4 Audio",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::thumbnail |
-			file_traits::in_place_metadata
-		},
-		{
-			file_group::audio, "m4p", "MPEG-4 (DRM)",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::thumbnail |
-			file_traits::in_place_metadata
-		},
+		{file_group::audio, "mp3", "MPEG Layer 3",
+	     file_traits::embedded_xmp | file_traits::edit | file_traits::thumbnail | file_traits::in_place_metadata},
+		{file_group::video, "mov", {}, file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata},
+		{file_group::video, "mp4,mp4a,mp4v,m4v,m4b,f4v,3g2,3gp2,3gp,3gpp,crm", "MPEG-4",
+	     file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata},
+		{file_group::video, "crm", "Canon Cinema RAW Light",
+	     file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata},
+		{file_group::audio, "m4a,mp4a,m4r", "MPEG-4 Audio",
+	     file_traits::embedded_xmp | file_traits::edit | file_traits::thumbnail | file_traits::in_place_metadata},
+		{file_group::audio, "m4p", "MPEG-4 (DRM)",
+	     file_traits::embedded_xmp | file_traits::edit | file_traits::thumbnail | file_traits::in_place_metadata},
 		{file_group::audio, "mpc", "Musepack", {}},
 		{file_group::video, "mpd", {}, {}},
-		{
-			file_group::video, "mpeg,mpg,mpe,m1v,m2v,mp2,mpv,m2p,m2t,vob,ms-pvr,dvr-ms", "MPEG",
-			file_traits::edit
-		},
-		{
-			file_group::audio, "mpa,m2a", "MPEG",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
-		},
+		{file_group::video, "mpeg,mpg,mpe,m1v,m2v,mp2,mpv,m2p,m2t,vob,ms-pvr,dvr-ms", "MPEG", file_traits::edit},
+		{file_group::audio, "mpa,m2a", "MPEG",
+	     file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata},
 		still_file_type(libfiles::image_format::heif),
 		{file_group::video, "avc1", "Advanced Video Coding", {}},
 		{file_group::audio, "mptm", {}, {}},
@@ -552,24 +513,18 @@ void load_file_types()
 		{file_group::video, "vql", {}, {}},
 		{file_group::video, "w64", {}, {}},
 		{file_group::photo, "wap", {}, {}},
-		{
-			file_group::audio, "wav", "Microsoft Wave",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
-		},
+		{file_group::audio, "wav", "Microsoft Wave",
+	     file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata},
 		{file_group::photo, "wbm", {}, {}},
 		// WBMP has no metadata container, so its metadata goes to a sidecar.
 		{file_group::photo, "wbmp", {}, file_traits::edit},
 		{file_group::video, "web", {}, {}},
 		{file_group::video, "webm", "WebM video", {}},
 		still_file_type(libfiles::image_format::webp),
-		{
-			file_group::audio, "wma", "Windows Media Audio 9",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
-		},
-		{
-			file_group::video, "wmv,wm", "Windows Media video",
-			file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata
-		},
+		{file_group::audio, "wma", "Windows Media Audio 9",
+	     file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata},
+		{file_group::video, "wmv,wm", "Windows Media video",
+	     file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata},
 		{file_group::audio, "wow", {}, {}},
 		{file_group::video, "wsd", {}, {}},
 		{file_group::video, "wtv", {}, {}},
@@ -636,6 +591,10 @@ void load_file_types()
 		std::ranges::sort(sidecars);
 		sidecars.erase(std::ranges::unique(sidecars).begin(), sidecars.end());
 
+		// A disk image is drawn as a floppy and a cartridge as one, rather than as the group's controller.
+		if (ft.has_trait(file_traits::disk_image)) ft.icon = icon_index::floppy;
+		else if (ft.group == file_group::commodore && ft.extension == "crt") ft.icon = icon_index::cartridge;
+
 		if (ft.icon == icon_index::document)
 		{
 			ft.icon = ft.group->icon;
@@ -644,9 +603,7 @@ void load_file_types()
 		if (!ft.extension.empty())
 		{
 			core::split2(ft.extension, true, [pft = &ft](const std::string_view ext)
-			{
-				s_config.types_by_name.insert_or_assign(core::cache(ext), pft);
-			});
+			{ s_config.types_by_name.insert_or_assign(core::cache(ext), pft); });
 		}
 	}
 
@@ -710,16 +667,13 @@ namespace
 		return {
 			{core::cache("Google Maps"), core::cache("https://www.google.com/maps/place/{latitude},{longitude}")},
 			{core::cache("Google Earth"), core::cache("https://earth.google.com/web/search/{latitude},{longitude}")},
-			{core::cache("Bing Maps"), core::cache("https://www.bing.com/maps?cp={latitude}~{longitude}&lvl=17&style=h")},
-			{
-				core::cache("OpenStreetMap"),
-				core::cache(
-					"https://www.openstreetmap.org/?mlat={latitude}&mlon={longitude}#map=17/{latitude}/{longitude}")
-			},
-			{
-				core::cache("Apple Maps"),
-				core::cache("https://maps.apple.com/?ll={latitude},{longitude}&q=Photo%20Location")
-			},
+			{core::cache("Bing Maps"),
+		     core::cache("https://www.bing.com/maps?cp={latitude}~{longitude}&lvl=17&style=h")},
+			{core::cache("OpenStreetMap"),
+		     core::cache(
+				 "https://www.openstreetmap.org/?mlat={latitude}&mlon={longitude}#map=17/{latitude}/{longitude}")},
+			{core::cache("Apple Maps"),
+		     core::cache("https://maps.apple.com/?ll={latitude},{longitude}&q=Photo%20Location")},
 		};
 	}
 }
@@ -742,7 +696,7 @@ file_tools_result scan_tools()
 			if (document.HasParseError())
 			{
 				core::log(__FUNCTION__, std::format("diffractor-tools.json is not valid json (offset {})",
-				                                  document.GetErrorOffset()));
+				                                    document.GetErrorOffset()));
 			}
 			else if (document.IsObject())
 			{
@@ -865,9 +819,7 @@ file_tools_result scan_tools()
 		tool->exe_path = found->second;
 
 		core::split2(tool->extensions, true, [&result, &tool](const std::string_view ext)
-		{
-			result.by_extension[core::cache(ext)].emplace_back(tool);
-		});
+		{ result.by_extension[core::cache(ext)].emplace_back(tool); });
 
 		if (!tool->group.is_empty())
 		{
@@ -990,10 +942,8 @@ void log_file_op_summary()
 		return total;
 	};
 
-	std::ranges::sort(rows, [&row_total](const auto& a, const auto& b)
-	{
-		return row_total(a.second) > row_total(b.second);
-	});
+	std::ranges::sort(rows,
+	                  [&row_total](const auto& a, const auto& b) { return row_total(a.second) > row_total(b.second); });
 
 	// The first extension names the whole group, and the capability marker states what the traits
 	// table promises - so a row that patches when it claims it cannot, or replaces when it claims
@@ -1018,12 +968,12 @@ void log_file_op_summary()
 	for (const auto& [ft, row] : rows)
 	{
 		for (auto i = 0_z; i < file_op_stat_count; ++i) totals[i] += row[i];
-		report += std::format("| {} | {} | {} | {} | {} | {} | {} |\n", group_name(ft->extension),
-		                      capability(ft), row[0], row[1], row[2], row[3], row[4]);
+		report += std::format("| {} | {} | {} | {} | {} | {} | {} |\n", group_name(ft->extension), capability(ft),
+		                      row[0], row[1], row[2], row[3], row[4]);
 	}
 
-	report += std::format("| **Total** | - | {} | {} | {} | {} | {} |\n", totals[0], totals[1], totals[2],
-	                      totals[3], totals[4]);
+	report += std::format("| **Total** | - | {} | {} | {} | {} | {} |\n", totals[0], totals[1], totals[2], totals[3],
+	                      totals[4]);
 	core::log("perf file types", report);
 }
 
@@ -1034,14 +984,9 @@ namespace
 		file_load_result _loaded;
 
 	public:
-		explicit loaded_clipboard_image(file_load_result loaded) : _loaded(std::move(loaded))
-		{
-		}
+		explicit loaded_clipboard_image(file_load_result loaded) : _loaded(std::move(loaded)) {}
 
-		sizei dimensions() const override
-		{
-			return _loaded.dimensions();
-		}
+		sizei dimensions() const override { return _loaded.dimensions(); }
 
 		void write_pixels(const std::span<uint8_t> pixels) const override
 		{
@@ -1102,7 +1047,7 @@ sizei file_load_result::dimensions() const
 }
 
 core::const_surface_ptr file_load_result::to_surface(const sizei scale_hint, const bool can_use_yuv,
-                                                   const core::cancel_token& token, const decode_intent intent) const
+                                                     const core::cancel_token& token, const decode_intent intent) const
 {
 	if (success)
 	{
@@ -1136,7 +1081,6 @@ core::pixel_difference_result file_load_result::calc_pixel_difference(const file
 	return core::pixel_difference_result::unknown;
 }
 
-
 file_type_ref files::file_type_from_name(const core::file_path path)
 {
 	return file_type_from_name(path.name());
@@ -1152,8 +1096,8 @@ namespace
 	{
 		if (!ext.empty() && ext.front() == '.') ext = ext.substr(1);
 
-		return core::icmp(ext, "ts") == 0 || core::icmp(ext, "m2t") == 0 ||
-			core::icmp(ext, "m2ts") == 0 || core::icmp(ext, "mts") == 0;
+		return core::icmp(ext, "ts") == 0 || core::icmp(ext, "m2t") == 0 || core::icmp(ext, "m2ts") == 0 ||
+		       core::icmp(ext, "mts") == 0;
 	}
 
 	// A transport stream is a run of fixed-size packets, each opening with the 0x47 sync byte: 188
@@ -1226,14 +1170,14 @@ file_type_ref files::file_type_from_name(const std::string_view name)
 bool image_edits::has_changes(const sizei image_extent) const
 {
 	return _scale.cx != 0 || _scale.cy != 0 || has_crop(image_extent) || has_rotation() || has_perspective() ||
-		has_color_changes();
+	       has_color_changes();
 }
 
 bool image_edits::is_empty() const
 {
 	// has_changes with the crop widened to any crop at all, so this can only ever be the safer answer.
 	return !(_scale.cx != 0 || _scale.cy != 0 || has_crop_bounds() || has_rotation() || has_perspective() ||
-		has_color_changes());
+	         has_color_changes());
 }
 
 quadd image_edits::perspective_bounds(const sizei size) const
@@ -1252,10 +1196,7 @@ quadd image_edits::perspective_bounds(const sizei size) const
 		const auto normalized_x = point.X / size.cx - 0.5;
 		const auto normalized_y = point.Y / size.cy - 0.5;
 		const auto denominator = 1.0 - horizontal * normalized_x - vertical * normalized_y;
-		result[index] = {
-			(0.5 + normalized_x / denominator) * size.cx,
-			(0.5 + normalized_y / denominator) * size.cy
-		};
+		result[index] = {(0.5 + normalized_x / denominator) * size.cx, (0.5 + normalized_y / denominator) * size.cy};
 	}
 
 	return result;
@@ -1333,8 +1274,8 @@ bool image_edits::has_crop(const sizei image_extent) const
 {
 	if (_crop.is_empty()) return false;
 	quadd bounds(image_extent);
-	return !_crop.has_point(bounds[0]) || !_crop.has_point(bounds[1]) || !_crop.has_point(bounds[2]) || !_crop.
-		has_point(bounds[3]);
+	return !_crop.has_point(bounds[0]) || !_crop.has_point(bounds[1]) || !_crop.has_point(bounds[2]) ||
+	       !_crop.has_point(bounds[3]);
 }
 
 bool image_edits::is_no_loss(const sizei image_extent) const
@@ -1356,18 +1297,8 @@ bool files::can_save(const core::file_path path)
 bool files::can_save_extension(const std::string_view ext)
 {
 	static const core::hash_set<std::string_view, core::ihash, core::ieq> save_extensions = {
-		{".jpg"},
-		{".jpeg"},
-		{".jpe"},
-		{".png"},
-		{".webp"},
-		{".jxl"},
-		{"jpg"},
-		{"jpeg"},
-		{"jpe"},
-		{"png"},
-		{"webp"},
-		{"jxl"},
+		{".jpg"}, {".jpeg"}, {".jpe"}, {".png"}, {".webp"}, {".jxl"},
+		{"jpg"},  {"jpeg"},  {"jpe"},  {"png"},  {"webp"},  {"jxl"},
 	};
 
 	return save_extensions.contains(ext);
@@ -1406,8 +1337,9 @@ files::~files()
 	_scaler.reset();
 }
 
-core::const_image_ptr files::surface_to_image(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
-                                            const file_encode_params& params, const core::image_format format)
+core::const_image_ptr files::surface_to_image(const core::const_surface_ptr& surface_in,
+                                              const libfiles::metadata_blocks& metadata,
+                                              const file_encode_params& params, const core::image_format format)
 {
 	core::const_image_ptr result;
 
@@ -1417,8 +1349,7 @@ core::const_image_ptr files::surface_to_image(const core::const_surface_ptr& sur
 	{
 		const auto has_alpha = surface_in->format() == core::texture_format::ARGB;
 
-		if (format == core::image_format::PNG ||
-			(format == core::image_format::Unknown && has_alpha))
+		if (format == core::image_format::PNG || (format == core::image_format::Unknown && has_alpha))
 		{
 			result = save_png(surface_in, metadata);
 		}
@@ -1490,8 +1421,7 @@ av_scaler& files::scaler()
 // A ceiling, not a size to fill. Every caller passes a limit - a thumbnail bound, a display scale
 // hint, a preview cap - so a picture already inside it is handed back untouched rather than
 // resampled up to fill it, which would cost a pass and an allocation to add no information.
-template <typename Ptr>
-Ptr files::fit_within_impl(Ptr surface_in, const sizei ceiling)
+template <typename Ptr> Ptr files::fit_within_impl(Ptr surface_in, const sizei ceiling)
 {
 	if (!is_valid(surface_in) || ceiling.is_empty()) return surface_in;
 
@@ -1539,7 +1469,7 @@ core::const_surface_ptr files::fit_within(core::const_surface_ptr surface_in, co
 }
 
 core::pixel_difference_result files::pixel_difference(const core::const_image_ptr& expected,
-                                                    const core::const_image_ptr& actual)
+                                                      const core::const_image_ptr& actual)
 {
 	if (!is_empty(expected) || !is_empty(actual))
 	{
@@ -1554,7 +1484,6 @@ core::pixel_difference_result files::pixel_difference(const core::const_image_pt
 
 	return core::pixel_difference_result::unknown;
 }
-
 
 namespace
 {
@@ -1576,8 +1505,8 @@ namespace
 	public:
 		core::surface_ptr surface;
 
-		jpeg_surface_sink(const std::optional<core::orientation> orientation_override, const core::cancel_token& token) :
-			_orientation_override(orientation_override), _token(token)
+		jpeg_surface_sink(const std::optional<core::orientation> orientation_override,
+		                  const core::cancel_token& token) : _orientation_override(orientation_override), _token(token)
 		{
 		}
 
@@ -1585,22 +1514,21 @@ namespace
 		{
 			const auto scale = static_cast<int64_t>(frame.scale_denominator);
 			const auto scaled_output_bytes = static_cast<int64_t>(frame.source_width) * frame.source_height * 4 /
-				(scale * scale);
+			                                 (scale * scale);
 			const auto decode_bytes = scaled_output_bytes + static_cast<int64_t>(frame.working_bytes);
 
 			if (decode_bytes > render::max_decode_bytes)
 			{
-				core::log("files::decode_jpeg", std::format("decode of {} x {} needs {}, over the {} budget",
-				                                          frame.source_width, frame.source_height,
-				                                          platform::format_size(core::file_size(decode_bytes)),
-				                                          platform::format_size(core::file_size(render::max_decode_bytes))));
+				core::log("files::decode_jpeg",
+				          std::format("decode of {} x {} needs {}, over the {} budget", frame.source_width,
+				                      frame.source_height, platform::format_size(core::file_size(decode_bytes)),
+				                      platform::format_size(core::file_size(render::max_decode_bytes))));
 				return {};
 			}
 
 			// The decoder reads the EXIF orientation by libfiles' one rule, the scan's and parse's.
-			const auto orientation = _orientation_override
-				                         ? *_orientation_override
-				                         : static_cast<core::orientation>(frame.orientation);
+			const auto orientation = _orientation_override ? *_orientation_override
+			                                               : static_cast<core::orientation>(frame.orientation);
 			const sizei dimensions{static_cast<int>(frame.width), static_cast<int>(frame.height)};
 			auto s = std::make_shared<core::surface>();
 
@@ -1619,10 +1547,7 @@ namespace
 			return {surface->pixels(), surface->stride()};
 		}
 
-		bool cancelled() override
-		{
-			return _token.is_cancelled();
-		}
+		bool cancelled() override { return _token.is_cancelled(); }
 	};
 }
 
@@ -1630,8 +1555,8 @@ namespace
 // flagged through is_yuv, because the GPU sampler resizes it at draw time. Without an
 // orientation_override, the orientation is the one the file's EXIF gives.
 core::surface_ptr files::decode_jpeg(const core::cspan data, const sizei target_extent, const bool can_use_yuv,
-                                   const std::optional<core::orientation> orientation_override, bool& is_yuv,
-                                   const core::cancel_token& token, const decode_intent intent)
+                                     const std::optional<core::orientation> orientation_override, bool& is_yuv,
+                                     const core::cancel_token& token, const decode_intent intent)
 {
 	is_yuv = false;
 
@@ -1644,7 +1569,7 @@ core::surface_ptr files::decode_jpeg(const core::cspan data, const sizei target_
 		options.target_width = static_cast<uint32_t>(std::max(0, target_extent.cx));
 		options.target_height = static_cast<uint32_t>(std::max(0, target_extent.cy));
 		options.allow_nv12 = can_use_yuv;
-		options.smooth_chroma = intent == decode_intent::display;
+		options.smooth_chroma = intent != decode_intent::thumbnail;
 
 		const auto result = _decoder.decode(r, sink, options);
 
@@ -1666,14 +1591,14 @@ core::surface_ptr files::decode_jpeg(const core::cspan data, const sizei target_
 }
 
 core::surface_ptr files_test_hooks::decode_jpeg(files& ff, const core::cspan data, const sizei target_extent,
-                                              const bool can_use_yuv, const decode_intent intent, bool& is_yuv)
+                                                const bool can_use_yuv, const decode_intent intent, bool& is_yuv)
 {
 	return ff.decode_jpeg(data, target_extent, can_use_yuv, {}, is_yuv, {}, intent);
 }
 
-int64_t files::estimate_decode_bytes(const sizei source_dimensions)
+int64_t files::estimate_decode_bytes(const sizei source_dimensions, const int bytes_per_pixel)
 {
-	return static_cast<int64_t>(source_dimensions.cx) * source_dimensions.cy * 4;
+	return static_cast<int64_t>(source_dimensions.cx) * source_dimensions.cy * bytes_per_pixel;
 }
 
 int64_t files::estimate_decode_bytes(const core::const_image_ptr& image, const sizei scale_hint)
@@ -1693,9 +1618,9 @@ int64_t files::estimate_decode_bytes(const core::const_image_ptr& image, const s
 	return pixels * 4;
 }
 
-bool files::exceeds_decode_budget(const sizei source_dimensions)
+bool files::exceeds_decode_budget(const sizei source_dimensions, const int bytes_per_pixel)
 {
-	return estimate_decode_bytes(source_dimensions) > render::max_decode_bytes;
+	return estimate_decode_bytes(source_dimensions, bytes_per_pixel) > render::max_decode_bytes;
 }
 
 bool files::exceeds_decode_budget(const core::const_image_ptr& image, const sizei scale_hint)
@@ -1704,25 +1629,26 @@ bool files::exceeds_decode_budget(const core::const_image_ptr& image, const size
 }
 
 bool reject_over_budget_source(load_diagnostic* const diagnostic, const sizei source_dimensions,
-                               const std::string_view format)
+                               const std::string_view format, const int bytes_per_pixel)
 {
 	if (diagnostic) diagnostic->source_dimensions = source_dimensions;
 
-	const auto bytes = files::estimate_decode_bytes(source_dimensions);
+	const auto bytes = files::estimate_decode_bytes(source_dimensions, bytes_per_pixel);
 
 	if (bytes <= render::max_decode_bytes) return false;
 
 	if (diagnostic) diagnostic->over_budget = true;
 
-	core::log(__FUNCTION__, std::format("{} {} x {} needs {} to decode, over the {} budget", format,
-	                                  source_dimensions.cx, source_dimensions.cy, platform::format_size(core::file_size(bytes)),
-	                                  platform::format_size(core::file_size(render::max_decode_bytes))));
+	core::log(__FUNCTION__,
+	          std::format("{} {} x {} needs {} to decode, over the {} budget", format, source_dimensions.cx,
+	                      source_dimensions.cy, platform::format_size(core::file_size(bytes)),
+	                      platform::format_size(core::file_size(render::max_decode_bytes))));
 	return true;
 }
 
 core::surface_ptr files::image_to_surface(const core::const_image_ptr& image, const sizei target_extent,
-                                        const bool can_use_yuv, const core::cancel_token& token,
-                                        const decode_intent intent)
+                                          const bool can_use_yuv, const core::cancel_token& token,
+                                          const decode_intent intent)
 {
 	core::surface_ptr surface_result;
 
@@ -1730,10 +1656,11 @@ core::surface_ptr files::image_to_surface(const core::const_image_ptr& image, co
 	// keeps a huge image from exhausting memory on whichever worker asked for it.
 	if (exceeds_decode_budget(image, target_extent))
 	{
-		core::log(__FUNCTION__, std::format("decode of {} x {} needs {}, over the {} budget",
-		                                  image->dimensions().cx, image->dimensions().cy,
-		                                  platform::format_size(core::file_size(estimate_decode_bytes(image, target_extent))),
-		                                  platform::format_size(core::file_size(render::max_decode_bytes))));
+		core::log(__FUNCTION__,
+		          std::format("decode of {} x {} needs {}, over the {} budget", image->dimensions().cx,
+		                      image->dimensions().cy,
+		                      platform::format_size(core::file_size(estimate_decode_bytes(image, target_extent))),
+		                      platform::format_size(core::file_size(render::max_decode_bytes))));
 		return surface_result;
 	}
 
@@ -1757,15 +1684,19 @@ core::surface_ptr files::image_to_surface(const core::const_image_ptr& image, co
 				{
 					// As above: only a decode bound for a texture keeps its native planar size.
 					surface_result = is_yuv && intent != decode_intent::thumbnail
-						                 ? std::move(decoded)
-						                 : fit_within(std::move(decoded), target_extent);
+					                     ? std::move(decoded)
+					                     : fit_within(std::move(decoded), target_extent);
 				}
 			}
 			else if (format == core::image_format::PNG)
 			{
 				try
 				{
-					auto loaded = load_png(image->data());
+					// Sixteen bits a channel cost twice the bytes, so an edit takes them only where the
+					// budget holds that.
+					const auto wide = intent == decode_intent::edit &&
+					                  estimate_decode_bytes(image, target_extent) * 2 <= render::max_decode_bytes;
+					auto loaded = load_png(image->data(), wide);
 
 					if (is_valid(loaded))
 					{
@@ -1814,7 +1745,7 @@ core::surface_ptr files::image_to_surface(const core::const_image_ptr& image, co
 }
 
 core::surface_ptr files::image_to_surface(const core::cspan image_buffer_in, const sizei target_extent,
-                                        const bool can_use_yuv, const decode_intent intent)
+                                          const bool can_use_yuv, const decode_intent intent)
 {
 	core::surface_ptr surface_result;
 
@@ -1932,8 +1863,8 @@ static bool build_phash_gray(const core::const_surface_ptr& surface, std::array<
 crypto::phash_rotations files::calc_perceptual_hash_rotations(const core::cspan encoded)
 {
 	constexpr auto decode_extent = 128;
-	return calc_perceptual_hash_rotations(image_to_surface(encoded, {decode_extent, decode_extent}, false,
-	                                                       decode_intent::thumbnail));
+	return calc_perceptual_hash_rotations(
+		image_to_surface(encoded, {decode_extent, decode_extent}, false, decode_intent::thumbnail));
 }
 
 uint64_t files::calc_perceptual_hash(const core::cspan encoded)
@@ -1941,19 +1872,17 @@ uint64_t files::calc_perceptual_hash(const core::cspan encoded)
 	// Decoded well above the hash extent so the reduction has real pixels to average, and still far
 	// enough below native size that a JPEG scales in the DCT domain rather than decoding in full.
 	constexpr auto decode_extent = 128;
-	return calc_perceptual_hash(image_to_surface(encoded, {decode_extent, decode_extent}, false,
-	                                             decode_intent::thumbnail));
+	return calc_perceptual_hash(
+		image_to_surface(encoded, {decode_extent, decode_extent}, false, decode_intent::thumbnail));
 }
 
 static uint64_t round_up_to_multiple(const uint64_t n, const uint64_t multiple)
 {
-	if (multiple == 0)
-		return n;
+	if (multiple == 0) return n;
 
 	const auto remainder = n % multiple;
 
-	if (remainder == 0)
-		return n;
+	if (remainder == 0) return n;
 
 	return n + multiple - remainder;
 }
@@ -2020,8 +1949,8 @@ void file_read_stream::load_buffer(const uint64_t pos, const size_t len)
 			// realloc returns null without freeing the original, so never assign
 			// the result directly - that would leak the existing buffer.
 			auto* const new_buffer = static_cast<uint8_t*>(_buffer == nullptr
-				                                               ? _aligned_malloc(new_buffer_size, 16)
-				                                               : _aligned_realloc(_buffer, new_buffer_size, 16));
+			                                                   ? _aligned_malloc(new_buffer_size, 16)
+			                                                   : _aligned_realloc(_buffer, new_buffer_size, 16));
 
 			if (!new_buffer)
 			{
@@ -2128,8 +2057,7 @@ file_read_stream::~file_read_stream()
 core::blob file_read_stream::read_all()
 {
 	// Parenthesised: the Windows max macro is in scope here.
-	if (_file_size > (std::numeric_limits<size_t>::max)())
-		throw app_exception("file too large to load"s);
+	if (_file_size > (std::numeric_limits<size_t>::max)()) throw app_exception("file too large to load"s);
 
 	// The size is the file's own claim, and the caller is about to hold all of it at once. Without
 	// the ceiling every other whole-file read observes, a scan of an arbitrarily large file
@@ -2139,7 +2067,7 @@ core::blob file_read_stream::read_all()
 	if (_file_size > core::max_blob_size)
 	{
 		core::log(__FUNCTION__, std::format("{} is too large to read whole ({})", _h->path(),
-		                                  platform::format_size(core::file_size(_file_size))));
+		                                    platform::format_size(core::file_size(_file_size))));
 		return {};
 	}
 
@@ -2249,8 +2177,8 @@ static core::image_ptr load_folder_art(const core::file_path path, const file_ty
 	}
 
 	static constexpr std::string_view album_names[] = {
-		"Folder.jpg", "folder.jpg", "Folder.png", "cover.jpg", "Cover.jpg", "cover.png", "front.jpg", "Front.jpg",
-		"AlbumArt.jpg",
+		"Folder.jpg", "folder.jpg", "Folder.png", "cover.jpg",    "Cover.jpg",
+		"cover.png",  "front.jpg",  "Front.jpg",  "AlbumArt.jpg",
 	};
 	static constexpr std::string_view film_names[] = {
 		"poster.jpg", "Poster.jpg", "poster.png", "folder.jpg", "Folder.jpg", "cover.jpg", "movie.jpg",
@@ -2258,7 +2186,8 @@ static core::image_ptr load_folder_art(const core::file_path path, const file_ty
 
 	core::image_ptr art;
 
-	for (const auto name : is_audio ? std::span<const std::string_view>(album_names) : std::span<const std::string_view>(film_names))
+	for (const auto name :
+	     is_audio ? std::span<const std::string_view>(album_names) : std::span<const std::string_view>(film_names))
 	{
 		art = read_folder_art_file(folder.combine_file(name));
 		if (art) break;
@@ -2281,11 +2210,9 @@ file_scan_result files::scan_file(const core::file_path path, const bool load_th
 {
 	// RAW goes through LibRaw, which opens by path itself, so a handle opened here would be a second
 	// open per file that nothing reads.
-	auto f = ft->has_trait(file_traits::raw)
-		         ? platform::file_ptr{}
-		         : open_file(path, platform::file_open_mode::read);
+	auto f = ft->has_trait(file_traits::raw) ? platform::file_ptr{} : open_file(path, platform::file_open_mode::read);
 
-	return scan_file(std::move(f), path, load_thumb, ft, xmp_sidecar, max_thumb_size, intent, want_image);
+	return scan_file(f, path, load_thumb, ft, xmp_sidecar, max_thumb_size, intent, want_image);
 }
 
 // Overload that scans an ALREADY-OPEN file. Used after replace_file hands back the still-open,
@@ -2293,7 +2220,7 @@ file_scan_result files::scan_file(const core::file_path path, const bool load_th
 // instead of a fresh (possibly stale over SMB) by-name open. Note: the RAW branch (scan_raw) and
 // the XMP sidecar are still read BY PATH - the handle only covers the primary media stream, and is
 // null for RAW.
-file_scan_result files::scan_file(platform::file_ptr f, const core::file_path path, const bool load_thumb,
+file_scan_result files::scan_file(const platform::file_ptr& f, const core::file_path path, const bool load_thumb,
                                   const file_type_ref ft, const std::string_view xmp_sidecar,
                                   const sizei max_thumb_size, const libfiles::scan_intent intent, const bool want_image)
 {
@@ -2339,8 +2266,8 @@ file_scan_result files::scan_file(platform::file_ptr f, const core::file_path pa
 
 					// load_image_file re-parses the file and copies it, so it is worth it only to something
 					// that will draw or store the result.
-					if ((load_thumb || want_image) &&
-						data.size() >= sizeof(pack128) && is_image_format(libfiles::detect_image_format(stream.peek128(0))))
+					if ((load_thumb || want_image) && data.size() >= sizeof(pack128) &&
+					    is_image_format(libfiles::detect_image_format(stream.peek128(0))))
 					{
 						result.thumbnail_image = load_image_file(data);
 						// The same object: these bytes are the whole file, so a display that wants the
@@ -2376,7 +2303,7 @@ file_scan_result files::scan_file(platform::file_ptr f, const core::file_path pa
 						if (load_from_mem && file_len > core::max_blob_size)
 						{
 							core::log(__FUNCTION__, std::format("{} is too large to thumbnail ({})", path.name(),
-							                                  platform::format_size(core::file_size(file_len))));
+							                                    platform::format_size(core::file_size(file_len))));
 							result = scan_photo(stream, intent, false, this);
 						}
 						else
@@ -2409,10 +2336,9 @@ file_scan_result files::scan_file(platform::file_ptr f, const core::file_path pa
 
 					// An inspect scan reports the file's structure, so it is never held to the metadata budget.
 					const auto open_intent = load_thumb
-						                         ? media_intent::thumbnail
-						                         : (intent == libfiles::scan_intent::index
-							                            ? media_intent::metadata
-							                            : media_intent::playback);
+					                             ? media_intent::thumbnail
+					                             : (intent == libfiles::scan_intent::index ? media_intent::metadata
+					                                                                       : media_intent::playback);
 
 					if (decoder.open(f, path, open_intent))
 					{
@@ -2514,8 +2440,7 @@ core::image_ptr load_image_file(core::cspan file)
 	return result;
 }
 
-
-file_load_result files::load(const core::file_path path, const bool can_load_preview)
+file_load_result files::load(const core::file_path path, const bool can_load_preview, const decode_intent intent)
 {
 	df::last_loaded_path.store(path, std::memory_order_relaxed);
 	core::bump(df::file_perf.loads);
@@ -2534,7 +2459,7 @@ file_load_result files::load(const core::file_path path, const bool can_load_pre
 		{
 			if (mt->has_trait(file_traits::raw))
 			{
-				result = load_raw(path, can_load_preview);
+				result = load_raw(path, can_load_preview, intent == decode_intent::edit);
 			}
 			else
 			{
@@ -2546,7 +2471,7 @@ file_load_result files::load(const core::file_path path, const bool can_load_pre
 				if (attributes.size > static_cast<uint64_t>(core::max_blob_size))
 				{
 					core::log(__FUNCTION__, std::format("{} is too large to load ({})", path.name(),
-					                                  platform::format_size(core::file_size(attributes.size))));
+					                                    platform::format_size(core::file_size(attributes.size))));
 					result.reason = file_load_result::failure::too_large;
 					return result;
 				}
@@ -2587,12 +2512,11 @@ file_load_result files::load(const core::file_path path, const bool can_load_pre
 								// size in the diagnostic, not the one that makes the budget safe. That gate is
 								// inside av_decode_still, which sees every source this reaches.
 								const auto scanned = scan_photo(stream);
-								const sizei scanned_dimensions{
-									static_cast<int>(scanned.width), static_cast<int>(scanned.height)
-								};
+								const sizei scanned_dimensions{static_cast<int>(scanned.width),
+								                               static_cast<int>(scanned.height)};
 
 								if (scanned_dimensions.is_empty() ||
-									!reject_over_budget_source(&diagnostic, scanned_dimensions, "image"))
+								    !reject_over_budget_source(&diagnostic, scanned_dimensions, "image"))
 								{
 									result.s = av_decode_still(file, {}, path.extension(), &diagnostic);
 								}
@@ -2603,9 +2527,8 @@ file_load_result files::load(const core::file_path path, const bool can_load_pre
 							if (!result.success)
 							{
 								result.source_dimensions = diagnostic.source_dimensions;
-								result.reason = diagnostic.over_budget
-									                ? file_load_result::failure::too_large
-									                : file_load_result::failure::unreadable;
+								result.reason = diagnostic.over_budget ? file_load_result::failure::too_large
+								                                       : file_load_result::failure::unreadable;
 							}
 						}
 					}
@@ -2647,23 +2570,13 @@ static simple_transform angle_to_transform(const int a)
 	return core::simple_transform::none;
 }
 
-
 core::image_format extension_to_format(const std::string_view ext)
 {
-	static const core::hash_map<std::string_view, core::image_format, core::ihash, core::ieq> extensions =
-	{
-		{".jpg", core::image_format::JPEG},
-		{".jpeg", core::image_format::JPEG},
-		{".jpe", core::image_format::JPEG},
-		{".png", core::image_format::PNG},
-		{".webp", core::image_format::WEBP},
-		{".jxl", core::image_format::JXL},
-		{"jpg", core::image_format::JPEG},
-		{"jpeg", core::image_format::JPEG},
-		{"jpe", core::image_format::JPEG},
-		{"png", core::image_format::PNG},
-		{"webp", core::image_format::WEBP},
-		{"jxl", core::image_format::JXL},
+	static const core::hash_map<std::string_view, core::image_format, core::ihash, core::ieq> extensions = {
+		{".jpg", core::image_format::JPEG}, {".jpeg", core::image_format::JPEG}, {".jpe", core::image_format::JPEG},
+		{".png", core::image_format::PNG},  {".webp", core::image_format::WEBP}, {".jxl", core::image_format::JXL},
+		{"jpg", core::image_format::JPEG},  {"jpeg", core::image_format::JPEG},  {"jpe", core::image_format::JPEG},
+		{"png", core::image_format::PNG},   {"webp", core::image_format::WEBP},  {"jxl", core::image_format::JXL},
 	};
 
 	const auto found = extensions.find(ext);
@@ -2677,7 +2590,7 @@ core::image_format extension_to_format(const std::string_view ext)
 }
 
 core::image_ptr save_surface(const core::image_format& format, const core::const_surface_ptr& surface,
-                           const libfiles::metadata_blocks& metadata, const file_encode_params& params)
+                             const libfiles::metadata_blocks& metadata, const file_encode_params& params)
 {
 	if (format == core::image_format::JPEG)
 	{
@@ -2724,7 +2637,7 @@ static libfiles::metadata_blocks upright_save_metadata(const libfiles::metadata_
 // so it is the orientation the file ends with: the edit's, else the EXIF's carried over, which is where
 // the other formats keep it, else the surface's, which they write when there is no EXIF.
 static core::orientation written_orientation(const metadata_edits& edits, const libfiles::metadata_blocks& metadata,
-                                           const core::const_surface_ptr& surface)
+                                             const core::const_surface_ptr& surface)
 {
 	if (edits.orientation.has_value() && *edits.orientation != core::orientation::none) return *edits.orientation;
 
@@ -2733,20 +2646,18 @@ static core::orientation written_orientation(const metadata_edits& edits, const 
 		const auto skip = is_exif_signature(metadata.exif) ? exif_signature.size() : 0u;
 		const auto summary = libfiles::summarize_exif({metadata.exif.data() + skip, metadata.exif.size() - skip});
 		return summary.orientation && *summary.orientation >= 1 && *summary.orientation <= 8
-			       ? static_cast<core::orientation>(*summary.orientation)
-			       : core::orientation::top_left;
+		           ? static_cast<core::orientation>(*summary.orientation)
+		           : core::orientation::top_left;
 	}
 
 	return surface->orientation();
 }
 
-
 platform::file_op_result files::update_impl(const core::file_path path_src, const core::file_path path_dst,
                                             const metadata_edits& metadata_edits, const image_edits& photo_edits,
                                             const file_encode_params& params, const bool create_original,
                                             const std::string_view src_xmp_name, const std::string_view dst_xmp_name,
-                                            const file_update_publish& publish,
-                                            bool* const live_file_maybe_changed)
+                                            const file_update_publish& publish, bool* const live_file_maybe_changed)
 {
 	platform::file_op_result result = {platform::file_op_result_code::OK};
 
@@ -2770,9 +2681,8 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 
 	// The sidecar the user actually keeps. Nothing writes to it until the media swap below has
 	// succeeded; the update stages its own copy beside whichever file is being written.
-	const auto path_dst_xmp = dst_xmp_name.empty()
-		                          ? path_dst.extension(".xmp")
-		                          : path_dst.folder().combine_file(dst_xmp_name);
+	const auto path_dst_xmp = dst_xmp_name.empty() ? path_dst.extension(".xmp")
+	                                               : path_dst.folder().combine_file(dst_xmp_name);
 
 	try
 	{
@@ -2823,7 +2733,7 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 		// staged below. A save-as or a pixel edit has to produce a second file, and a backup needs the
 		// prior bytes, so none of them is a patch.
 		const auto may_patch = !path_change && !has_photo_edits && !create_original && !in_sidecar &&
-			mt->has_trait(file_traits::in_place_metadata);
+		                       mt->has_trait(file_traits::in_place_metadata);
 
 		if (may_patch)
 		{
@@ -2847,8 +2757,7 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 				// that already wrote part of it must not run again over its own half-finished work.
 				const auto after_attempt = platform::file_attributes(path_dst);
 
-				if (after_attempt.modified != before_attempt.modified ||
-					after_attempt.size != before_attempt.size)
+				if (after_attempt.modified != before_attempt.modified || after_attempt.size != before_attempt.size)
 				{
 					if (live_file_maybe_changed) *live_file_maybe_changed = true;
 					throw;
@@ -2889,8 +2798,8 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 			// Staged like every other write: the live sidecar is replaced only once the new one is
 			// complete on disk. Told where the metadata lives, so a sidecar removed since it was asked
 			// cannot send the edit into the live file.
-			const auto staged = metadata_xmp::update(path_dst, path_src, metadata_edits, src_xmp_name,
-			                                         path_temp_xmp, in_sidecar);
+			const auto staged = metadata_xmp::update(path_dst, path_src, metadata_edits, src_xmp_name, path_temp_xmp,
+			                                         in_sidecar);
 			result = platform::replace_file(path_dst_xmp, staged.xmp_path, false);
 			committed = result.success();
 
@@ -2909,11 +2818,13 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 		// would only uncompress it, or be refused in one whose JPEG it keeps has no room for the packet as
 		// it is written now.
 		const auto copied_as_is = !has_photo_edits && !metadata_edits.has_changes() &&
-			extension_to_format(path_dst.extension()) == core::image_format::JXL;
+		                          extension_to_format(path_dst.extension()) == core::image_format::JXL;
 
 		if (has_photo_edits)
 		{
-			const auto loaded = load(path_src, false);
+			// At the precision the source holds, so the edits are worked at it and rounded once, by the
+			// encoder of the format saved.
+			const auto loaded = load(path_src, false, decode_intent::edit);
 
 			if (!loaded.success)
 			{
@@ -2930,12 +2841,20 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 				core::blob transformed;
 				auto rotate_over_budget = false;
 
-				if (jpeg_to_jpeg && !reencode && photo_edits.is_no_loss(dimensions_in) && params.jpeg_save_quality >= 75)
+				if (jpeg_to_jpeg && !reencode && photo_edits.is_no_loss(dimensions_in) &&
+				    params.jpeg_save_quality >= 75)
 				{
+					const auto turn = angle_to_transform(core::round(photo_edits.rotation_angle()));
+
 					// Empty when the rotation would not be lossless, which the re-encode below handles.
-					transformed = turn_jpeg_losslessly(_jpeg_transformer, _jpeg_encoder, loaded.i->data(),
-					                                   angle_to_transform(core::round(photo_edits.rotation_angle())),
+					transformed = turn_jpeg_losslessly(_jpeg_transformer, _jpeg_encoder, loaded.i->data(), turn,
 					                                   &rotate_over_budget);
+
+					if (!transformed.empty())
+					{
+						transformed = with_edited_gain_map(transformed, loaded.i->data(), photo_edits, dimensions_in,
+						                                   turn);
+					}
 				}
 
 				if (rotate_over_budget)
@@ -2959,10 +2878,9 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 				}
 				else
 				{
-					const auto surface_in = loaded.to_surface();
-					const auto temp_surface = is_empty(surface_in)
-						                          ? core::const_surface_ptr{}
-						                          : apply_image_edits(surface_in, photo_edits);
+					const auto surface_in = loaded.to_surface({}, false, {}, decode_intent::edit);
+					const auto temp_surface = is_empty(surface_in) ? core::const_surface_ptr{}
+					                                               : apply_image_edits(surface_in, photo_edits);
 
 					if (is_empty(temp_surface))
 					{
@@ -2981,7 +2899,8 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 						const auto& source_meta = scan_result.save_metadata(save_meta);
 						libfiles::metadata_blocks upright_meta;
 						const auto reset_orientation = metadata_edits.orientation.has_value() &&
-							*metadata_edits.orientation == core::orientation::top_left && !source_meta.exif.empty();
+						                               *metadata_edits.orientation == core::orientation::top_left &&
+						                               !source_meta.exif.empty();
 						if (reset_orientation)
 						{
 							upright_meta = upright_save_metadata(source_meta, temp_surface->dimensions());
@@ -3009,10 +2928,21 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 							staged_with_edit = true;
 						}
 
-						const auto saved = encodes_packet
-							                   ? save_jxl(temp_surface, packet_meta, encode_params,
-							                              written_orientation(metadata_edits, encode_meta, temp_surface))
-							                   : save_surface(save_format, temp_surface, encode_meta, encode_params);
+						auto saved = encodes_packet
+						                 ? save_jxl(temp_surface, packet_meta, encode_params,
+						                            written_orientation(metadata_edits, encode_meta, temp_surface))
+						                 : save_surface(save_format, temp_surface, encode_meta, encode_params);
+
+						// A JPEG keeps its gain map, so the photo still shows in HDR where it did.
+						if (jpeg_to_jpeg && !is_empty(saved))
+						{
+							saved = std::make_shared<core::image>(with_edited_gain_map(saved->data(), loaded.i->data(),
+							                                                           photo_edits,
+							                                                           surface_in->dimensions(),
+							                                                           simple_transform::none),
+							                                      saved->dimensions(), core::image_format::JPEG,
+							                                      saved->orientation());
+						}
 
 						if (is_empty(saved))
 						{
@@ -3046,8 +2976,8 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 			// source when the edit moves what the file holds, where a copy would then be rewritten in
 			// full. Anything else is copied, and updated below.
 			const auto staged = copied_as_is
-				                    ? std::nullopt
-				                    : metadata_xmp::stage_update(path_temp, path_src, metadata_edits, src_xmp_name);
+			                        ? std::nullopt
+			                        : metadata_xmp::stage_update(path_temp, path_src, metadata_edits, src_xmp_name);
 
 			if (staged)
 			{
@@ -3099,8 +3029,8 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 				{
 					result = platform::replace_file(path_dst, path_temp, create_original,
 					                                publish.require_unchanged_destination
-						                                ? std::optional{publish.destination_attributes}
-						                                : std::optional<platform::file_attributes_t>{});
+					                                    ? std::optional{publish.destination_attributes}
+					                                    : std::optional<platform::file_attributes_t>{});
 				}
 			}
 
@@ -3114,8 +3044,8 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 
 				const auto path_temp_xmp = xmp_result.xmp_path;
 				const auto xmp_replace = publish.fail_if_exists
-					                         ? platform::move_file(path_temp_xmp, path_dst_xmp, true)
-					                         : platform::replace_file(path_dst_xmp, path_temp_xmp, create_original);
+				                             ? platform::move_file(path_temp_xmp, path_dst_xmp, true)
+				                             : platform::replace_file(path_dst_xmp, path_temp_xmp, create_original);
 
 				if (xmp_replace.failed())
 				{
@@ -3134,7 +3064,7 @@ platform::file_op_result files::update_impl(const core::file_path path_src, cons
 						if (rollback_holds_sole_original)
 						{
 							core::log(__FUNCTION__, std::format("could not restore {}; original retained as {}",
-							                                  path_dst, path_rollback));
+							                                    path_dst, path_rollback));
 						}
 					}
 					else
@@ -3210,18 +3140,16 @@ file_update_result files::update(const core::file_path path_src, const core::fil
 
 		if (xmp_sidecar.empty())
 		{
-			const auto path_xmp = dst_xmp_name.empty()
-				                      ? path_dst.extension(".xmp")
-				                      : path_dst.folder().combine_file(dst_xmp_name);
+			const auto path_xmp = dst_xmp_name.empty() ? path_dst.extension(".xmp")
+			                                           : path_dst.folder().combine_file(dst_xmp_name);
 			if (platform::exists(path_xmp)) xmp_sidecar = path_xmp.name();
 		}
 
 		result.coherent = handle != nullptr;
-		result.scan = handle
-			              ? scan_file(handle, path_dst, rescan.load_thumbnail, rescan.file_type, xmp_sidecar,
-			                          rescan.max_thumb_size, rescan.intent, rescan.want_image)
-			              : scan_file(path_dst, rescan.load_thumbnail, rescan.file_type, xmp_sidecar,
-			                          rescan.max_thumb_size, rescan.intent, rescan.want_image);
+		result.scan = handle ? scan_file(handle, path_dst, rescan.load_thumbnail, rescan.file_type, xmp_sidecar,
+		                                 rescan.max_thumb_size, rescan.intent, rescan.want_image)
+		                     : scan_file(path_dst, rescan.load_thumbnail, rescan.file_type, xmp_sidecar,
+		                                 rescan.max_thumb_size, rescan.intent, rescan.want_image);
 		result.scanned = result.scan.success;
 
 		// Hand the display the bytes that were just written, so nothing reads the file back to draw
@@ -3247,25 +3175,28 @@ file_update_result files::update(const core::file_path path_src, const core::fil
 // in more than their character type: the wide one is what carries the \\?\ prefix a long Windows
 // path needs, while a POSIX path is bytes all the way down and has no wide form to convert to.
 // Overloading on platform::native_path lets the call site stay free of a conditional.
-static int archive_read_open_native(archive* a, const std::wstring& path, const size_t block_size)
+[[maybe_unused]] static int archive_read_open_native(archive* a, const std::wstring& path, const size_t block_size)
 {
 	return archive_read_open_filename_w(a, path.c_str(), block_size);
 }
 
-static int archive_read_open_native(archive* a, const std::string& path, const size_t block_size)
+[[maybe_unused]] static int archive_read_open_native(archive* a, const std::string& path, const size_t block_size)
 {
 	return archive_read_open_filename(a, path.c_str(), block_size);
 }
 
-static core::date_t archive_entry_created(archive_entry* entry)
+// When an entry was last changed: what a zip records for each, and what a tar or 7z records beside the rest.
+// The change time stands in only for an archive that keeps nothing else.
+static core::date_t archive_entry_modified(archive_entry* entry)
 {
-	if (!archive_entry_ctime_is_set(entry)) return {};
-	const auto seconds = static_cast<int64_t>(archive_entry_ctime(entry));
-	const auto nanos = archive_entry_ctime_nsec(entry);
+	const auto has_mtime = archive_entry_mtime_is_set(entry) != 0;
+	if (!has_mtime && !archive_entry_ctime_is_set(entry)) return {};
+	const auto seconds = static_cast<int64_t>(has_mtime ? archive_entry_mtime(entry) : archive_entry_ctime(entry));
+	const auto nanos = has_mtime ? archive_entry_mtime_nsec(entry) : archive_entry_ctime_nsec(entry);
 	constexpr auto ticks = core::date_t::intervals_per_second;
 	constexpr auto epoch_seconds = static_cast<int64_t>(core::date_t::offset_1970 / ticks);
 	if (nanos < 0 || nanos >= 1000000000 || seconds < -epoch_seconds ||
-		seconds > static_cast<int64_t>((UINT64_MAX - 9999999) / ticks) - epoch_seconds)
+	    seconds > static_cast<int64_t>((UINT64_MAX - 9999999) / ticks) - epoch_seconds)
 	{
 		core::log_once(__FUNCTION__, "Archive timestamp is outside the supported range");
 		return {};
@@ -3278,8 +3209,7 @@ std::vector<archive_item> files::list_archive(const core::file_path zip_file_pat
 	std::vector<archive_item> results;
 	auto* const a = archive_read_new();
 
-	if (!a)
-		return results;
+	if (!a) return results;
 
 	// Entries are attacker-controlled; a crafted archive can declare millions of them.
 	constexpr size_t max_entries = 100 * 1000;
@@ -3319,13 +3249,12 @@ std::vector<archive_item> files::list_archive(const core::file_path zip_file_pat
 			// in older zip/rar archives using a local code page.
 			const auto* const pathname = archive_entry_pathname_utf8(entry);
 
-			if (!pathname)
-				continue;
+			if (!pathname) continue;
 
 			archive_item result_info;
 			result_info.filename = core::utf8_cast(pathname);
 			result_info.uncompressed_size = core::file_size(archive_entry_size(entry));
-			result_info.created = archive_entry_created(entry);
+			result_info.modified = archive_entry_modified(entry);
 			results.emplace_back(std::move(result_info));
 		}
 	}
@@ -3343,17 +3272,18 @@ bool language_matches_ui(const std::string_view iso639, const std::string_view u
 		std::string_view iso3;
 	};
 	static constexpr lang_map map[] = {
+		// clang-format off
 		{"en", "eng"}, {"de", "deu"}, {"de", "ger"}, {"cs", "ces"}, {"cs", "cze"},
 		{"es", "spa"}, {"fr", "fra"}, {"fr", "fre"}, {"it", "ita"}, {"ja", "jpn"},
 		{"ko", "kor"}, {"pl", "pol"}, {"pt", "por"}, {"ru", "rus"}, {"tr", "tur"},
 		{"uk", "ukr"}, {"zh", "zho"}, {"zh", "chi"}, {"nl", "nld"}, {"nl", "dut"},
 		{"br", "bre"}, {"lv", "lav"}, {"sr", "srp"}, {"sr", "scc"},
+		// clang-format on
 	};
 
 	for (const auto& m : map)
 	{
-		if (core::icmp(ui_language, m.ui2) == 0 && core::icmp(iso639, m.iso3) == 0)
-			return true;
+		if (core::icmp(ui_language, m.ui2) == 0 && core::icmp(iso639, m.iso3) == 0) return true;
 	}
 
 	return false;
@@ -3379,7 +3309,10 @@ static std::pair<std::string_view, std::string_view> split_language_suffix(const
 	if (key.size() <= code_size + 1 || key[key.size() - code_size - 1] != '-') return {key, {}};
 
 	const auto code = key.substr(key.size() - code_size);
-	const auto is_letter = [](const char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); };
+	const auto is_letter = [](const char c)
+	{
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+	};
 	if (!std::ranges::all_of(code, is_letter)) return {key, {}};
 
 	return {key.substr(0, key.size() - code_size - 1), code};
@@ -3429,10 +3362,8 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 	for (const auto& kv : ffmpeg_metadata)
 	{
 		const auto [base_key, language] = split_language_suffix(kv.key);
-		const auto text = std::ranges::find_if(text_keys, [base_key](const text_key& t)
-		{
-			return is_key(base_key, t.key);
-		});
+		const auto text = std::ranges::find_if(text_keys,
+		                                       [base_key](const text_key& t) { return is_key(base_key, t.key); });
 
 		if (text != std::ranges::end(text_keys))
 		{
@@ -3452,11 +3383,9 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 		if (is_key(kv.key, "comment") || core::starts(kv.key, "comment-") || is_key(base_key, "comment"))
 		{
 			// Pick the best single comment: plain/untagged > current UI language > any other.
-			const auto priority = is_key(kv.key, "comment")
-				                      ? 3
-				                      : comment_key_matches_ui_language(kv.key, ui_lang)
-				                      ? 2
-				                      : 1;
+			const auto priority = is_key(kv.key, "comment")                          ? 3
+			                      : comment_key_matches_ui_language(kv.key, ui_lang) ? 2
+			                                                                         : 1;
 
 			if (priority > comment_priority)
 			{
@@ -3464,8 +3393,8 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 				result.comment = core::strip_and_cache(kv.value);
 			}
 		}
-		else if (is_key(kv.key, "creation_time") || is_key(kv.key, "date") || is_key(
-			kv.key, "com.apple.quicktime.creationdate"))
+		else if (is_key(kv.key, "creation_time") || is_key(kv.key, "date") ||
+		         is_key(kv.key, "com.apple.quicktime.creationdate"))
 		{
 			if (kv.value.size() == 4 || core::ends(kv.value, "00-00"))
 			{
@@ -3473,7 +3402,7 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 
 				if (year > 1800 && year < 2100)
 				{
-					result.year = year;
+					result.year = static_cast<uint16_t>(year);
 				}
 			}
 			else
@@ -3483,7 +3412,7 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 				if (date.is_valid())
 				{
 					result.dates.add_utc(prop::date_source::container_created, date);
-					result.year = date.year();
+					result.year = static_cast<uint16_t>(date.year());
 				}
 			}
 		}
@@ -3501,8 +3430,8 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 		// TDOR is the recording's own release date, which for a rip is decades before the file. It
 		// is a wall-clock reading rather than an instant: nobody wrote a zone for 1969. TORY is the
 		// same fact in ID3v2.3, and FFmpeg passes both through under their raw four-character name.
-		else if (is_key(kv.key, "TDOR") || is_key(kv.key, "TORY") ||
-			is_key(kv.key, "originalyear") || is_key(kv.key, "original_year"))
+		else if (is_key(kv.key, "TDOR") || is_key(kv.key, "TORY") || is_key(kv.key, "originalyear") ||
+		         is_key(kv.key, "original_year"))
 		{
 			const auto date = core::date_t::from(kv.value);
 			if (date.is_valid())
@@ -3512,8 +3441,8 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 			else if (kv.value.size() == 4 && core::is_num(kv.value))
 			{
 				const auto year = core::to_int(kv.value);
-				if (year > 1800 && year < 2100) result.dates.add(prop::date_source::id3_original_release,
-				                                                core::date_t(year, 1, 1, 0, 0, 0));
+				if (year > 1800 && year < 2100)
+					result.dates.add(prop::date_source::id3_original_release, core::date_t(year, 1, 1, 0, 0, 0));
 			}
 		}
 		else if (is_key(kv.key, "maker") || is_key(kv.key, "make") || is_key(kv.key, "com.apple.quicktime.make"))
@@ -3521,20 +3450,17 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 			// AVI normalises to "maker", MP4/MOV to "make"; both mean camera manufacturer.
 			result.camera_manufacturer = core::strip_and_cache(kv.value);
 		}
-		else if (is_key(kv.key, "model") || is_key(kv.key, "com.apple.quicktime.model") || is_key(
-			kv.key, "model-eng"))
+		else if (is_key(kv.key, "model") || is_key(kv.key, "com.apple.quicktime.model") || is_key(kv.key, "model-eng"))
 		{
 			result.camera_model = core::strip_and_cache(kv.value);
 		}
-		else if (is_key(kv.key, "year")) result.year = core::to_int(kv.value);
+		else if (is_key(kv.key, "year")) result.year = static_cast<uint16_t>(core::to_int(kv.value));
 		else if (is_key(kv.key, "disk") || is_key(kv.key, "disc")) result.disk = core::xy8::parse(kv.value);
 		else if (is_key(kv.key, "track")) result.track = core::xy8::parse(kv.value);
 		else if (is_key(kv.key, "variant_bitrate")) result.bitrate = core::strip_and_cache(kv.value);
 		else if (is_key(kv.key, "episode_sort")) result.episode = core::xy8::parse(kv.value);
-		else if (is_key(kv.key, "season_number")) result.season = core::to_int(kv.value);
-		else if (is_key(kv.key, "song") && prop::is_null(result.title))
-			result.title =
-				core::strip_and_cache(kv.value);
+		else if (is_key(kv.key, "season_number")) result.season = static_cast<uint16_t>(core::to_int(kv.value));
+		else if (is_key(kv.key, "song") && prop::is_null(result.title)) result.title = core::strip_and_cache(kv.value);
 		else if (is_key(kv.key, "compatible_brands") || is_key(kv.key, "minor_version"))
 		{
 			// compatible_brands: 3gp4, avc1isom, isomavc1, isomiso2avc1mp41, isomiso2mp41, isommp42, M4A mp42isom, mp41isom, mp42mp41isomavc1, qt
@@ -3542,7 +3468,7 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 		}
 		else if (is_key(kv.key, "rating"))
 		{
-			result.rating = std::clamp(core::to_int(kv.value), 0, 5);
+			result.rating = static_cast<int16_t>(std::clamp(core::to_int(kv.value), 0, 5));
 		}
 		else if (is_key(kv.key, "WM/SharedUserRating"))
 		{
@@ -3550,27 +3476,22 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 			// Diffractor's 0-5 stars. A corresponding XMP property, when present, is
 			// parsed afterwards and remains authoritative.
 			const auto r = core::to_int(kv.value);
-			if (r > 0)
-				result.rating = (r <= 12) ? 1 : (r <= 37) ? 2 : (r <= 62) ? 3 : (r <= 87) ? 4 : 5;
+			if (r > 0) result.rating = (r <= 12) ? 1 : (r <= 37) ? 2 : (r <= 62) ? 3 : (r <= 87) ? 4 : 5;
 		}
 		else if (is_key(kv.key, "keywords"))
 		{
-			core::split2(kv.value, true, [this](const std::string_view text)
-			{
-				keywords.emplace_back(core::cache(text));
-			});
+			core::split2(kv.value, true,
+			             [this](const std::string_view text) { keywords.emplace_back(core::cache(text)); });
 		}
 		else if (is_key(kv.key, "WM/Category"))
 		{
 			// Windows Explorer / Media Player tags (MP4 'Xtra' atom, ASF 'WM/*').
 			// Values are ';'-delimited and may contain spaces, so split only on ';'.
 			core::split2(kv.value, true, [this](const std::string_view text)
-			            {
-				            windows_categories.emplace_back(core::cache(core::trim(text)));
-			            }, [](const char c) { return c == ';'; });
+			{ windows_categories.emplace_back(core::cache(core::trim(text))); }, [](const char c) { return c == ';'; });
 		}
-		else if (is_key(kv.key, "location-eng") || is_key(kv.key, "location") || is_key(
-			kv.key, "com.apple.quicktime.location.ISO6709"))
+		else if (is_key(kv.key, "location-eng") || is_key(kv.key, "location") ||
+		         is_key(kv.key, "com.apple.quicktime.location.ISO6709"))
 		{
 			const auto loc = split_location(kv.value);
 
@@ -3587,9 +3508,7 @@ void file_scan_result::parse_metadata_ffmpeg_kv(prop::item_metadata& result) con
 
 const libfiles::metadata_blocks& file_scan_result::save_metadata(libfiles::metadata_blocks& fallback) const
 {
-	if (metadata.exif.empty() &&
-		metadata.iptc.empty() &&
-		metadata.xmp.empty())
+	if (metadata.exif.empty() && metadata.iptc.empty() && metadata.xmp.empty())
 	{
 		const auto exif = metadata_exif::make_exif(to_props());
 		fallback.exif.assign(exif.begin(), exif.end());
@@ -3644,11 +3563,9 @@ static void add_dated(prop::item_metadata& md, const libfiles::dated& d)
 	if (!value.date(core::day_t{w.year, w.month, w.day, w.hour, w.minute, w.second})) return;
 	if (w.nanoseconds != 0) value = core::date_t(value.to_int64() + static_cast<uint64_t>(w.nanoseconds / 100));
 
-	const auto offset = w.zone == libfiles::date::time_zone::utc
-		                    ? prop::date_pack::utc_instant
-		                    : w.zone == libfiles::date::time_zone::offset
-		                    ? static_cast<int16_t>(w.offset_minutes)
-		                    : prop::date_pack::no_offset;
+	const auto offset = w.zone == libfiles::date::time_zone::utc      ? prop::date_pack::utc_instant
+	                    : w.zone == libfiles::date::time_zone::offset ? static_cast<int16_t>(w.offset_minutes)
+	                                                                  : prop::date_pack::no_offset;
 	md.dates.add(date_source_of(d.source), value, offset);
 }
 
@@ -3686,7 +3603,8 @@ void apply_properties(prop::item_metadata& md, const libfiles::properties& p)
 	text(md.label, p.label, property::label);
 	text(md.raw_file_name, p.raw_file_name, property::raw_file_name);
 
-	if (p.states(property::comments)) md.comment = p.comments.empty() ? core::cached{} : core::cache(p.comments.front().text);
+	if (p.states(property::comments))
+		md.comment = p.comments.empty() ? core::cached{} : core::cache(p.comments.front().text);
 	if (p.states(property::creators)) md.copyright_creator = core::cache(core::combine(p.creators));
 	// A tag of more than one word is quoted, so the item's tags split back into what the file named.
 	if (p.states(property::keywords)) md.tags = core::cache(core::combine(p.keywords));
@@ -3704,7 +3622,8 @@ void apply_properties(prop::item_metadata& md, const libfiles::properties& p)
 	if (p.states(property::iso_speed)) md.iso_speed = static_cast<uint16_t>(p.iso_speed);
 	if (p.states(property::altitude) && p.altitude) md.altitude = static_cast<float>(*p.altitude);
 	if (p.states(property::speed)) md.gps_speed = static_cast<float>(p.speed);
-	if (p.states(property::orientation) && p.orientation) md.orientation = static_cast<core::orientation>(*p.orientation);
+	if (p.states(property::orientation) && p.orientation)
+		md.orientation = static_cast<core::orientation>(*p.orientation);
 	if (p.states(property::panorama)) md.panorama = panorama_of(p.panorama);
 
 	// A position the index cannot hold pins the item nowhere rather than somewhere wrong.
@@ -3725,7 +3644,8 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 	libfiles::properties blocks;
 	if (tiff_metadata) blocks = libfiles::properties_from_exif(*tiff_metadata);
 	else if (!metadata.exif.empty()) blocks = libfiles::properties_from_exif(libfiles::read_exif(metadata.exif));
-	if (!metadata.iptc.empty()) libfiles::overlay(blocks, libfiles::properties_from_iptc(libfiles::read_iptc(metadata.iptc)));
+	if (!metadata.iptc.empty())
+		libfiles::overlay(blocks, libfiles::properties_from_iptc(libfiles::read_iptc(metadata.iptc)));
 	apply_properties(*result, blocks);
 
 	if (!ffmpeg_metadata.empty())
@@ -3768,9 +3688,9 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 	if (prop::is_null(result->video_codec)) result->video_codec = video_codec;
 	if (prop::is_null(result->copyright_notice)) result->copyright_notice = copyright_notice;
 	if (prop::is_null(result->title)) result->title = title;
-	if (prop::is_null(result->duration)) result->duration = core::round(duration);
+	if (prop::is_null(result->duration)) result->duration = static_cast<uint16_t>(core::round(duration));
 	if (prop::is_null(result->audio_codec)) result->audio_codec = audio_codec;
-	if (prop::is_null(result->audio_channels)) result->audio_channels = audio_channels;
+	if (prop::is_null(result->audio_channels)) result->audio_channels = static_cast<uint16_t>(audio_channels);
 	if (prop::is_null(result->audio_sample_type)) result->audio_sample_type = static_cast<uint16_t>(audio_sample_type);
 	if (prop::is_null(result->audio_sample_rate))
 		result->audio_sample_rate = static_cast<uint32_t>(std::clamp<int64_t>(audio_sample_rate, 0, UINT32_MAX));
@@ -3785,7 +3705,7 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 	// stale native tags.
 	const auto packet_states_tags = packet.states(libfiles::property::keywords);
 	if (!result->tags.is_empty() || (!keywords.empty() && !packet_states_tags) ||
-		(!windows_categories.empty() && !packet_states_tags))
+	    (!windows_categories.empty() && !packet_states_tags))
 	{
 		auto tags = split(result->tags, true);
 
@@ -3953,8 +3873,7 @@ av_media_info file_scan_result::to_info() const
 		// could make a tree from it.
 		constexpr auto max_raw_bytes = 256_z * 1024_z;
 		std::string raw;
-		raw.assign(std::bit_cast<const char*>(metadata.xmp.data()),
-		           std::min(metadata.xmp.size(), max_raw_bytes));
+		raw.assign(std::bit_cast<const char*>(metadata.xmp.data()), std::min(metadata.xmp.size(), max_raw_bytes));
 
 		result.metadata.emplace_back(metadata_standard::xmp, std::move(kv), metadata.xmp.size(), parsed,
 		                             std::move(raw));
@@ -3994,8 +3913,7 @@ namespace
 
 	// These decoders report a malformed file by throwing. The failure is logged and answered with
 	// nothing, so the caller still offers the bytes to ffmpeg.
-	template <typename Decode>
-	core::surface_ptr decode_or_log(Decode&& decode)
+	template <typename Decode> core::surface_ptr decode_or_log(Decode&& decode)
 	{
 		try
 		{
@@ -4011,6 +3929,7 @@ namespace
 	constexpr auto xmp_edit = file_traits::embedded_xmp | file_traits::edit | file_traits::in_place_metadata;
 
 	constexpr still_format s_still_formats[] = {
+		// clang-format off
 		{
 			.format = libfiles::image_format::psd,
 			.extensions = "psd",
@@ -4085,7 +4004,10 @@ namespace
 			.scan = scan_photo_libfiles,
 			.decode = [](files& ff, const core::cspan data, const still_decode_request& r)
 			{
-				return decode_or_log([&ff, data, &r] { return fitted(ff, load_png(data), r); });
+				return decode_or_log([&ff, data, &r]
+				{
+					return fitted(ff, load_png(data, r.intent == decode_intent::edit), r);
+				});
 			},
 		},
 		{
@@ -4111,6 +4033,7 @@ namespace
 				});
 			},
 		},
+		// clang-format on
 	};
 }
 
@@ -4125,8 +4048,8 @@ core::surface_ptr decode_still_jpeg(files& ff, const core::cspan data, const sti
 	if (!is_valid(decoded)) return {};
 
 	return is_yuv && request.intent != decode_intent::thumbnail
-		       ? std::move(decoded)
-		       : ff.fit_within(std::move(decoded), request.target_extent);
+	           ? std::move(decoded)
+	           : ff.fit_within(std::move(decoded), request.target_extent);
 }
 
 std::span<const still_format> still_formats()
@@ -4219,9 +4142,9 @@ namespace
 	{
 		if (want_thumbnail && !thumbnail.empty())
 		{
-			load_thumbnail(result, {
-				               result.metadata.exif.data() + thumbnail.offset, static_cast<size_t>(thumbnail.size)
-			               }, decoder);
+			load_thumbnail(result,
+			               {result.metadata.exif.data() + thumbnail.offset, static_cast<size_t>(thumbnail.size)},
+			               decoder);
 		}
 
 		if (result.thumbnail_image) result.thumbnail_image->orientation(result.orientation);
@@ -4271,7 +4194,8 @@ file_scan_result scan_still_libfiles(read_stream& s, const libfiles::scan_intent
 		result.format = scanned.format;
 
 		// BMP alone names its format only once its header has been read.
-		if (scanned.format == libfiles::image_format::bmp && !scanned.success) result.format = libfiles::image_format::unknown;
+		if (scanned.format == libfiles::image_format::bmp && !scanned.success)
+			result.format = libfiles::image_format::unknown;
 
 		result.width = scanned.width;
 		result.height = scanned.height;
@@ -4301,13 +4225,15 @@ file_scan_result scan_still_libfiles(read_stream& s, const libfiles::scan_intent
 
 			if (!scanned.jfif_thumbnail.empty())
 			{
-				const auto bytes = r->read(scanned.jfif_thumbnail.offset, static_cast<size_t>(scanned.jfif_thumbnail.size));
+				const auto bytes = r->read(scanned.jfif_thumbnail.offset,
+				                           static_cast<size_t>(scanned.jfif_thumbnail.size));
 				result.thumbnail_image = load_image_file({bytes.data(), bytes.size()});
 			}
 
 			if (!scanned.tiff_thumbnail.empty())
 			{
-				const auto bytes = r->read(scanned.tiff_thumbnail.offset, static_cast<size_t>(scanned.tiff_thumbnail.size));
+				const auto bytes = r->read(scanned.tiff_thumbnail.offset,
+				                           static_cast<size_t>(scanned.tiff_thumbnail.size));
 				if (bytes.size() > 16) load_thumbnail(result, {bytes.data(), bytes.size()}, decoder);
 			}
 		}
@@ -4375,12 +4301,16 @@ namespace
 		return found == scan.streams.end() ? nullptr : &*found;
 	}
 
-	// The front cover when there is one, else the first picture.
+	// The front cover when there is one, else the first picture that can be cover art; none when every picture
+	// the file carries is something else.
 	const libfiles::media_picture* cover_picture(const libfiles::media_scan_result& scan)
 	{
-		if (scan.pictures.empty()) return nullptr;
-		const auto front = std::ranges::find(scan.pictures, 3, &libfiles::media_picture::type);
-		return front == scan.pictures.end() ? &scan.pictures.front() : &*front;
+		const auto front = std::ranges::find(scan.pictures, id3_front_cover, &libfiles::media_picture::type);
+		if (front != scan.pictures.end()) return &*front;
+
+		const auto art = std::ranges::find_if(scan.pictures, [](const libfiles::media_picture& p)
+		{ return is_cover_art_picture_type(p.type); });
+		return art == scan.pictures.end() ? nullptr : &*art;
 	}
 
 	// The container's turn and mirror, numbered as EXIF numbers an orientation, as the player reads them from
@@ -4396,8 +4326,8 @@ namespace
 		const auto num = v.pixel_aspect_width;
 		const auto den = v.pixel_aspect_height;
 		if (num == 0 || den == 0 || num == den || v.width == 0 || v.height == 0) return v.height;
-		return static_cast<uint32_t>(core::mul_div(static_cast<int64_t>(v.height), static_cast<int64_t>(den),
-		                                         static_cast<int64_t>(num)));
+		return static_cast<uint32_t>(
+			core::mul_div(static_cast<int64_t>(v.height), static_cast<int64_t>(den), static_cast<int64_t>(num)));
 	}
 
 	core::date_t to_date(const libfiles::media_date& d)
@@ -4415,15 +4345,11 @@ namespace
 
 		switch (d.zone)
 		{
-		case libfiles::media_date::time_zone::utc:
-			result.dates.add_utc(source, date);
-			break;
+		case libfiles::media_date::time_zone::utc: result.dates.add_utc(source, date); break;
 		case libfiles::media_date::time_zone::offset:
 			result.dates.add(source, date, static_cast<int16_t>(d.offset_minutes));
 			break;
-		case libfiles::media_date::time_zone::unstated:
-			result.dates.add(source, date);
-			break;
+		case libfiles::media_date::time_zone::unstated: result.dates.add(source, date); break;
 		}
 	}
 
@@ -4477,7 +4403,8 @@ namespace
 prop::audio_sample_t coded_sample_type(const unsigned bits_per_sample, const bool float_samples)
 {
 	if (bits_per_sample == 0) return prop::audio_sample_t::none;
-	if (float_samples) return bits_per_sample > 32 ? prop::audio_sample_t::signed_double : prop::audio_sample_t::signed_float;
+	if (float_samples)
+		return bits_per_sample > 32 ? prop::audio_sample_t::signed_double : prop::audio_sample_t::signed_float;
 	if (bits_per_sample <= 8) return prop::audio_sample_t::unsigned_8bit;
 	if (bits_per_sample <= 16) return prop::audio_sample_t::signed_16bit;
 	if (bits_per_sample <= 24) return prop::audio_sample_t::signed_24bit;
@@ -4485,7 +4412,14 @@ prop::audio_sample_t coded_sample_type(const unsigned bits_per_sample, const boo
 	return prop::audio_sample_t::signed_64bit;
 }
 
-media_scan_read scan_media_file(const platform::file_ptr& f, const libfiles::scan_intent intent, const bool want_cover_art)
+bool is_cover_art_picture_type(const int id3_type)
+{
+	// The 32x32 file icon, another file icon, and the bright coloured fish.
+	return id3_type != 1 && id3_type != 2 && id3_type != 17;
+}
+
+media_scan_read scan_media_file(const platform::file_ptr& f, const libfiles::scan_intent intent,
+                                const bool want_cover_art)
 {
 	media_scan_read result;
 	if (!f) return result;
@@ -4511,7 +4445,7 @@ media_scan_read scan_media_file(const platform::file_ptr& f, const libfiles::sca
 					result.cover_art.assign(picture->data.begin(), picture->data.end());
 				}
 				else if (!picture->location.empty() && picture->location.size <= max_cover_art_bytes &&
-					r.contains(picture->location.offset, picture->location.size))
+				         r.contains(picture->location.offset, picture->location.size))
 				{
 					const auto bytes = r.read(picture->location.offset, static_cast<size_t>(picture->location.size));
 					result.cover_art.assign(bytes.begin(), bytes.end());
@@ -4606,7 +4540,7 @@ void file_scan_result::parse_media_properties(prop::item_metadata& result) const
 		}
 	}
 
-	if (p.year != 0) result.year = p.year;
+	if (p.year != 0) result.year = static_cast<uint16_t>(p.year);
 	if (p.track != 0) result.track = prop::number_pair(p.track, p.track_count);
 	if (p.disc != 0) result.disk = prop::number_pair(p.disc, p.disc_count);
 
@@ -4617,10 +4551,11 @@ void file_scan_result::parse_media_properties(prop::item_metadata& result) const
 		if (p.episode != 0) result.episode = prop::number_pair(p.episode, 0);
 	}
 
-	if (p.rating) result.rating = std::clamp(*p.rating, 0, 5);
+	if (p.rating) result.rating = static_cast<int16_t>(std::clamp(*p.rating, 0, 5));
 
 	add_date(result, prop::date_source::container_created, p.created);
-	if (p.created.valid() && p.created.year > 1800 && p.created.year < 2100 && prop::is_null(result.year)) result.year = p.created.year;
+	if (p.created.valid() && p.created.year > 1800 && p.created.year < 2100 && prop::is_null(result.year))
+		result.year = static_cast<uint16_t>(p.created.year);
 
 	// A tag giving only a year - ©day "1998", TYER, WM/Year - dates its track or film to that year, rather than
 	// leaving it to the day the file was copied.
@@ -4633,7 +4568,8 @@ void file_scan_result::parse_media_properties(prop::item_metadata& result) const
 		if (p.original_release.month == 0)
 		{
 			if (p.original_release.year > 1800 && p.original_release.year < 2100)
-				result.dates.add(prop::date_source::id3_original_release, core::date_t(p.original_release.year, 1, 1, 0, 0, 0));
+				result.dates.add(prop::date_source::id3_original_release,
+				                 core::date_t(p.original_release.year, 1, 1, 0, 0, 0));
 		}
 		else
 		{
@@ -4740,7 +4676,8 @@ void describe_media_streams(const libfiles::media_scan_result& scan, av_media_in
 	}
 }
 
-void overlay_media_scan(const libfiles::media_scan_result& scan, av_media_info& info, const std::vector<uint64_t>& stream_ids)
+void overlay_media_scan(const libfiles::media_scan_result& scan, av_media_info& info,
+                        const std::vector<uint64_t>& stream_ids)
 {
 	if (!scan.success) return;
 
@@ -4760,9 +4697,7 @@ void overlay_media_scan(const libfiles::media_scan_result& scan, av_media_info& 
 		if (id != 0)
 		{
 			const auto found = std::ranges::find_if(scan.streams, [&](const libfiles::media_stream& s)
-			{
-				return s.id == id && to_stream_type(s.kind) == row.type;
-			});
+			{ return s.id == id && to_stream_type(s.kind) == row.type; });
 			if (found != scan.streams.end()) match = &*found;
 		}
 
@@ -4800,7 +4735,7 @@ void overlay_media_scan(const libfiles::media_scan_result& scan, av_media_info& 
 	std::erase_if(info.metadata, [](const metadata_block& b)
 	{
 		return b.standard == metadata_standard::ffmpeg || b.standard == metadata_standard::media ||
-			b.standard == metadata_standard::xmp || b.standard == metadata_standard::structure;
+		       b.standard == metadata_standard::xmp || b.standard == metadata_standard::structure;
 	});
 
 	add_media_blocks(scan, info, true);
@@ -4832,7 +4767,8 @@ namespace
 
 		if (content.starts_with(cdata_open) && content.ends_with(cdata_close))
 		{
-			return std::string(content.substr(cdata_open.size(), content.size() - cdata_open.size() - cdata_close.size()));
+			return std::string(
+				content.substr(cdata_open.size(), content.size() - cdata_open.size() - cdata_close.size()));
 		}
 
 		return str::decode_xml_entities(content);
@@ -4888,7 +4824,8 @@ namespace
 
 				if (depth == 1 && !child.empty())
 				{
-					if (!child_holds_elements) children.push_back({child, element_text(text.substr(content_start, open - content_start))});
+					if (!child_holds_elements)
+						children.push_back({child, element_text(text.substr(content_start, open - content_start))});
 					child = {};
 				}
 
@@ -5051,7 +4988,8 @@ nfo_details parse_nfo(const std::string_view text)
 	}
 
 	if (result.plot.empty()) result.plot = std::move(outline);
-	if (result.year <= 1800 || result.year >= 2100) result.year = result.released.is_valid() ? result.released.year() : 0;
+	if (result.year <= 1800 || result.year >= 2100)
+		result.year = result.released.is_valid() ? result.released.year() : 0;
 	if (result.season < 0 || result.season > 9999) result.season = -1;
 	// Episodes are kept in 16 bits.
 	if (result.episode < 0 || result.episode > 32767) result.episode = -1;
@@ -5078,7 +5016,7 @@ nfo_details read_video_nfo(const core::file_path video)
 
 	// An episode's own .nfo may leave its show to the show's; an episode with none takes its show from there too.
 	const auto is_episode = result.type == nfo_details::kind::episode ||
-		(result.is_empty() && scan_info_from_title(stem).has_episode);
+	                        (result.is_empty() && scan_info_from_title(stem).has_episode);
 
 	if (is_episode && result.show.empty())
 	{
@@ -5125,7 +5063,8 @@ void apply_nfo(prop::item_metadata& md, const nfo_details& nfo)
 
 bool is_exif_signature(const std::span<const uint8_t> block)
 {
-	return block.size() >= exif_signature.size() && memcmp(exif_signature.data(), block.data(), exif_signature.size()) == 0;
+	return block.size() >= exif_signature.size() &&
+	       memcmp(exif_signature.data(), block.data(), exif_signature.size()) == 0;
 }
 
 static constexpr size_t default_photoshop_resource_cap = 16u * 1024u * 1024u;
@@ -5158,8 +5097,8 @@ namespace
 }
 
 core::blob turn_jpeg_losslessly(const libfiles::jpeg_transformer& transformer, libfiles::jpeg_encoder& encoder,
-                              const std::span<const uint8_t> src, const simple_transform transform,
-                              bool* const over_budget)
+                                const std::span<const uint8_t> src, const simple_transform transform,
+                                bool* const over_budget)
 {
 	if (over_budget) *over_budget = false;
 
@@ -5172,9 +5111,10 @@ core::blob turn_jpeg_losslessly(const libfiles::jpeg_transformer& transformer, l
 
 		if (turned.over_budget)
 		{
-			core::log(__FUNCTION__, std::format("rotate of {} x {} needs {}, over the {} budget", turned.width,
-			                                  turned.height, platform::format_size(core::file_size(turned.workspace_bytes)),
-			                                  platform::format_size(core::file_size(render::max_decode_bytes))));
+			core::log(__FUNCTION__,
+			          std::format("rotate of {} x {} needs {}, over the {} budget", turned.width, turned.height,
+			                      platform::format_size(core::file_size(turned.workspace_bytes)),
+			                      platform::format_size(core::file_size(render::max_decode_bytes))));
 			if (over_budget) *over_budget = true;
 		}
 
@@ -5186,9 +5126,149 @@ core::blob turn_jpeg_losslessly(const libfiles::jpeg_transformer& transformer, l
 	}
 }
 
-core::image_ptr save_jpeg(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
-                        const file_encode_params& encoder_params, libfiles::jpeg_encoder* const encoder)
+// The edits that move a photo's pixels, at its gain map's scale.
+static image_edits gain_map_edits(const image_edits& edits, const sizei photo, const sizei gain_map)
 {
+	image_edits result;
+
+	if (edits.has_crop_bounds())
+	{
+		auto crop = edits.crop_bounds();
+
+		// Multiplied first, so a corner on the photo's edge lands exactly on the gain map's.
+		for (auto i = 0; i < 4; ++i)
+		{
+			crop[i] = pointd(crop[i].X * gain_map.cx / photo.cx, crop[i].Y * gain_map.cy / photo.cy);
+		}
+
+		result.crop_bounds(crop);
+	}
+
+	if (edits.has_scale())
+	{
+		const auto limit = edits.scale();
+		result.scale(sizei(std::max(1, core::round(static_cast<double>(limit.cx) * gain_map.cx / photo.cx)),
+		                   std::max(1, core::round(static_cast<double>(limit.cy) * gain_map.cy / photo.cy))));
+	}
+
+	result.perspective_horizontal(edits.perspective_horizontal());
+	result.perspective_vertical(edits.perspective_vertical());
+	return result;
+}
+
+std::vector<uint8_t> files::edit_gain_map(const std::span<const uint8_t> gain_map, const image_edits& edits,
+                                          const sizei photo_extent, const simple_transform turn)
+{
+	if (turn == simple_transform::none && !edits.has_crop(photo_extent) && !edits.has_rotation() &&
+	    !edits.has_scale() && !edits.has_perspective())
+	{
+		return {gain_map.begin(), gain_map.end()};
+	}
+
+	if (turn != simple_transform::none)
+	{
+		auto turned = turn_jpeg_losslessly(_jpeg_transformer, _jpeg_encoder, gain_map, turn);
+		if (!turned.empty()) return {turned.begin(), turned.end()};
+	}
+
+	// Otherwise the edits that move the photo's pixels, at the gain map's scale: a turn its blocks refuse
+	// losslessly is decoded and turned as a photo re-encoded is.
+	const auto source = image_to_surface(core::cspan(gain_map.data(), gain_map.size()));
+	if (is_empty(source)) return {};
+
+	const auto edited = apply_image_edits(source, gain_map_edits(edits, photo_extent, source->dimensions()));
+	if (is_empty(edited)) return {};
+
+	const auto extent = edited->dimensions();
+	const auto width = static_cast<size_t>(extent.cx);
+
+	// A gain map of one channel stays one channel.
+	auto grey = true;
+
+	for (auto y = 0; grey && y < extent.cy; ++y)
+	{
+		const auto* const line = edited->pixels_line(y);
+
+		for (size_t x = 0; x < width; ++x)
+		{
+			if (line[x * 4] != line[x * 4 + 1] || line[x * 4 + 1] != line[x * 4 + 2])
+			{
+				grey = false;
+				break;
+			}
+		}
+	}
+
+	libfiles::jpeg_options options;
+	// Small beside the photo, and every step of its loss is a step in the HDR rendition's brightness.
+	options.quality = 95;
+	options.grayscale = grey;
+	// Its own tables, when it is a YCbCr JPEG they can be taken from.
+	options.source = gain_map;
+
+	std::vector<uint8_t> grey_rows;
+	const auto* pixels = edited->pixels();
+	auto stride = edited->stride();
+
+	if (grey)
+	{
+		grey_rows.resize(width * extent.cy);
+
+		for (auto y = 0; y < extent.cy; ++y)
+		{
+			const auto* const line = edited->pixels_line(y);
+			for (size_t x = 0; x < width; ++x) grey_rows[y * width + x] = line[x * 4 + 1];
+		}
+
+		pixels = grey_rows.data();
+		stride = width;
+	}
+
+	const auto encoded = _jpeg_encoder.encode(extent.cx, extent.cy, pixels, stride, 1, {}, options);
+	log_notes(_jpeg_encoder);
+
+	// Its metadata - Adobe's XMP, ISO 21496-1's segment - is what makes it a gain map.
+	return libfiles::carry_jpeg_metadata(gain_map, encoded, extent.cx, extent.cy);
+}
+
+core::blob files::with_edited_gain_map(const std::span<const uint8_t> edited, const std::span<const uint8_t> source,
+                                       const image_edits& edits, const sizei photo_extent, const simple_transform turn)
+{
+	std::vector<uint8_t> gain_map;
+	const auto found = libfiles::find_jpeg_gain_map(source);
+
+	if (!found.empty())
+	{
+		try
+		{
+			gain_map = edit_gain_map(found, edits, photo_extent, turn);
+		}
+		catch (const std::exception& e)
+		{
+			core::log(__FUNCTION__, e.what());
+		}
+
+		if (gain_map.empty()) core::log(__FUNCTION__, "the gain map could not be edited, and is left behind");
+	}
+
+	auto attached = libfiles::attach_jpeg_gain_map(edited, gain_map);
+	if (attached.empty()) return core::blob(edited.begin(), edited.end());
+	return core::blob(std::move(attached));
+}
+
+// JPEG and WebP hold a byte a channel: a wide picture is rounded to it here, once, after everything an edit
+// did to it. Anything else is encoded as it is.
+static core::const_surface_ptr narrowed(const core::const_surface_ptr& surface)
+{
+	return is_valid(surface) && core::is_wide(surface->format()) ? core::to_8_bit(surface) : surface;
+}
+
+core::image_ptr save_jpeg(const core::const_surface_ptr& surface, const libfiles::metadata_blocks& metadata,
+                          const file_encode_params& encoder_params, libfiles::jpeg_encoder* const encoder)
+{
+	const auto surface_in = narrowed(surface);
+	if (!is_valid(surface_in)) return {};
+
 	const auto dimensions_in = surface_in->dimensions();
 	const auto orientation_in = surface_in->orientation();
 
@@ -5202,12 +5282,12 @@ core::image_ptr save_jpeg(const core::const_surface_ptr& surface_in, const libfi
 	try
 	{
 		auto data = e.encode(dimensions_in.cx, dimensions_in.cy, surface_in->pixels(), surface_in->stride(),
-		                           static_cast<uint16_t>(orientation_in), metadata, options);
+		                     static_cast<uint16_t>(orientation_in), metadata, options);
 		log_notes(e);
 
 		return std::make_shared<core::image>(core::blob(std::move(data)),
-		                                   sizei{static_cast<int>(e.width()), static_cast<int>(e.height())},
-		                                   core::image_format::JPEG, orientation_in);
+		                                     sizei{static_cast<int>(e.width()), static_cast<int>(e.height())},
+		                                     core::image_format::JPEG, orientation_in);
 	}
 	catch (const libfiles::encode_error& ex)
 	{
@@ -5230,21 +5310,24 @@ core::image_ptr save_png(const core::const_surface_ptr& surface_in, const libfil
 	view.stride = surface_in->stride();
 	view.width = static_cast<uint32_t>(dims.cx);
 	view.height = static_cast<uint32_t>(dims.cy);
-	// Anything but RGB is written with its fourth byte as alpha.
-	view.format = surface_in->format() == core::texture_format::RGB
-		              ? libfiles::pixel_format::bgrx8
-		              : libfiles::pixel_format::bgra8;
+	// Sixteen bits a channel stay sixteen. Anything but RGB is written with its fourth channel as alpha.
+	switch (surface_in->format())
+	{
+	case core::texture_format::RGB: view.format = libfiles::pixel_format::bgrx8; break;
+	case core::texture_format::RGBX16: view.format = libfiles::pixel_format::rgbx16; break;
+	case core::texture_format::RGBA16: view.format = libfiles::pixel_format::rgba16; break;
+	default: view.format = libfiles::pixel_format::bgra8; break;
+	}
 
 	try
 	{
-		auto encoded = libfiles::encode_png(view, static_cast<uint16_t>(surface_in->orientation()),
-		                                    metadata);
+		auto encoded = libfiles::encode_png(view, static_cast<uint16_t>(surface_in->orientation()), metadata);
 
 		// libpng's warnings go to the quiet debug log rather than the console and the test output.
 		for (const auto& note : encoded.notes) core::log_once("libpng", note);
 
-		return std::make_shared<core::image>(core::blob(std::move(encoded.data)), dims,
-		                                   core::image_format::PNG, surface_in->orientation());
+		return std::make_shared<core::image>(core::blob(std::move(encoded.data)), dims, core::image_format::PNG,
+		                                     surface_in->orientation());
 	}
 	catch (const libfiles::encode_error& e)
 	{
@@ -5255,35 +5338,43 @@ core::image_ptr save_png(const core::const_surface_ptr& surface_in, const libfil
 
 namespace
 {
-	// A surface as the memory libfiles decodes a PNG into: every PNG as straight-alpha BGRA. Its size is
-	// judged against the decode budget before any memory is taken, as the loader always judged it.
+	// A surface as the memory libfiles decodes a PNG into: straight-alpha BGRA, or - for a caller that takes
+	// them - a 16-bit PNG's sixteen bits a channel, red first, its fourth channel alpha or 65535. Its size is
+	// judged against the decode budget, at the bytes a pixel of that takes, before any memory is taken, as
+	// the loader always judged it.
 	class png_surface_sink final : public libfiles::image_sink
 	{
 	public:
 		core::surface_ptr surface;
 		bool over_budget = false;
+		// Refused at sixteen bits a channel, where a byte a channel may yet fit.
+		bool over_budget_wide = false;
 
 		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
 		{
 			const sizei dimensions{static_cast<int>(frame.width), static_cast<int>(frame.height)};
+			const auto format = frame.format == libfiles::pixel_format::rgba16   ? core::texture_format::RGBA16
+			                    : frame.format == libfiles::pixel_format::rgbx16 ? core::texture_format::RGBX16
+			                                                                     : core::texture_format::ARGB;
 
 			// The cspan decode path carries no budget gate of its own, and IHDR dimensions cost nothing to
 			// declare: a small, highly compressible PNG can otherwise ask for gigabytes.
-			if (reject_over_budget_source(nullptr, dimensions, "PNG"))
+			if (reject_over_budget_source(nullptr, dimensions, "PNG", core::bytes_per_pixel(format)))
 			{
 				over_budget = true;
+				over_budget_wide = core::is_wide(format);
 				return {};
 			}
 
 			surface = std::make_shared<core::surface>();
-			auto* const pixels = surface->alloc(dimensions, core::texture_format::ARGB);
+			auto* const pixels = surface->alloc(dimensions, format);
 			if (!pixels) return {};
 			return {pixels, surface->stride()};
 		}
 	};
 }
 
-core::surface_ptr load_png(const core::cspan data)
+core::surface_ptr load_png(const core::cspan data, const bool wide)
 {
 	static constexpr uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
 
@@ -5294,13 +5385,15 @@ core::surface_ptr load_png(const core::cspan data)
 
 	libfiles::reader r(std::span(data.data, data.size));
 	png_surface_sink sink;
-	const auto result = libfiles::decode(r, sink);
+	libfiles::decode_options options;
+	options.allow_16bit = wide;
+	const auto result = libfiles::decode(r, sink, options);
 
 	// libpng's warnings - an iTXt with a damaged CRC, say - go to the quiet debug log rather than the
 	// console, where they are still there for diagnosis.
 	for (const auto& warning : result.warnings) core::log_once("libpng", warning);
 
-	if (sink.over_budget) return {};
+	if (sink.over_budget) return sink.over_budget_wide ? load_png(data, false) : core::surface_ptr{};
 
 	if (!result.error.empty())
 	{
@@ -5353,8 +5446,8 @@ namespace
 				// Opaque images decode into the ignored X byte, so tag them RGB and let the renderer skip
 				// blending.
 				pixels = s->alloc(dimensions, frame.format == libfiles::pixel_format::bgra8
-					                              ? core::texture_format::ARGB
-					                              : core::texture_format::RGB);
+				                                  ? core::texture_format::ARGB
+				                                  : core::texture_format::RGB);
 			}
 
 			if (!pixels) return {};
@@ -5385,9 +5478,10 @@ core::surface_ptr load_webp(const core::cspan data, const bool can_use_yuv, cons
 	return sink.surface;
 }
 
-core::image_ptr save_webp(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
-                        const file_encode_params& params)
+core::image_ptr save_webp(const core::const_surface_ptr& surface, const libfiles::metadata_blocks& metadata,
+                          const file_encode_params& params)
 {
+	const auto surface_in = narrowed(surface);
 	if (!is_valid(surface_in)) return {};
 
 	const auto dimensions = surface_in->dimensions();
@@ -5401,20 +5495,15 @@ core::image_ptr save_webp(const core::const_surface_ptr& surface_in, const libfi
 
 	switch (surface_in->format())
 	{
-	case core::texture_format::RGB:
-		view.format = libfiles::pixel_format::bgrx8;
-		break;
-	case core::texture_format::ARGB:
-		view.format = libfiles::pixel_format::bgra8;
-		break;
+	case core::texture_format::RGB: view.format = libfiles::pixel_format::bgrx8; break;
+	case core::texture_format::ARGB: view.format = libfiles::pixel_format::bgra8; break;
 	case core::texture_format::NV12:
 		// Only the matrix VP8 assumes: a rec709 or rec2020 frame would be encoded as if it were 601.
 		if (cs != core::color_space::rec601_full && cs != core::color_space::rec601_limited) return {};
 		view.format = libfiles::pixel_format::nv12;
 		view.limited_range = cs == core::color_space::rec601_limited;
 		break;
-	default:
-		return {};
+	default: return {};
 	}
 
 	libfiles::webp_options options;
@@ -5423,13 +5512,12 @@ core::image_ptr save_webp(const core::const_surface_ptr& surface_in, const libfi
 	options.lossy_alpha = params.webp_lossy_alpha;
 	options.fast = params.webp_fast;
 
-	auto encoded = libfiles::encode_webp(view, static_cast<uint16_t>(surface_in->orientation()),
-	                                           metadata, options);
+	auto encoded = libfiles::encode_webp(view, static_cast<uint16_t>(surface_in->orientation()), metadata, options);
 	for (const auto& note : encoded.notes) core::log(__FUNCTION__, note);
 	if (encoded.data.empty()) return {};
 
-	return std::make_shared<core::image>(core::blob(std::move(encoded.data)), dimensions,
-	                                   core::image_format::WEBP, surface_in->orientation());
+	return std::make_shared<core::image>(core::blob(std::move(encoded.data)), dimensions, core::image_format::WEBP,
+	                                     surface_in->orientation());
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -5447,8 +5535,8 @@ namespace
 	public:
 		core::surface_ptr surface;
 
-		surface_sink(load_diagnostic* const diagnostic, const std::string_view format) : _diagnostic(diagnostic),
-			_format(format)
+		surface_sink(load_diagnostic* const diagnostic, const std::string_view format) :
+			_diagnostic(diagnostic), _format(format)
 		{
 		}
 
@@ -5481,7 +5569,7 @@ core::surface_ptr load_psd(read_stream& s, load_diagnostic* const diagnostic)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Commodore 64 disk, tape, cartridge and program images: the listing libfiles makes of one, drawn by
-// libfiles into a surface for the disk control's texture. And SID tunes, whose header lib8bit reads.
+// libfiles into a surface for the disk control's texture. And SID tunes, whose header lib64 reads.
 
 namespace
 {
@@ -5512,7 +5600,7 @@ namespace
 }
 
 core::const_surface_ptr files::c64_listing_surface(const libfiles::c64_listing& listing, const uint32_t fg,
-                                                 const uint32_t bg)
+                                                   const uint32_t bg)
 {
 	if (listing.rows.empty() || listing.columns == 0) return {};
 

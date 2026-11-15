@@ -1,14 +1,14 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Out-of-line implementations of the application's elements and the media controls: the
 // collage layout, the compare, preview and zoom controllers and the zoom overlay, ratings, previews,
-// and the bars every task view declares.
+// the bars every task view declares, the context menus views share, and how the keyboard finds,
+// steps between and presses the parts of drawn elements.
 
 #include "pch.h"
 #include "libdesktop/core/geometry.h"
@@ -21,7 +21,7 @@
 std::vector<recti> ui::layout_collage(const recti draw_bounds, const std::vector<sizei>& dimensions)
 {
 	constexpr size_t max_cells = 24;
-	constexpr double golden_ratio = 1.6180339887498948482;
+	constexpr double phi = 1.6180339887498948482;
 	const auto cell_count = std::min(dimensions.size(), max_cells);
 	std::vector<recti> results(cell_count);
 
@@ -38,23 +38,21 @@ std::vector<recti> ui::layout_collage(const recti draw_bounds, const std::vector
 	{
 		const auto dimensions_safe = dimensions[index];
 		aspect_ratios.emplace_back(dimensions_safe.cx > 0 && dimensions_safe.cy > 0
-			                           ? static_cast<double>(dimensions_safe.cx) / dimensions_safe.cy
-			                           : 1.0);
+		                               ? static_cast<double>(dimensions_safe.cx) / dimensions_safe.cy
+		                               : 1.0);
 	}
 
 	const auto canvas_aspect = static_cast<double>(draw_bounds.width()) / draw_bounds.height();
 	const auto feature = static_cast<size_t>(std::min_element(aspect_ratios.begin(), aspect_ratios.end(),
 	                                                          [canvas_aspect](const double left, const double right)
-	                                                          {
-		                                                          return std::abs(std::log(left / canvas_aspect)) <
-			                                                          std::abs(std::log(right / canvas_aspect));
-	                                                          }) - aspect_ratios.begin());
+	{ return std::abs(std::log(left / canvas_aspect)) < std::abs(std::log(right / canvas_aspect)); }) -
+	                                         aspect_ratios.begin());
 
 	std::vector<double> weights(cell_count, 1.0);
-	weights[feature] = golden_ratio * golden_ratio;
+	weights[feature] = phi * phi;
 	if (cell_count >= 6)
 	{
-		weights[(feature + cell_count / 2) % cell_count] = golden_ratio;
+		weights[(feature + cell_count / 2) % cell_count] = phi;
 	}
 
 	const auto weight_sum = [&weights](const size_t start, const size_t end)
@@ -86,15 +84,15 @@ std::vector<recti> ui::layout_collage(const recti draw_bounds, const std::vector
 		const auto first_fraction = weight_sum(start, split) / total_weight;
 		if (bounds.width() > 1 && (bounds.width() >= bounds.height() || bounds.height() <= 1))
 		{
-			const auto split_x = std::clamp(bounds.left + core::round(bounds.width() * first_fraction),
-			                                bounds.left + 1, bounds.right - 1);
+			const auto split_x = std::clamp(bounds.left + core::round(bounds.width() * first_fraction), bounds.left + 1,
+			                                bounds.right - 1);
 			self(self, start, split, {bounds.left, bounds.top, split_x, bounds.bottom});
 			self(self, split, end, {split_x, bounds.top, bounds.right, bounds.bottom});
 		}
 		else if (bounds.height() > 1)
 		{
-			const auto split_y = std::clamp(bounds.top + core::round(bounds.height() * first_fraction),
-			                                bounds.top + 1, bounds.bottom - 1);
+			const auto split_y = std::clamp(bounds.top + core::round(bounds.height() * first_fraction), bounds.top + 1,
+			                                bounds.bottom - 1);
 			self(self, start, split, {bounds.left, bounds.top, bounds.right, split_y});
 			self(self, split, end, {bounds.left, split_y, bounds.right, bounds.bottom});
 		}
@@ -109,13 +107,11 @@ std::vector<recti> ui::layout_collage(const recti draw_bounds, const std::vector
 	return results;
 }
 
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 
 class compare_controller final : public view_controller
 {
@@ -123,8 +119,8 @@ public:
 	std::shared_ptr<side_by_side_control> _parent;
 	bool _tracking = false;
 
-	compare_controller(const view_host_ptr& host, std::shared_ptr<side_by_side_control> mc,
-	                   const recti bounds) : view_controller(host, bounds), _parent(std::move(mc))
+	compare_controller(const view_host_ptr& host, std::shared_ptr<side_by_side_control> mc, const recti bounds) :
+		view_controller(host, bounds), _parent(std::move(mc))
 	{
 	}
 
@@ -134,10 +130,7 @@ public:
 		_parent->compare(0, _tracking);
 	}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::left_right;
-	}
+	platform::cursor cursor() const override { return platform::cursor::left_right; }
 
 	void draw(render::draw_context& dc) override
 	{
@@ -151,19 +144,16 @@ public:
 		}
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_tracking = true;
 		_parent->compare(loc.x, _tracking);
 		_parent->_display->_async.invalidate_view(view_invalid::tooltip);
 	}
 
-	void on_mouse_move(const pointi loc) override
-	{
-		_parent->compare(loc.x, _tracking);
-	}
+	void on_mouse_move(const pointi loc) override { _parent->compare(loc.x, _tracking); }
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_tracking = false;
 		_parent->compare(loc.x, _tracking);
@@ -198,8 +188,8 @@ class preview_controller final : public view_controller
 	bool _hover = false;
 
 public:
-	preview_controller(const view_host_ptr& host, std::shared_ptr<side_by_side_control> mc,
-	                   const recti control_bounds, const recti scrubber_bounds) :
+	preview_controller(const view_host_ptr& host, std::shared_ptr<side_by_side_control> mc, const recti control_bounds,
+	                   const recti scrubber_bounds) :
 		view_controller(host, control_bounds), _parent(std::move(mc)), _scrubber_bounds(scrubber_bounds)
 	{
 	}
@@ -214,17 +204,11 @@ public:
 		_parent->_display->_async.invalidate_view(view_invalid::view_redraw);
 	}
 
-	void reset(const recti bounds)
-	{
-		_bounds = bounds;
-	}
+	void reset(const recti bounds) { _bounds = bounds; }
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::link;
-	}
+	platform::cursor cursor() const override { return platform::cursor::link; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_hover = _bounds.contains(loc);
 		_tracking = true;
@@ -247,7 +231,7 @@ public:
 		}
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_hover = _bounds.contains(loc);
 		_tracking = false;
@@ -272,11 +256,8 @@ public:
 
 	zoom_controller(const view_host_ptr& host, std::shared_ptr<photo_control> media_parent, view_state& state,
 	                const recti interaction_bounds, const recti view_bounds, const pointi element_offset) :
-		view_controller(host, interaction_bounds),
-		_parent_element(std::move(media_parent)),
-		_state(state),
-		_view_bounds(view_bounds),
-		_element_offset(element_offset),
+		view_controller(host, interaction_bounds), _parent_element(std::move(media_parent)), _state(state),
+		_view_bounds(view_bounds), _element_offset(element_offset),
 		_start_zoom_state(_parent_element->_display->zoom_state())
 	{
 	}
@@ -300,9 +281,7 @@ public:
 		return platform::cursor::zoom;
 	}
 
-	void draw(render::draw_context& dc) override
-	{
-	}
+	void draw(render::draw_context& /*dc*/) override {}
 
 	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
@@ -347,13 +326,12 @@ public:
 			return;
 		}
 
-		_parent_element->_display->zoom_center({
-			std::clamp(local.x / static_cast<double>(std::max(1, extent.cx)), 0.0, 1.0),
-			std::clamp(local.y / static_cast<double>(std::max(1, extent.cy)), 0.0, 1.0)
-		});
+		_parent_element->_display->zoom_center(
+			{std::clamp(local.x / static_cast<double>(std::max(1, extent.cx)), 0.0, 1.0),
+		     std::clamp(local.y / static_cast<double>(std::max(1, extent.cy)), 0.0, 1.0)});
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		// Escape may already have ended the gesture and restored the view. The release still arrives --
 		// the button was down when it was cancelled -- so completing here would restore a second time,
@@ -388,7 +366,7 @@ public:
 		_inspect_active = false;
 	}
 
-	bool key_down(const char32_t key, const platform::key_state keys) override
+	bool key_down(const char32_t key, const platform::key_state /*keys*/) override
 	{
 		if (_tracking && _inspect_active && key == platform::keys::SPACE)
 		{
@@ -438,14 +416,10 @@ static void render_zoom_overlay(render::draw_context& dc, const display_state_pt
 		const auto projected = display->is_panorama_projected();
 		// zoom.md: there is no one-to-one inside a sphere, so the ladder is a field of view and the
 		// readout says so rather than quoting a percentage that would mean nothing.
-		const auto scale_text = projected
-			                        ? std::format("{:.0f}°", display->panorama().view.fov_degrees())
-			                        : std::format("{}%", display->zoom_scale_percent());
-		const auto text = !inspect && texture_state->is_provisional()
-			                  ? scale_text + " - Preview"
-			                  : scale_text;
-		const auto text_extent = dc.measure_text(text, render::font_face::dialog,
-		                                         render::text_style::single_line, 100);
+		const auto scale_text = projected ? std::format("{:.0f}°", display->panorama().view.fov_degrees())
+		                                  : std::format("{}%", display->zoom_scale_percent());
+		const auto text = !inspect && texture_state->is_provisional() ? scale_text + " - Preview" : scale_text;
+		const auto text_extent = dc.measure_text(text, render::font_face::dialog, render::text_style::single_line, 100);
 		const auto label_padding = dc.padding1;
 		const auto label_height = text_extent.cy + label_padding * 2;
 		const auto available_height = std::max(1, client_bounds.height() - label_height);
@@ -454,12 +428,12 @@ static void render_zoom_overlay(render::draw_context& dc, const display_state_pt
 		const auto source_orientation = texture_state->display_orientation();
 		const auto source_dims = texture_state->display_dimensions();
 		const auto zoom_dims = core::scale_dimensions(flips_xy(source_orientation) ? source_dims.flip() : source_dims,
-		                                            zoom_dim);
+		                                              zoom_dim);
 		const auto panel_width = inspect ? zoom_dims.cx : zoom_dim;
 		const auto panel_bounds = recti(client_bounds.left, client_bounds.top + label_height,
 		                                client_bounds.left + panel_width,
 		                                client_bounds.top + label_height + zoom_dims.cy)
-			.crop(client_bounds);
+		                              .crop(client_bounds);
 		const auto zoom_left = panel_bounds.left + (panel_bounds.width() - zoom_dims.cx) / 2;
 		const auto zoom_bounds = recti({zoom_left, panel_bounds.top}, zoom_dims).crop(panel_bounds);
 		navigator_bounds = zoom_bounds;
@@ -503,11 +477,11 @@ static void render_zoom_overlay(render::draw_context& dc, const display_state_pt
 		const auto alpha = std::min(dc.colors.overlay_alpha, display->_zoom_overlay_alpha);
 		const auto thumb_alpha = alpha;
 		const auto control_bounds = panel_bounds;
-		const auto label_width = inspect
-			                         ? std::min(panel_bounds.width(), text_extent.cx + label_padding * 2)
-			                         : panel_bounds.width();
+		const auto label_width = inspect ? std::min(panel_bounds.width(), text_extent.cx + label_padding * 2)
+		                                 : panel_bounds.width();
 		const auto label_bounds = recti(panel_bounds.left, client_bounds.top, panel_bounds.left + label_width,
-		                                client_bounds.top + label_height).crop(client_bounds);
+		                                client_bounds.top + label_height)
+		                              .crop(client_bounds);
 		const auto has_projection_toggle = !inspect && display->declares_equirectangular();
 		const auto button_count = has_projection_toggle ? 6 : 5;
 		const auto button_width = std::min(label_height, label_bounds.width() / button_count);
@@ -527,23 +501,22 @@ static void render_zoom_overlay(render::draw_context& dc, const display_state_pt
 			}
 
 			const auto right_of_in = has_projection_toggle ? projection_bounds.left : options_bounds.left;
-			in_bounds = recti(std::max(label_bounds.left, right_of_in - button_width), label_bounds.top,
-			                  right_of_in, label_bounds.bottom);
+			in_bounds = recti(std::max(label_bounds.left, right_of_in - button_width), label_bounds.top, right_of_in,
+			                  label_bounds.bottom);
 			actual_bounds = recti(out_bounds.right, label_bounds.top, in_bounds.left, label_bounds.bottom);
 		}
 		const auto excluded = core::color(0, thumb_alpha / 2.0f);
-		const auto sampler = calc_sampler(zoom_bounds.extent(), zoom_texture->dimensions(),
-		                                  zoom_texture->_orientation);
+		const auto sampler = calc_sampler(zoom_bounds.extent(), zoom_texture->dimensions(), zoom_texture->_orientation);
 		const auto dst_quad = setting.show_rotated
-			                      ? quadd(zoom_bounds).transform(to_simple_transform(zoom_texture->_orientation))
-			                      : quadd(zoom_bounds);
+		                          ? quadd(zoom_bounds).transform(to_simple_transform(zoom_texture->_orientation))
+		                          : quadd(zoom_bounds);
 
 		dc.draw_rect(label_bounds, core::color(0, alpha * 0.5f));
 		const auto foreground = core::color(dc.colors.foreground, alpha);
 		if (inspect)
 		{
-			dc.draw_text(text, label_bounds, render::font_face::dialog,
-			             render::text_style::single_line_center, foreground, {});
+			dc.draw_text(text, label_bounds, render::font_face::dialog, render::text_style::single_line_center,
+			             foreground, {});
 		}
 		else
 		{
@@ -551,8 +524,8 @@ static void render_zoom_overlay(render::draw_context& dc, const display_state_pt
 			             render::text_style::single_line_center, foreground, {});
 			dc.draw_text(icon_to_utf8(icon_index::zoom_out), out_bounds, render::font_face::icons,
 			             render::text_style::single_line_center, foreground, {});
-			dc.draw_text(text, actual_bounds, render::font_face::dialog,
-			             render::text_style::single_line_center, foreground, {});
+			dc.draw_text(text, actual_bounds, render::font_face::dialog, render::text_style::single_line_center,
+			             foreground, {});
 			dc.draw_text(icon_to_utf8(icon_index::zoom_in), in_bounds, render::font_face::icons,
 			             render::text_style::single_line_center, foreground, {});
 
@@ -584,19 +557,18 @@ static void render_zoom_overlay(render::draw_context& dc, const display_state_pt
 
 void photo_control::render_zoom_thumb(render::draw_context& dc, const pointi element_offset) const
 {
-	render_zoom_overlay(dc, _display, _display->_selected_texture1, bounds, element_offset,
-	                    _zoom_navigator_bounds, _zoom_fit_bounds, _zoom_out_bounds, _zoom_100_bounds,
-	                    _zoom_in_bounds, _zoom_options_bounds, _zoom_projection_bounds);
+	render_zoom_overlay(dc, _display, _display->_selected_texture1, bounds, element_offset, _zoom_navigator_bounds,
+	                    _zoom_fit_bounds, _zoom_out_bounds, _zoom_100_bounds, _zoom_in_bounds, _zoom_options_bounds,
+	                    _zoom_projection_bounds);
 }
 
 void side_by_side_control::render_zoom_thumb(render::draw_context& dc, const pointi element_offset) const
 {
-	const auto texture = _display->active_zoom_pane() == df::zoom_pane::primary
-		                     ? _display->_selected_texture1
-		                     : _display->_selected_texture2;
-	render_zoom_overlay(dc, _display, texture, bounds, element_offset, _zoom_navigator_bounds,
-	                    _zoom_fit_bounds, _zoom_out_bounds, _zoom_100_bounds, _zoom_in_bounds,
-	                    _zoom_options_bounds, _zoom_projection_bounds);
+	const auto texture = _display->active_zoom_pane() == df::zoom_pane::primary ? _display->_selected_texture1
+	                                                                            : _display->_selected_texture2;
+	render_zoom_overlay(dc, _display, texture, bounds, element_offset, _zoom_navigator_bounds, _zoom_fit_bounds,
+	                    _zoom_out_bounds, _zoom_100_bounds, _zoom_in_bounds, _zoom_options_bounds,
+	                    _zoom_projection_bounds);
 }
 
 class zoom_command_controller final : public view_controller
@@ -610,17 +582,14 @@ public:
 	{
 	}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::link;
-	}
+	platform::cursor cursor() const override { return platform::cursor::link; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi /*loc*/, const platform::key_state /*keys*/) override
 	{
 		_tracking = true;
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		const auto invoke = _tracking && _bounds.contains(loc);
 		_tracking = false;
@@ -646,17 +615,14 @@ public:
 	{
 	}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::link;
-	}
+	platform::cursor cursor() const override { return platform::cursor::link; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi /*loc*/, const platform::key_state /*keys*/) override
 	{
 		_tracking = true;
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		const auto show = _tracking && _bounds.contains(loc);
 		_tracking = false;
@@ -687,17 +653,14 @@ public:
 	{
 	}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::link;
-	}
+	platform::cursor cursor() const override { return platform::cursor::link; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi /*loc*/, const platform::key_state /*keys*/) override
 	{
 		_tracking = true;
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		const auto invoke = _tracking && _bounds.contains(loc);
 		_tracking = false;
@@ -723,12 +686,9 @@ public:
 	{
 	}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::size_all;
-	}
+	platform::cursor cursor() const override { return platform::cursor::size_all; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_tracking = true;
 		move_to(loc);
@@ -739,7 +699,7 @@ public:
 		if (_tracking) move_to(loc);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		if (_tracking) move_to(loc);
 		_tracking = false;
@@ -837,14 +797,12 @@ public:
 		{
 			const auto local = loc - _bounds.top_left();
 			const auto extent = _bounds.extent();
-			_display->zoom_center({
-				std::clamp(local.x / static_cast<double>(std::max(1, extent.cx)), 0.0, 1.0),
-				std::clamp(local.y / static_cast<double>(std::max(1, extent.cy)), 0.0, 1.0)
-			});
+			_display->zoom_center({std::clamp(local.x / static_cast<double>(std::max(1, extent.cx)), 0.0, 1.0),
+			                       std::clamp(local.y / static_cast<double>(std::max(1, extent.cy)), 0.0, 1.0)});
 		}
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_tracking = false;
 		if (_region_select)
@@ -863,7 +821,7 @@ public:
 		_committed = false;
 	}
 
-	bool key_down(const char32_t key, const platform::key_state keys) override
+	bool key_down(const char32_t key, const platform::key_state /*keys*/) override
 	{
 		if (_tracking && _inspect_active && key == platform::keys::SPACE)
 		{
@@ -901,9 +859,12 @@ public:
 
 	platform::cursor cursor() const override { return platform::cursor::link; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override { _tracking = true; }
+	void on_mouse_left_button_down(const pointi /*loc*/, const platform::key_state /*keys*/) override
+	{
+		_tracking = true;
+	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		const auto invoke = _tracking && _bounds.contains(loc);
 		_tracking = false;
@@ -930,8 +891,8 @@ class region_controller final : public view_controller
 	bool _moving = false;
 
 public:
-	region_controller(const view_host_ptr& host, std::shared_ptr<photo_control> parent,
-	                  const recti interaction_bounds, const pointi element_offset, const bool moving) :
+	region_controller(const view_host_ptr& host, std::shared_ptr<photo_control> parent, const recti interaction_bounds,
+	                  const pointi element_offset, const bool moving) :
 		view_controller(host, interaction_bounds), _parent(std::move(parent)), _element_offset(element_offset),
 		_start_region(_parent->region()), _moving(moving)
 	{
@@ -990,7 +951,7 @@ public:
 		_parent->region(df::client_rect_to_source(rectd(recti(_start_loc, loc)), image, source));
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		on_mouse_move(loc);
 		_tracking = false;
@@ -1033,17 +994,14 @@ public:
 	{
 	}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::link;
-	}
+	platform::cursor cursor() const override { return platform::cursor::link; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi /*loc*/, const platform::key_state /*keys*/) override
 	{
 		_tracking = true;
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		const auto invoke = _tracking && _bounds.contains(loc);
 		_tracking = false;
@@ -1082,10 +1040,8 @@ public:
 		// Handed on as fractions of the displayed picture: what is on screen may be a stand-in, and
 		// Edit reads the file for itself, so pixel counts taken here would not be the same grid.
 		const auto drawn = _parent->region();
-		const rectd normalised{
-			drawn.X / source.Width, drawn.Y / source.Height,
-			drawn.Width / source.Width, drawn.Height / source.Height
-		};
+		const rectd normalised{drawn.X / source.Width, drawn.Y / source.Height, drawn.Width / source.Width,
+		                       drawn.Height / source.Height};
 
 		_state._pending_edit_crop = view_state::pending_edit_crop_t{item->path(), normalised};
 		_parent->clear_region();
@@ -1118,10 +1074,9 @@ public:
 	pointd _auto_offset;
 	double _auto_last_time = 0.0;
 
-	pan_controller(const view_host_ptr& host, std::shared_ptr<photo_control> parent, view_state& s,
-	               const recti bounds, const pointi element_offset) : view_controller(host, bounds),
-	                                                                  _parent(std::move(parent)), _state(s),
-	                                                                  _element_offset(element_offset)
+	pan_controller(const view_host_ptr& host, std::shared_ptr<photo_control> parent, view_state& s, const recti bounds,
+	               const pointi element_offset) :
+		view_controller(host, bounds), _parent(std::move(parent)), _state(s), _element_offset(element_offset)
 	{
 	}
 
@@ -1135,9 +1090,7 @@ public:
 		else if (_tracking) _parent->_display->restore_zoom_state(_start_zoom_state);
 	}
 
-	void draw(render::draw_context& rc) override
-	{
-	}
+	void draw(render::draw_context& /*rc*/) override {}
 
 	platform::cursor cursor() const override
 	{
@@ -1211,7 +1164,7 @@ public:
 		}
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_tracking = false;
 		_looking = false;
@@ -1222,7 +1175,7 @@ public:
 		}
 	}
 
-	void on_mouse_middle_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_middle_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		if (_auto_pan)
 		{
@@ -1307,13 +1260,12 @@ public:
 };
 
 view_controller_ptr photo_control::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                            const pointi element_offset,
-                                                            hit_test_context& ctx)
+                                                            const pointi element_offset, hit_test_context& ctx)
 {
 	const auto logical_loc = loc + element_offset;
 	const auto image_bounds = _display->_selected_texture1
-		                          ? _display->_selected_texture1->display_bounds().offset(element_offset)
-		                          : recti{};
+	                              ? _display->_selected_texture1->display_bounds().offset(element_offset)
+	                              : recti{};
 	const auto durable_zoom = _display->zoom() && !_display->is_temporary_zoom();
 
 	// design.md: the region is a layer over the picture, not over the window. The zoom chrome keeps
@@ -1339,12 +1291,10 @@ view_controller_ptr photo_control::controller_from_location(const view_host_ptr&
 			return std::make_shared<panorama_projection_controller>(host, _display, _zoom_projection_bounds);
 		}
 
-		const std::array zoom_commands{
-			std::pair{_zoom_fit_bounds, commands::view_zoom_fit},
-			std::pair{_zoom_out_bounds, commands::view_zoom_out},
-			std::pair{_zoom_100_bounds, commands::view_zoom_100},
-			std::pair{_zoom_in_bounds, commands::view_zoom_in}
-		};
+		const std::array zoom_commands{std::pair{_zoom_fit_bounds, commands::view_zoom_fit},
+		                               std::pair{_zoom_out_bounds, commands::view_zoom_out},
+		                               std::pair{_zoom_100_bounds, commands::view_zoom_100},
+		                               std::pair{_zoom_in_bounds, commands::view_zoom_in}};
 
 		for (const auto& [command_bounds, command] : zoom_commands)
 		{
@@ -1362,11 +1312,9 @@ view_controller_ptr photo_control::controller_from_location(const view_host_ptr&
 
 	if (has_region())
 	{
-		const std::array region_commands{
-			std::pair{_region_close_bounds, commands::none},
-			std::pair{_region_zoom_bounds, commands::view_zoom},
-			std::pair{_region_crop_bounds, commands::tool_edit}
-		};
+		const std::array region_commands{std::pair{_region_close_bounds, commands::none},
+		                                 std::pair{_region_zoom_bounds, commands::view_zoom},
+		                                 std::pair{_region_crop_bounds, commands::tool_edit}};
 
 		for (const auto& [command_bounds, command] : region_commands)
 		{
@@ -1385,8 +1333,7 @@ view_controller_ptr photo_control::controller_from_location(const view_host_ptr&
 		}
 	}
 
-	if (!_display->zoom() && !image_bounds.is_empty() && image_bounds.contains(loc) &&
-		_display->can_zoom())
+	if (!_display->zoom() && !image_bounds.is_empty() && image_bounds.contains(loc) && _display->can_zoom())
 	{
 		const auto view_bounds = bounds.offset(element_offset);
 		return std::make_shared<zoom_controller>(host, shared_from_this(), _state, image_bounds, view_bounds,
@@ -1403,22 +1350,19 @@ view_controller_ptr photo_control::controller_from_location(const view_host_ptr&
 }
 
 view_controller_ptr video_control::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                            const pointi element_offset,
-                                                            hit_test_context& ctx)
+                                                            const pointi element_offset, hit_test_context& ctx)
 {
 	return default_controller_from_location(*this, host, loc, element_offset, ctx);
 }
 
 view_controller_ptr audio_control::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                            const pointi element_offset,
-                                                            hit_test_context& ctx)
+                                                            const pointi element_offset, hit_test_context& ctx)
 {
 	return default_controller_from_location(*this, host, loc, element_offset, ctx);
 }
 
 view_controller_ptr side_by_side_control::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                                   const pointi element_offset,
-                                                                   hit_test_context& ctx)
+                                                                   const pointi element_offset, hit_test_context& ctx)
 {
 	const auto durable_zoom = _display->zoom() && !_display->is_temporary_zoom();
 	if (durable_zoom)
@@ -1433,12 +1377,10 @@ view_controller_ptr side_by_side_control::controller_from_location(const view_ho
 		{
 			return std::make_shared<zoom_options_controller>(host, _state, _zoom_options_bounds);
 		}
-		const std::array zoom_commands{
-			std::pair{_zoom_fit_bounds, commands::view_zoom_fit},
-			std::pair{_zoom_out_bounds, commands::view_zoom_out},
-			std::pair{_zoom_100_bounds, commands::view_zoom_100},
-			std::pair{_zoom_in_bounds, commands::view_zoom_in}
-		};
+		const std::array zoom_commands{std::pair{_zoom_fit_bounds, commands::view_zoom_fit},
+		                               std::pair{_zoom_out_bounds, commands::view_zoom_out},
+		                               std::pair{_zoom_100_bounds, commands::view_zoom_100},
+		                               std::pair{_zoom_in_bounds, commands::view_zoom_in}};
 		for (const auto& [command_bounds, command] : zoom_commands)
 		{
 			if (ctx.occluded(command_bounds))
@@ -1465,11 +1407,9 @@ view_controller_ptr side_by_side_control::controller_from_location(const view_ho
 		if (!ctx.occluded(marker)) continue;
 
 		// Magnified there is only one marker and it names the pane you are already in, so it flips.
-		const auto pane = _display->is_zoom_mode()
-			                  ? df::comparison_zoom_state::other(_display->active_zoom_pane())
-			                  : i == 0
-			                  ? df::zoom_pane::primary
-			                  : df::zoom_pane::secondary;
+		const auto pane = _display->is_zoom_mode() ? df::comparison_zoom_state::other(_display->active_zoom_pane())
+		                  : i == 0                 ? df::zoom_pane::primary
+		                                           : df::zoom_pane::secondary;
 		return std::make_shared<comparison_pane_controller>(host, _display, pane, marker);
 	}
 
@@ -1483,11 +1423,9 @@ view_controller_ptr side_by_side_control::controller_from_location(const view_ho
 	{
 		auto pane_bounds = bounds.offset(element_offset);
 		const auto zoomed = _display->is_zoom_mode();
-		const auto pane = zoomed
-			                  ? _display->active_zoom_pane()
-			                  : loc.x < pane_bounds.center().x
-			                  ? df::zoom_pane::primary
-			                  : df::zoom_pane::secondary;
+		const auto pane = zoomed                           ? _display->active_zoom_pane()
+		                  : loc.x < pane_bounds.center().x ? df::zoom_pane::primary
+		                                                   : df::zoom_pane::secondary;
 		if (!zoomed)
 		{
 			if (pane == df::zoom_pane::primary) pane_bounds.right = pane_bounds.center().x;
@@ -1503,7 +1441,6 @@ view_controller_ptr side_by_side_control::controller_from_location(const view_ho
 	return default_controller_from_location(*this, host, loc, element_offset, ctx);
 }
 
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1516,12 +1453,8 @@ namespace
 
 	// Row order matches the sidebar filters and the keyboard keys: Reject, 6, 7, 8, 9, P.
 	constexpr commands rate_label_commands[] = {
-		commands::rate_rejected,
-		commands::label_select,
-		commands::label_second,
-		commands::label_approved,
-		commands::label_review,
-		commands::label_to_do,
+		commands::rate_rejected,  commands::label_select, commands::label_second,
+		commands::label_approved, commands::label_review, commands::label_to_do,
 	};
 
 	static_assert(std::size(rate_label_commands) == rate_label_control::entry_count);
@@ -1537,7 +1470,7 @@ namespace
 	}
 }
 
-void rating_control::tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const
+void rating_control::tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const
 {
 	hover.elements->add(make_icon_element(icon_index::star, flex_item::no_break));
 
@@ -1553,8 +1486,8 @@ void rating_control::tooltip(view_hover_element& hover, const pointi loc, const 
 		}
 		else
 		{
-			hover.elements->
-			      add(std::make_shared<text_element>(format_plural_text(tt.rating_set_fmt, last_hover_rating)));
+			hover.elements->add(
+				std::make_shared<text_element>(format_plural_text(tt.rating_set_fmt, last_hover_rating)));
 
 			if (has_stars)
 			{
@@ -1592,19 +1525,17 @@ void rating_control::tooltip(view_hover_element& hover, const pointi loc, const 
 		const df::item_set items = {{_item}};
 		const auto can_process = items.can_process(df::process_items_type::can_save_metadata, false, {});
 		hover.elements->add(std::make_shared<text_element>(can_process.to_string(), render::font_face::dialog,
-		                                                   render::text_style::multiline,
-		                                                   flex_item::line_break));
+		                                                   render::text_style::multiline, flex_item::line_break));
 	}
 }
 
 // The bubble names the value the click under the pointer would store, because the batch field shows
 // no item state to infer it from.
-void rating_edit_control::tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const
+void rating_edit_control::tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const
 {
 	const auto rating = cell_to_rating(std::max(0, _hover_cell));
 
-	hover.elements->add(make_icon_element(rating < 0 ? rate_label_reject.icon : icon_index::star,
-	                                      flex_item::no_break));
+	hover.elements->add(make_icon_element(rating < 0 ? rate_label_reject.icon : icon_index::star, flex_item::no_break));
 
 	if (rating < 0)
 	{
@@ -1649,7 +1580,6 @@ static ui::command_ptr def_menu_command(const icon_index icon, const std::string
 	c->enable = is_enabled;
 	return c;
 }
-
 
 // The whole grading vocabulary lives in the menu, so the badge stays one icon wide while every mark
 // remains one click away with its own colour, glyph, and accelerator.
@@ -1699,7 +1629,7 @@ void rate_label_control::dispatch_event(const view_element_event& event)
 
 // The bubble is the only place the grading rules are stated, so it names the current mark, reports
 // both values, and warns about the exclusive value a menu choice would replace.
-void rate_label_control::tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const
+void rate_label_control::tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const
 {
 	const auto current_label = _item->label();
 	const auto current_rating = _item->rating();
@@ -1708,8 +1638,7 @@ void rate_label_control::tooltip(view_hover_element& hover, const pointi loc, co
 
 	hover.elements->add(make_icon_element(icon, flex_item::no_break));
 	hover.elements->add(std::make_shared<text_element>(tt.command_view_rate_label, render::font_face::dialog,
-	                                                   render::text_style::multiline,
-	                                                   flex_item::line_break));
+	                                                   render::text_style::multiline, flex_item::line_break));
 
 	const auto table = std::make_shared<ui::table_element>();
 	table->add(std::format("{}:", tt.prop_name_label), prop::format_label(current_label));
@@ -1722,16 +1651,16 @@ void rate_label_control::tooltip(view_hover_element& hover, const pointi loc, co
 	{
 		if (!current_label.empty())
 		{
-			hover.elements->add(std::make_shared<text_element>(
-				str_format(tt.label_replaces_fmt.sv(), prop::format_label(current_label)),
-				render::font_face::dialog, render::text_style::multiline, flex_item::line_break));
+			hover.elements->add(std::make_shared<text_element>(str_format(tt.label_replaces_fmt.sv(),
+			                                                              prop::format_label(current_label)),
+			                                                   render::font_face::dialog, render::text_style::multiline,
+			                                                   flex_item::line_break));
 		}
 
 		if (current_rating > 0)
 		{
 			hover.elements->add(std::make_shared<text_element>(tt.label_reject_replaces_rating,
-			                                                   render::font_face::dialog,
-			                                                   render::text_style::multiline,
+			                                                   render::font_face::dialog, render::text_style::multiline,
 			                                                   flex_item::line_break));
 		}
 	}
@@ -1740,8 +1669,7 @@ void rate_label_control::tooltip(view_hover_element& hover, const pointi loc, co
 		const df::item_set items = {{_item}};
 		const auto can_edit = items.can_process(df::process_items_type::can_save_metadata, false, {});
 		hover.elements->add(std::make_shared<text_element>(can_edit.to_string(), render::font_face::dialog,
-		                                                   render::text_style::multiline,
-		                                                   flex_item::line_break));
+		                                                   render::text_style::multiline, flex_item::line_break));
 	}
 
 	hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
@@ -1786,7 +1714,7 @@ void preview_control::dispatch_event(const view_element_event& event)
 		const std::vector<ui::command_ptr> result = {
 			def_menu_command(icon_index::none, tt.show_raw, 0, show_raw_always, !setting.raw_preview),
 			def_menu_command(icon_index::none, tt.preview_show_preview, 0, show_raw_preview_always,
-			                 setting.raw_preview),
+		                     setting.raw_preview),
 			def_menu_command(icon_index::none, tt.show_raw_now, 0, show_raw_this_only, false),
 		};
 
@@ -1794,7 +1722,7 @@ void preview_control::dispatch_event(const view_element_event& event)
 	}
 }
 
-void preview_control::tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const
+void preview_control::tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const
 {
 	hover.elements->add(make_icon_element(icon_index::preview, flex_item::no_break));
 
@@ -1802,13 +1730,12 @@ void preview_control::tooltip(view_hover_element& hover, const pointi loc, const
 	if (_ts->is_preview()) text = tt.preview_showing;
 	if (_ts->is_preview_rendering()) text = tt.preview_rendering;
 
-	hover.elements->add(std::make_shared<text_element>(text, render::font_face::dialog,
-	                                                   render::text_style::multiline,
+	hover.elements->add(std::make_shared<text_element>(text, render::font_face::dialog, render::text_style::multiline,
 	                                                   flex_item::line_break));
 	hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
 }
 
-void items_dates_control::tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const
+void items_dates_control::tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const
 {
 	constexpr auto font = render::font_face::dialog;
 	const auto md = _item->metadata();
@@ -1832,36 +1759,34 @@ void items_dates_control::tooltip(view_hover_element& hover, const pointi loc, c
 	hover.preferred_size = core::mul_div(view_hover_element::default_preferred_size, 13, 10);
 
 	e->add(make_icon_element(search.first_type()->icon, flex_item::no_break));
-	e->add(std::make_shared<text_element>(tt.dates_title, render::font_face::title,
-	                                      render::text_style::single_line, flex_item::line_break));
+	e->add(std::make_shared<text_element>(tt.dates_title, render::font_face::title, render::text_style::single_line,
+	                                      flex_item::line_break));
 
 	const auto table = std::make_shared<ui::table_element>(flex_item::center);
 
 	// The source is provenance rather than value, so it is dimmed beside the date it explains.
 	const auto source_color = core::darken(ui::style::colors.view_text, 0.22f);
 
-	const auto add_row = [&table, source_color](const std::string_view label, const core::date_t d,
-	                                            const std::string_view source)
+	const auto add_row =
+		[&table, source_color](const std::string_view label, const core::date_t d, const std::string_view source)
 	{
 		auto source_cell = std::make_shared<text_element>(source);
 		source_cell->foreground_color(source_color);
 
-		table->add(std::make_shared<text_element>(label),
-		           std::make_shared<text_element>(platform::format_date(d)),
-		           std::make_shared<text_element>(platform::format_time(d)),
-		           source_cell);
+		table->add(std::make_shared<text_element>(label), std::make_shared<text_element>(platform::format_date(d)),
+		           std::make_shared<text_element>(platform::format_time(d)), source_cell);
 	};
 
 	// Naming the tag each date came from is what turns "the date is wrong" into a question with a
 	// visible answer, which is the whole difficulty of #184.
 	if (md)
 	{
-		const auto add_date_row = [&add_row, md](const std::string_view label, const prop::date_concept kind)
+		const auto add_date_row = [&add_row, md](const std::string_view label, const prop::date_concept date_kind)
 		{
-			const auto d = md->dates.resolve(kind);
+			const auto d = md->dates.resolve(date_kind);
 			if (!d.is_valid()) return;
 
-			add_row(label, d, prop::date_source_name(md->dates.resolved_source(kind)));
+			add_row(label, d, prop::date_source_name(md->dates.resolved_source(date_kind)));
 		};
 
 		add_date_row(tt_prep(tt.prop_name_original.sv()), prop::date_concept::original);
@@ -1869,10 +1794,10 @@ void items_dates_control::tooltip(view_hover_element& hover, const pointi loc, c
 		add_date_row(tt_prep(tt.prop_name_modified.sv()), prop::date_concept::modified);
 	}
 
-	const auto shows_file_created = !md || prop::shows_own_file_stamp_row(
-		md->dates, prop::date_source::file_created, file_created_date);
-	const auto shows_file_modified = !md || prop::shows_own_file_stamp_row(
-		md->dates, prop::date_source::file_modified, file_modified_date);
+	const auto shows_file_created = !md || prop::shows_own_file_stamp_row(md->dates, prop::date_source::file_created,
+	                                                                      file_created_date);
+	const auto shows_file_modified = !md || prop::shows_own_file_stamp_row(md->dates, prop::date_source::file_modified,
+	                                                                       file_modified_date);
 
 	if (file_created_date.is_valid() && shows_file_created)
 	{
@@ -1888,9 +1813,9 @@ void items_dates_control::tooltip(view_hover_element& hover, const pointi loc, c
 
 	if (matches)
 	{
-		e->add(std::make_shared<text_element>(
-			str_format(tt.items_created_on_fmt.sv(), *matches, prop::format_date(created_date)), font,
-			render::text_style::multiline, flex_item::new_line));
+		e->add(std::make_shared<text_element>(str_format(tt.items_created_on_fmt.sv(), *matches,
+		                                                 prop::format_date(created_date)),
+		                                      font, render::text_style::multiline, flex_item::new_line));
 	}
 
 	hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
@@ -1904,3 +1829,195 @@ view_bars task_view_bars(std::vector<bar_entry> bottom)
 	};
 }
 
+// Anything with a submenu of its own appears once, at the top level, rather than also being spelled out
+// beside it.
+const view_menu& media_view_menu()
+{
+	static const view_menu menu = {
+		.row = {commands::edit_cut, commands::edit_copy, commands::tool_rename, commands::tool_delete},
+		.list =
+			{
+				commands::play,
+				commands::slideshow,
+				commands::view_fullscreen,
+				commands::none,
+				commands::browse_previous_item,
+				commands::browse_next_item,
+				commands::browse_previous_group,
+				commands::browse_next_group,
+				commands::none,
+				commands::menu_zoom,
+				commands::menu_open,
+				commands::menu_tools,
+				commands::menu_rate_or_label,
+				commands::playback_menu,
+				commands::menu_display_options,
+				commands::none,
+				commands::tool_copy_to_folder,
+				commands::tool_move_to_folder,
+				commands::edit_copy_item_path,
+			},
+	};
+	return menu;
+}
+
+// The status bar carries a view's own commands; the title bar's are the window's, apart from Close.
+view_menu view_base::context_menu(const pointi /*loc*/)
+{
+	view_menu result;
+	const auto declared = bars();
+
+	for (const auto* const entries : {&declared.bottom_leading, &declared.bottom})
+	{
+		for (const auto& entry : *entries)
+		{
+			if (const auto* const id = std::get_if<commands>(&entry)) result.list.emplace_back(*id);
+		}
+	}
+
+	if (!result.list.empty()) result.list.emplace_back(commands::none);
+	result.list.emplace_back(commands::view_close);
+	return result;
+}
+
+static void add_keyboard_targets(const view_element_ptr& e, const pointi offset, std::vector<keyboard_target>& targets)
+{
+	if (!e || !e->is_visible() || !e->is_enabled()) return;
+
+	if (e->kind == ui::element_kind::control)
+	{
+		targets.emplace_back(std::static_pointer_cast<ui::control>(e));
+		return;
+	}
+
+	if (e->kind != ui::element_kind::content) return;
+
+	if (const auto* const source = dynamic_cast<const keyboard_parts_source*>(e.get()))
+	{
+		auto index = 0;
+		for (const auto& part : source->keyboard_parts())
+			targets.emplace_back(keyboard_part{e, index++, part.offset(offset)});
+		return;
+	}
+
+	// What an element holds is where its parts are: a row of links is no part itself, though it reports that one
+	// of them acts.
+	auto holds = false;
+	const auto children_offset = offset + e->children_offset();
+
+	e->visit_children([&](const view_element_ptr& child)
+	{
+		holds = true;
+		add_keyboard_targets(child, children_offset, targets);
+	});
+
+	if (!holds && e->can_invoke()) targets.emplace_back(keyboard_part{e, 0, e->bounds.offset(offset)});
+}
+
+std::vector<keyboard_target> find_keyboard_targets(const std::vector<view_element_ptr>& roots, const pointi offset)
+{
+	std::vector<keyboard_target> targets;
+	for (const auto& e : roots) add_keyboard_targets(e, offset, targets);
+	return targets;
+}
+
+std::vector<keyboard_part> find_keyboard_parts(const std::vector<view_element_ptr>& roots, const pointi offset)
+{
+	std::vector<keyboard_part> parts;
+
+	for (auto& target : find_keyboard_targets(roots, offset))
+	{
+		if (auto* const part = std::get_if<keyboard_part>(&target)) parts.emplace_back(std::move(*part));
+	}
+
+	return parts;
+}
+
+int step_keyboard_part(const std::vector<keyboard_part>& parts, const int from, const char32_t key)
+{
+	const auto count = static_cast<int>(parts.size());
+	if (count == 0) return -1;
+	if (key == platform::keys::HOME) return 0;
+	if (key == platform::keys::END) return count - 1;
+
+	const auto vertical = key == platform::keys::UP || key == platform::keys::DOWN;
+	if (!vertical && key != platform::keys::LEFT && key != platform::keys::RIGHT) return -1;
+	if (from < 0 || from >= count) return 0;
+	if (key == platform::keys::LEFT) return std::max(0, from - 1);
+	if (key == platform::keys::RIGHT) return std::min(count - 1, from + 1);
+
+	// The nearest row of parts past this one's edge, and in it the part nearest across: a list steps a row at a time
+	// and a grid down its column. A part beside this one, or overlapping it, is not in either direction.
+	const auto down = key == platform::keys::DOWN;
+	const auto here = parts[from].bounds;
+	const auto gap_to = [&](const recti there)
+	{
+		return down ? there.top - here.bottom : here.top - there.bottom;
+	};
+	auto nearest_gap = std::numeric_limits<int>::max();
+
+	for (const auto& part : parts)
+	{
+		if (const auto gap = gap_to(part.bounds); gap >= 0) nearest_gap = std::min(nearest_gap, gap);
+	}
+
+	if (nearest_gap == std::numeric_limits<int>::max()) return from;
+
+	auto result = from;
+	auto nearest_across = std::numeric_limits<int>::max();
+
+	for (auto i = 0; i < count; ++i)
+	{
+		const auto gap = gap_to(parts[i].bounds);
+		if (gap < 0 || gap > nearest_gap + here.height() / 2) continue;
+
+		const auto across = std::abs(parts[i].bounds.center().x - here.center().x);
+
+		if (across < nearest_across)
+		{
+			nearest_across = across;
+			result = i;
+		}
+	}
+
+	return result;
+}
+
+void press_keyboard_part(const view_host_ptr& host, const keyboard_part& part)
+{
+	if (!host || !part.element) return;
+
+	if (auto* const source = dynamic_cast<keyboard_parts_source*>(part.element.get());
+	    source && source->press_keyboard_part(part.index, host))
+		return;
+
+	const auto at = part.bounds.center();
+	hit_test_context ctx(at, part.bounds);
+
+	if (const auto controller = host->controller_from_location(at, ctx))
+	{
+		controller->on_mouse_left_button_down(at, {});
+		controller->on_mouse_left_button_up(at, {});
+	}
+}
+
+// As a focused control shows it, so the keyboard looks the same wherever it is.
+void draw_keyboard_ring(render::draw_context& dc, const recti bounds, const bool inside)
+{
+	const auto width = std::max(1, core::round(2 * dc.scale_factor));
+	const auto c = core::color(ui::style::colors.dialog_selected_background, dc.colors.alpha);
+	if (inside) dc.draw_border(bounds.inflate(-width), bounds, c, c);
+	else dc.draw_border(bounds, bounds.inflate(width), c, c);
+}
+
+void scroll_into_view(view_scroller& scroller, const view_host_ptr& host, const recti bounds)
+{
+	const auto client = scroller.client_bounds();
+	const auto offset = scroller.scroll_offset();
+	auto y = offset.y;
+
+	if (bounds.top < client.top) y -= client.top - bounds.top;
+	else if (bounds.bottom > client.bottom) y += std::min(bounds.bottom - client.bottom, bounds.top - client.top);
+
+	scroller.scroll_offset(host, offset.x, y);
+}

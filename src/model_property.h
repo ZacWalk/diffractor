@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Property definitions and metadata formatting. Defines all item property types
 // (dimensions, dates, camera info, etc.) and provides formatting functions for display.
@@ -135,10 +134,9 @@ namespace prop
 		// would pass the bound this test exists to enforce.
 		bool is_valid() const noexcept
 		{
-			return full_width > 0 && full_height > 0 && cropped_width > 0 && cropped_height > 0 &&
-				cropped_left >= 0 && cropped_top >= 0 &&
-				static_cast<int64_t>(cropped_left) + cropped_width <= full_width &&
-				static_cast<int64_t>(cropped_top) + cropped_height <= full_height;
+			return full_width > 0 && full_height > 0 && cropped_width > 0 && cropped_height > 0 && cropped_left >= 0 &&
+			       cropped_top >= 0 && static_cast<int64_t>(cropped_left) + cropped_width <= full_width &&
+			       static_cast<int64_t>(cropped_top) + cropped_height <= full_height;
 		}
 
 		// A writer that declared equirectangular and no crop. The pixels are taken to span the full
@@ -151,11 +149,7 @@ namespace prop
 
 			const auto full_height = std::max(source.cy, source.cx / 2);
 
-			return {
-				source.cx, full_height,
-				0, (full_height - source.cy) / 2,
-				source.cx, source.cy
-			};
+			return {source.cx, full_height, 0, (full_height - source.cy) / 2, source.cx, source.cy};
 		}
 
 		// Fills in whatever the file left out, and rejects a declaration that contradicts the
@@ -163,8 +157,7 @@ namespace prop
 		// describes a different file than the one being drawn.
 		static panorama_geometry resolve(const panorama_geometry& declared, const sizei source) noexcept
 		{
-			if (declared.is_valid() &&
-				declared.cropped_width == source.cx && declared.cropped_height == source.cy)
+			if (declared.is_valid() && declared.cropped_width == source.cx && declared.cropped_height == source.cy)
 			{
 				return declared;
 			}
@@ -228,8 +221,8 @@ namespace prop
 		key& operator=(key&& other) = delete;
 
 	public:
-		key(uint16_t id, std::string_view sn, std::string_view n, text_t& tx, icon_index i, data_type t,
-		    uint32_t f, uint32_t bit);
+		key(uint16_t id, std::string_view sn, std::string_view n, text_t& tx, icon_index i, data_type t, uint32_t f,
+		    uint32_t bit);
 
 		uint16_t id = 0;
 		icon_index icon = {};
@@ -240,29 +233,16 @@ namespace prop
 		uint32_t flags = 0;
 		uint32_t search_presence_bit = 0;
 
-		friend bool operator==(const key& lhs, const key& rhs)
-		{
-			return lhs.id == rhs.id;
-		}
+		friend bool operator==(const key& lhs, const key& rhs) { return lhs.id == rhs.id; }
 
-		friend bool operator!=(const key& lhs, const key& rhs)
-		{
-			return !(lhs == rhs);
-		}
+		friend bool operator!=(const key& lhs, const key& rhs) { return !(lhs == rhs); }
 
-		constexpr bool operator<(const key& other) const
-		{
-			return id < other.id;
-		}
+		constexpr bool operator<(const key& other) const { return id < other.id; }
 
-		constexpr operator key_ref() const
-		{
-			return this;
-		}
+		constexpr operator key_ref() const { return this; }
 
 		std::string text() const;
 	};
-
 
 	extern key album;
 	extern key artist;
@@ -396,19 +376,12 @@ namespace prop
 		episode,
 	};
 
-	// How far through a recording a saved playback position stands, from 0 to 1; 0 when none is saved.
-	inline double playback_progress(const double position, const int duration)
-	{
-		if (position <= 0.0 || duration <= 0) return 0.0;
-		return std::clamp(position / duration, 0.0, 1.0);
-	}
-
 	// Started and not finished: past its first minute - or its first twentieth, for a short recording - and short
 	// of its last twentieth, where the credits leave a finished film's position.
-	inline bool is_in_progress(const double position, const int duration)
+	inline bool is_in_progress(const double position, const int length_seconds)
 	{
-		if (position <= 0.0 || duration <= 0) return false;
-		const auto length = static_cast<double>(duration);
+		if (position <= 0.0 || length_seconds <= 0) return false;
+		const auto length = static_cast<double>(length_seconds);
 		return position >= std::min(60.0, length * 0.05) && position <= length * 0.95;
 	}
 
@@ -442,12 +415,6 @@ namespace prop
 	struct item_metadata
 	{
 		item_metadata() noexcept = default;
-
-		item_metadata& operator=(const item_metadata& other) noexcept = default;
-		item_metadata& operator=(item_metadata&& other) noexcept = default;
-
-		item_metadata(const item_metadata& other) = default;
-		item_metadata(item_metadata&& other) = default;
 
 		sizei dimensions() const { return {width, height}; }
 
@@ -530,19 +497,13 @@ namespace prop
 
 		// The one date shown where there is room for one. docs/metadata.md#dates owns the ladder;
 		// this is the only place it is implemented.
-		core::date_t created() const
-		{
-			return dates.best();
-		}
+		core::date_t created() const { return dates.best(); }
 
 		search_presence_mask calc_search_presence() const;
 
 		// The file's own declaration, not a guess from its shape. An image merely wide enough to
 		// look like a panorama answers false here.
-		bool is_panorama() const
-		{
-			return panorama != panorama_projection::none;
-		}
+		bool is_panorama() const { return panorama != panorama_projection::none; }
 
 		// docs/zoom.md: what the *display* treats as a panorama, which is a wider question than what
 		// the file declares. Failing a declaration, an aspect ratio of at least 2:1 with a long edge
@@ -561,15 +522,9 @@ namespace prop
 			return short_edge > 0 && long_edge >= min_long_edge && long_edge >= short_edge * 2;
 		}
 
-		bool has_gps() const
-		{
-			return coordinate.is_valid();
-		}
+		bool has_gps() const { return coordinate.is_valid(); }
 
-		bool is_in_progress() const
-		{
-			return prop::is_in_progress(media_position, duration);
-		}
+		bool is_in_progress() const { return prop::is_in_progress(media_position, duration); }
 
 		std::string format(std::string_view name) const;
 	};
@@ -633,8 +588,8 @@ namespace prop
 	std::string format_pixels(sizei v, file_type_ref ft);
 	std::string format_video_resolution(sizei v);
 
-	std::string replace_tokens(std::string_view name_template, const item_metadata_const_ptr& md,
-	                           std::string_view name, core::date_t created);
+	std::string replace_tokens(std::string_view name_template, const item_metadata_const_ptr& md, std::string_view name,
+	                           core::date_t created);
 
 	// An episode's place in its show as a library names it - S01E02, S03E00 for a special, E426 numbered without
 	// a season, 2 / 6 for a part, or the day it aired - interned, as it is drawn for every visible item. Empty

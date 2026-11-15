@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: GPS coordinate and location structures. Defines gps_coordinate for geographic
 // positions, location_t for place information, attribution_cell for memoizing reverse
@@ -12,7 +11,6 @@
 
 #pragma once
 #include "libdesktop/core/util.h"
-
 
 class gps_coordinate
 {
@@ -25,7 +23,6 @@ public:
 
 	double _latitude = invalid_coordinate;
 	double _longitude = invalid_coordinate;
-
 
 	gps_coordinate(const double latitude, const double longitude) noexcept : _latitude(latitude), _longitude(longitude)
 	{
@@ -45,14 +42,10 @@ public:
 
 	friend bool operator==(const gps_coordinate lhs, const gps_coordinate rhs)
 	{
-		return core::equiv(lhs._latitude, rhs._latitude)
-			&& core::equiv(lhs._longitude, rhs._longitude);
+		return core::equiv(lhs._latitude, rhs._latitude) && core::equiv(lhs._longitude, rhs._longitude);
 	}
 
-	friend bool operator!=(const gps_coordinate lhs, const gps_coordinate rhs)
-	{
-		return !(lhs == rhs);
-	}
+	friend bool operator!=(const gps_coordinate lhs, const gps_coordinate rhs) { return !(lhs == rhs); }
 
 	bool is_empty() const
 	{
@@ -78,25 +71,13 @@ public:
 		return std::abs(_latitude) <= max_valid_latitude && std::abs(_longitude) < invalid_coordinate;
 	}
 
-	double latitude() const
-	{
-		return _latitude;
-	}
+	double latitude() const { return _latitude; }
 
-	double longitude() const
-	{
-		return _longitude;
-	}
+	double longitude() const { return _longitude; }
 
-	void latitude(const double value)
-	{
-		_latitude = value;
-	}
+	void latitude(const double value) { _latitude = value; }
 
-	void longitude(const double value)
-	{
-		_longitude = value;
-	}
+	void longitude(const double value) { _longitude = value; }
 
 	std::string str() const;
 
@@ -107,14 +88,10 @@ public:
 		uint32_t n[3];
 		decimal_to_dms(coord, n);
 		// %u, not %lu: uint32_t is unsigned int, and under LP64 unsigned long is twice its width.
-		return core::print("%u,%u,%u%c", n[0], n[1], n[2],
-		                  is_ns ? (coord < 0 ? 'S' : 'N') : coord < 0 ? 'W' : 'E');
+		return core::print("%u,%u,%u%c", n[0], n[1], n[2], is_ns ? (coord < 0 ? 'S' : 'N') : coord < 0 ? 'W' : 'E');
 	}
 
-	static void decimal_to_dms(const double coord, uint32_t u[3])
-	{
-		decimal_to_dms(coord, u[0], u[1], u[2]);
-	}
+	static void decimal_to_dms(const double coord, uint32_t u[3]) { decimal_to_dms(coord, u[0], u[1], u[2]); }
 
 	static double dms_to_decimal(int deg, int min, int sec);
 	static double dms_to_decimal(double deg, double min, double sec);
@@ -127,15 +104,9 @@ public:
 		return sqrt(d_lat * d_lat + d_lon * d_lon);
 	}
 
-	static double deg2rad(const double deg)
-	{
-		return deg * M_PI / 180;
-	}
+	static double deg2rad(const double deg) { return deg * M_PI / 180; }
 
-	static double rad2deg(const double rad)
-	{
-		return rad * 180 / M_PI;
-	}
+	static double rad2deg(const double rad) { return rad * 180 / M_PI; }
 
 	// from http://en.wikipedia.org/wiki/Haversine_formula
 	double distance_in_kilometers(const gps_coordinate other) const
@@ -213,9 +184,7 @@ split_location_result split_location(std::string_view text);
 
 // locations.md 4.2: the distance slider's detents in kilometres. A user thinks "a bit wider",
 // not in linear metres, so the ladder is roughly logarithmic.
-inline constexpr double location_distance_detents_km[] = {
-	0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0
-};
+inline constexpr double location_distance_detents_km[] = {0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0};
 inline constexpr int location_distance_detent_count = std::size(location_distance_detents_km);
 
 // Where the slider starts when the term names a place but sets no radius. It matches the
@@ -286,9 +255,9 @@ struct location_t
 
 	location_t(const uint32_t id_in, const core::cached city_in, const core::cached state_in,
 	           const core::cached country_in, const gps_coordinate position_in, const double pop,
-	           const uint32_t flags_in = 0) noexcept
-		: id(id_in), place(city_in), state(state_in), country(country_in), position(position_in), population(pop),
-		  flags(flags_in)
+	           const uint32_t flags_in = 0) noexcept :
+		id(id_in), place(city_in), state(state_in), country(country_in), position(position_in), population(pop),
+		flags(flags_in)
 	{
 	}
 
@@ -297,43 +266,26 @@ struct location_t
 	location_qualification qualification() const
 	{
 		const auto level = flags & location_flag_level_mask;
-		return level >= 2u
-			       ? location_qualification::name_region_country
-			       : static_cast<location_qualification>(level);
+		return level >= 2u ? location_qualification::name_region_country : static_cast<location_qualification>(level);
 	}
 
 	// locations.md 2.1: an extent feature is matched by its bounding box and has no meaningful
 	// centroid, so it is excluded from find_closest, find_largest and radius search.
-	bool is_extent() const
-	{
-		return (flags & location_flag_extent) != 0;
-	}
+	bool is_extent() const { return (flags & location_flag_extent) != 0; }
 
-	friend bool operator==(const location_t& lhs, const location_t& rhs)
-	{
-		return lhs.id == rhs.id;
-	}
+	friend bool operator==(const location_t& lhs, const location_t& rhs) { return lhs.id == rhs.id; }
 
-	friend bool operator!=(const location_t& lhs, const location_t& rhs)
-	{
-		return !(lhs == rhs);
-	}
+	friend bool operator!=(const location_t& lhs, const location_t& rhs) { return !(lhs == rhs); }
 
-	bool operator<(const location_t& other) const
-	{
-		return id < other.id;
-	}
+	bool operator<(const location_t& other) const { return id < other.id; }
 
 	bool is_empty() const
 	{
-		return id == 0 && core::is_empty(place) && core::is_empty(state) & core::is_empty(country) && position.
-			is_empty();
+		return id == 0 && core::is_empty(place) && core::is_empty(state) & core::is_empty(country) &&
+		       position.is_empty();
 	}
 
-	bool has_gps() const
-	{
-		return !position.is_empty();
-	}
+	bool has_gps() const { return !position.is_empty(); }
 
 	std::string str() const;
 
@@ -390,10 +342,7 @@ struct located_place
 	double nearest_km = 0.0;
 	location_bearing nearest_bearing = location_bearing::north;
 
-	bool is_located() const
-	{
-		return attribution != location_attribution::none;
-	}
+	bool is_located() const { return attribution != location_attribution::none; }
 };
 
 // locations.md 2.7: the one composer of a bearing descriptor -- `410 km NW of Lisbon, Portugal`.
@@ -464,17 +413,15 @@ struct map_location_area
 
 	bool contains(const pointi map_cell) const
 	{
-		return map_cell.x >= cell.x && map_cell.x < cell.x + cell_span &&
-			map_cell.y >= cell.y && map_cell.y < cell.y + cell_span;
+		return map_cell.x >= cell.x && map_cell.x < cell.x + cell_span && map_cell.y >= cell.y &&
+		       map_cell.y < cell.y + cell_span;
 	}
 
 	bool has_same_photo_bounds(const map_location_area& other) const
 	{
-		return position == other.position &&
-			core::equiv(min_latitude, other.min_latitude) &&
-			core::equiv(min_longitude, other.min_longitude) &&
-			core::equiv(max_latitude, other.max_latitude) &&
-			core::equiv(max_longitude, other.max_longitude);
+		return position == other.position && core::equiv(min_latitude, other.min_latitude) &&
+		       core::equiv(min_longitude, other.min_longitude) && core::equiv(max_latitude, other.max_latitude) &&
+		       core::equiv(max_longitude, other.max_longitude);
 	}
 
 	bool operator==(const map_location_area& other) const = default;

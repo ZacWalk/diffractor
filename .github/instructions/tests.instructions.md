@@ -23,7 +23,7 @@ Ask what the test **constrains**, not what prompted it.
 - A test that asserts nothing **fails** — assertions are counted, so a test disabled by an early
   return cannot report PASS forever.
 - A duplicate test name **fails**.
-- A filter matching no test **fails**. Silence used to mean the filter missed.
+- A filter matching no test **fails**, so a filter that misses cannot pass in silence.
 
 Release-only decoder fuzz sweeps and the closest-location lookup are guarded by
 `#ifndef _DEBUG`; keep that conditional coverage aligned between configurations so a missing
@@ -32,7 +32,7 @@ registration is visible.
 ## A test must not
 
 - **Persist user state.** Never append to a real dictionary, settings key or collection. Use
-  `_temps`.
+  `test_temps`.
 - **Depend on another test.** One `shared_test_context` carries the loaded index and gazetteer
   because loading those per test is not affordable. Nothing else carries between tests.
 - **Depend on ordering, wall-clock timing, or the machine's fonts and DPI.** Layout tests measure
@@ -54,5 +54,5 @@ models the hop with a `deferred_async_strategy`; running it inline trips the ass
 
 ## Checks
 
-`.\dd.ps1 test` runs the lint, the suite, and the translation checks. Narrow first with
-`.\exe\diffractor64-d.exe /test:*subject* | Out-Host`.
+`.\dd.ps1 test` runs the lint, the suite, and the translation checks. Narrow first: build Debug with
+`python tools\dd.py build`, then run `.\exe\diffractor64-d.exe /test:*subject* | Out-Host`.

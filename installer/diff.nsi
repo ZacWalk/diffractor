@@ -332,10 +332,12 @@ Section "Diffractor"
 	File "..\exe\location-states.txt"
 	File "..\exe\diffractor-tools.json"
 
-	; The installed program is LGPL-3.0-or-later, whose text and the GPL-3.0 it incorporates must
-	; accompany every copy. dd.ps1 desktop stages both into exe\ before this script is compiled.
+	; Diffractor is MPL-2.0; the LGPL libraries it links need their texts, and the GPL-3.0 the LGPL-3.0
+	; incorporates, beside every copy. dd.ps1 desktop stages all four into exe\ before this is compiled.
 	File "..\exe\LICENSE.txt"
+	File "..\exe\COPYING.LGPLv3.txt"
 	File "..\exe\COPYING.GPLv3.txt"
+	File "..\exe\COPYING.LGPLv2.1.txt"
 
 	File "..\exe\${PRODUCT32_EXE}"
 	File "..\exe\${PRODUCT64_EXE}"
@@ -483,7 +485,9 @@ Section "Uninstall"
 	Delete "$INSTDIR\location-states.txt"
 	Delete "$INSTDIR\diffractor-tools.json"
 	Delete "$INSTDIR\LICENSE.txt"
+	Delete "$INSTDIR\COPYING.LGPLv3.txt"
 	Delete "$INSTDIR\COPYING.GPLv3.txt"
+	Delete "$INSTDIR\COPYING.LGPLv2.1.txt"
 	Delete "$INSTDIR\diffractor.log"
 	Delete "$INSTDIR\diffractor.previous.log"
 	Delete "$INSTDIR\languages\*.po"

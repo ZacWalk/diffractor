@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
 //
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Shared preview and processing view for batch conversion, metadata, and date tools.
 
@@ -61,7 +60,8 @@ class batch_tool_view final : public list_view, public std::enable_shared_from_t
 	void run_convert();
 	void run_metadata();
 	void run_dates();
-	// Replaces the status column of every reviewed row with what the finished run actually did.
+	// Shows what the finished run did to each reviewed row, its statuses in plan order, and concludes the status
+	// line with the counts and the first error.
 	void show_run_results(const std::vector<item_status>& statuses, std::string_view error);
 	// Called from the worker: hands a finished run back to the UI thread as one status per row.
 	static void queue_run_results(const view_state& s, const std::shared_ptr<batch_tool_view>& view, size_t generation,

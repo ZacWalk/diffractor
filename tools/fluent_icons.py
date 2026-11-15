@@ -184,6 +184,12 @@ ICONS: dict[str, tuple[str, bool]] = {
     "code": ("code", False),
     "data": ("database", False),
     "retro": ("games", False),
+    # Fluent has no 5.25-inch disk: the save glyph is the floppy every disk image reads as.
+    "floppy": ("save", False),
+    # Nor a cartridge. A cartridge is a board of ROM chips on an edge connector, which is what this draws.
+    "cartridge": ("ram", False),
+    # Solo, in a mixer: listening to one channel alone.
+    "headphones": ("headphones", False),
     "language": ("local_language", False),
     "edit_metadata": ("document_edit", False),
     "verbose_metadata": ("text_description", False),

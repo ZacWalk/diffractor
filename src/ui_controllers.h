@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: UI input controllers for moving a selection and dragging its handles. A clickable
 // element's controller is libdesktop UI's.
@@ -14,8 +13,7 @@
 #include "libdesktop/ui.h"
 #include "ui_view.h"
 
-template <class TParent>
-class selection_move_controller final : public view_controller
+template <class TParent> class selection_move_controller final : public view_controller
 {
 public:
 	TParent& _parent;
@@ -43,7 +41,7 @@ public:
 		return _tracking ? platform::cursor::hand_up : platform::cursor::hand_down;
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		if (!_tracking)
 		{
@@ -63,14 +61,14 @@ public:
 		}
 	}
 
-	void update(bool tracking) const
+	void update(bool /*tracking*/) const
 	{
 		const auto offset = _start_loc - _last_loc;
 		auto rr = _device_start.offset(-offset.x, -offset.y);
 		_parent.device_selection(rr, false, true);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		if (_tracking)
 		{
@@ -90,8 +88,7 @@ public:
 	}
 };
 
-template <class TParent>
-class handle_move_controller final : public view_controller
+template <class TParent> class handle_move_controller final : public view_controller
 {
 public:
 	TParent& _parent;
@@ -105,8 +102,7 @@ public:
 	bool _bottom = false;
 
 	handle_move_controller(const view_host_ptr& host, TParent& parent, const rectd& start, const bool l, const bool t,
-	                       const bool r,
-	                       const bool b) : view_controller(host, start.round()), _parent(parent)
+	                       const bool r, const bool b) : view_controller(host, start.round()), _parent(parent)
 	{
 		_left = l;
 		_top = t;
@@ -125,12 +121,9 @@ public:
 		}
 	}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::move;
-	}
+	platform::cursor cursor() const override { return platform::cursor::move; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		if (!_tracking)
 		{
@@ -150,7 +143,7 @@ public:
 		}
 	}
 
-	void update(bool tracking) const
+	void update(bool /*tracking*/) const
 	{
 		const auto offset = _start_loc - _last_loc;
 		auto rr = _device_start.round();
@@ -170,7 +163,7 @@ public:
 		_parent.device_selection2(rr, active_point);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		if (_tracking)
 		{

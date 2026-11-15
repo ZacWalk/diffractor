@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: HEIF/HEIC and AVIF decoding through libfiles, HEVC steered to FFmpeg's decoder, which is
 // registered with libheif here: the primary image, and the thumbnail item that a scan wanting one cannot
@@ -71,19 +70,18 @@ namespace
 
 		bool accept(const libfiles::frame_info& declared) override
 		{
-			return !reject_over_budget_source(_diagnostic, {
-				                                  static_cast<int>(declared.source_width),
-				                                  static_cast<int>(declared.source_height)
-			                                  }, _format);
+			return !reject_over_budget_source(_diagnostic,
+			                                  {static_cast<int>(declared.source_width),
+			                                   static_cast<int>(declared.source_height)},
+			                                  _format);
 		}
 
 		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
 		{
 			auto s = std::make_shared<core::surface>();
 			auto* const pixels = s->alloc(static_cast<int>(frame.width), static_cast<int>(frame.height),
-			                              frame.format == libfiles::pixel_format::bgra8
-				                              ? core::texture_format::ARGB
-				                              : core::texture_format::RGB);
+			                              frame.format == libfiles::pixel_format::bgra8 ? core::texture_format::ARGB
+			                                                                            : core::texture_format::RGB);
 			if (!pixels) return {};
 			surface = std::move(s);
 			return {pixels, surface->stride()};
@@ -170,10 +168,7 @@ const char* heif_primary_decoder_id(read_stream& s)
 			return false;
 		}
 
-		libfiles::pixel_buffer allocate(const libfiles::frame_info&) override
-		{
-			return {};
-		}
+		libfiles::pixel_buffer allocate(const libfiles::frame_info&) override { return {}; }
 	};
 
 	choice sink;

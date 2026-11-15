@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Photo editing view. Implements pixel adjustments and comparison.
 
@@ -43,26 +42,18 @@ class log_slider_control final : public view_element, public std::enable_shared_
 	constexpr static int Range = 100;
 
 public:
-	log_slider_control(ui::frame_ptr& h, const std::string_view text, double& v, double min, double max,
+	log_slider_control(ui::frame_ptr& /*h*/, const std::string_view text, double& v, double min, double max,
 	                   std::function<void()> changed) noexcept :
-		_label(text),
-		_val(v),
-		_min(min),
-		_max(max),
-		_tracking(false),
-		_changed(std::move(changed))
+		_label(text), _val(v), _min(min), _max(max), _tracking(false), _changed(std::move(changed))
 	{
-		ui::edit_styles style;
-		style.align_center = true;
-		_edit = ui::make_edit(style, {}, [this](const std::string_view text) { edit_change(text); });
+		ui::edit_styles edit_style;
+		edit_style.align_center = true;
+		_edit = ui::make_edit(edit_style, {}, [this](const std::string_view text) { edit_change(text); });
 		_slider = ui::make_slider(-Range, Range,
-		                           [this](const int pos, const bool is_tracking) { slider_change(pos, is_tracking); });
+		                          [this](const int pos, const bool is_tracking) { slider_change(pos, is_tracking); });
 	}
 
-	void label(const std::string_view label)
-	{
-		_label = label;
-	}
+	void label(const std::string_view label) { _label = label; }
 
 	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
 	{
@@ -98,8 +89,8 @@ public:
 		{
 			const auto text_color = core::color(dc.colors.foreground, dc.colors.alpha);
 			dc.draw_text(_label, _row.label.offset(element_offset), render::font_face::dialog,
-			             _row.stacked ? render::text_style::multiline : render::text_style::single_line,
-			             text_color, {});
+			             _row.stacked ? render::text_style::multiline : render::text_style::single_line, text_color,
+			             {});
 		}
 
 		render_children(dc, element_offset);
@@ -153,10 +144,7 @@ public:
 		_changed();
 	}
 
-	bool is_tracking() const
-	{
-		return _tracking;
-	}
+	bool is_tracking() const { return _tracking; }
 };
 
 namespace
@@ -164,6 +152,14 @@ namespace
 	constexpr double detection_pi = 3.14159265358979323846;
 	constexpr double minimum_document_confidence = 0.55;
 	constexpr double clear_document_confidence = 0.80;
+
+	// The BT.709 luma of a packed pixel, 0 to 1 - the luma the colour grade's tone curve reads. A packed
+	// surface stores blue in the first byte, which core::get_r names, so red is get_b: reading get_r as red
+	// weighted blue as red and reversed Auto colour's white balance.
+	double packed_luma(const core::color32 c)
+	{
+		return (0.2126 * core::get_b(c) + 0.7152 * core::get_g(c) + 0.0722 * core::get_r(c)) / 255.0;
+	}
 
 	struct document_candidate
 	{
@@ -238,8 +234,8 @@ static document_candidate detect_document_by_region(const core::const_surface_pt
 	{
 		for (auto x = 0; x < width; ++x)
 		{
-			for (auto yy = (std::max)(0, y - 2); yy <= (std::min)(height - 1, y + 2) && !expanded[static_cast<size_t>(y)
-				     * width + x]; ++yy)
+			for (auto yy = (std::max)(0, y - 2);
+			     yy <= (std::min)(height - 1, y + 2) && !expanded[static_cast<size_t>(y) * width + x]; ++yy)
 				for (auto xx = (std::max)(0, x - 2); xx <= (std::min)(width - 1, x + 2); ++xx)
 					if (mask[static_cast<size_t>(yy) * width + xx])
 					{
@@ -433,10 +429,10 @@ static document_candidate detect_document_by_edges(const std::vector<float>& lum
 	{
 		for (auto x = 1; x < width - 1; ++x)
 		{
-			const auto gx = -at(x - 1, y - 1) - 2.0f * at(x - 1, y) - at(x - 1, y + 1) +
-				at(x + 1, y - 1) + 2.0f * at(x + 1, y) + at(x + 1, y + 1);
-			const auto gy = -at(x - 1, y - 1) - 2.0f * at(x, y - 1) - at(x + 1, y - 1) +
-				at(x - 1, y + 1) + 2.0f * at(x, y + 1) + at(x + 1, y + 1);
+			const auto gx = -at(x - 1, y - 1) - 2.0f * at(x - 1, y) - at(x - 1, y + 1) + at(x + 1, y - 1) +
+			                2.0f * at(x + 1, y) + at(x + 1, y + 1);
+			const auto gy = -at(x - 1, y - 1) - 2.0f * at(x, y - 1) - at(x + 1, y - 1) + at(x - 1, y + 1) +
+			                2.0f * at(x, y + 1) + at(x + 1, y + 1);
 			const auto index = static_cast<size_t>(y) * width + x;
 			magnitude[index] = std::hypot(gx, gy);
 			orientation[index] = std::atan2(gy, gx);
@@ -524,8 +520,8 @@ static document_candidate detect_document_by_edges(const std::vector<float>& lum
 			for (auto bin = 0; bin < rho_bins; ++bin)
 			{
 				family_maximum = (std::max)(family_maximum,
-				                            static_cast<double>(accumulator[static_cast<size_t>(step) * rho_bins +
-					                            bin]));
+				                            static_cast<double>(
+												accumulator[static_cast<size_t>(step) * rho_bins + bin]));
 			}
 		}
 
@@ -573,10 +569,9 @@ static document_candidate detect_document_by_edges(const std::vector<float>& lum
 		std::vector<hough_line> selected;
 		for (const auto& peak : peaks)
 		{
-			const auto duplicate = std::ranges::any_of(selected, [&](const hough_line& other)
-			{
+			const auto duplicate = std::ranges::any_of(selected, [&](const hough_line& other) {
 				return std::abs(peak.theta - other.theta) < 6.0 * detection_pi / 180.0 &&
-					std::abs(peak.rho - other.rho) < 12.0;
+				       std::abs(peak.rho - other.rho) < 12.0;
 			});
 			if (!duplicate) selected.push_back(peak);
 			if (selected.size() >= 10) break;
@@ -636,16 +631,14 @@ static document_candidate detect_document_by_edges(const std::vector<float>& lum
 	{
 		const auto determinant = std::cos(a.theta) * std::sin(b.theta) - std::sin(a.theta) * std::cos(b.theta);
 		if (std::abs(determinant) < 1e-6) return false;
-		point = {
-			(a.rho * std::sin(b.theta) - b.rho * std::sin(a.theta)) / determinant,
-			(b.rho * std::cos(a.theta) - a.rho * std::cos(b.theta)) / determinant
-		};
+		point = {(a.rho * std::sin(b.theta) - b.rho * std::sin(a.theta)) / determinant,
+		         (b.rho * std::cos(a.theta) - a.rho * std::cos(b.theta)) / determinant};
 		return true;
 	};
 
 	std::array<pointd, 4> corners{};
 	if (!intersect(left, top, corners[0]) || !intersect(right, top, corners[1]) ||
-		!intersect(right, bottom, corners[2]) || !intersect(left, bottom, corners[3]))
+	    !intersect(right, bottom, corners[2]) || !intersect(left, bottom, corners[3]))
 	{
 		return candidate;
 	}
@@ -654,8 +647,7 @@ static document_candidate detect_document_by_edges(const std::vector<float>& lum
 	const auto margin_y = height * 0.04;
 	for (auto& corner : corners)
 	{
-		if (corner.X < -margin_x || corner.X > width + margin_x ||
-			corner.Y < -margin_y || corner.Y > height + margin_y)
+		if (corner.X < -margin_x || corner.X > width + margin_x || corner.Y < -margin_y || corner.Y > height + margin_y)
 		{
 			return candidate;
 		}
@@ -708,20 +700,16 @@ static document_detection_result build_document_result(const std::array<pointd, 
 	// step works in the same coordinates as the crop and perspective controls.
 	for (auto index = 0; index < 4; ++index)
 	{
-		result.corners[index] = {
-			pixel_corners[index].X / width * source_extent.cx,
-			pixel_corners[index].Y / height * source_extent.cy
-		};
+		result.corners[index] = {pixel_corners[index].X / width * source_extent.cx,
+		                         pixel_corners[index].Y / height * source_extent.cy};
 	}
 
 	const auto top_width = pixel_corners[0].dist(pixel_corners[1]);
 	const auto bottom_width = pixel_corners[3].dist(pixel_corners[2]);
 	const auto left_height = pixel_corners[0].dist(pixel_corners[3]);
 	const auto right_height = pixel_corners[1].dist(pixel_corners[2]);
-	result.extent = {
-		(std::max)(32, core::round((top_width + bottom_width) * 0.5 / width * source_extent.cx)),
-		(std::max)(32, core::round((left_height + right_height) * 0.5 / height * source_extent.cy))
-	};
+	result.extent = {(std::max)(32, core::round((top_width + bottom_width) * 0.5 / width * source_extent.cx)),
+	                 (std::max)(32, core::round((left_height + right_height) * 0.5 / height * source_extent.cy))};
 	result.confidence = std::clamp(confidence, 0.0, 1.0);
 	return result;
 }
@@ -758,9 +746,8 @@ document_correction fit_document_correction(const std::array<pointd, 4>& corners
 	// The perspective warp sends the line where its denominator vanishes to infinity, so making the
 	// page's opposite edges parallel is exactly a matter of placing that line through both vanishing
 	// points. That recovers the two perspective slider values rather than a baked homography.
-	const auto horizon = cross_product(
-		cross_product(cross_product(page[0], page[1]), cross_product(page[3], page[2])),
-		cross_product(cross_product(page[0], page[3]), cross_product(page[1], page[2])));
+	const auto horizon = cross_product(cross_product(cross_product(page[0], page[1]), cross_product(page[3], page[2])),
+	                                   cross_product(cross_product(page[0], page[3]), cross_product(page[1], page[2])));
 
 	auto horizontal = 0.0;
 	auto vertical = 0.0;
@@ -791,10 +778,8 @@ document_correction fit_document_correction(const std::array<pointd, 4>& corners
 	{
 		const auto denominator = 1.0 - horizontal * page[index].x - vertical * page[index].y;
 		if (denominator < 0.05) return result;
-		warped[index] = {
-			(0.5 + page[index].x / denominator) * extent.cx,
-			(0.5 + page[index].y / denominator) * extent.cy
-		};
+		warped[index] = {(0.5 + page[index].x / denominator) * extent.cx,
+		                 (0.5 + page[index].y / denominator) * extent.cy};
 	}
 
 	// The warped page is a parallelogram, so both horizontal edges share one direction.
@@ -812,8 +797,8 @@ document_correction fit_document_correction(const std::array<pointd, 4>& corners
 
 	// The inscribed rectangle holds page only. Corner order carries the stored orientation, exactly
 	// as the initial crop does, so the page stays upright for rotated captures.
-	result.crop = quadd(left, top, right, bottom).rotate(rotation, centre)
-	                                             .transform(to_simple_transform_inv(orientation));
+	result.crop =
+		quadd(left, top, right, bottom).rotate(rotation, centre).transform(to_simple_transform_inv(orientation));
 	result.straighten = edit_view_state::calc_straighten(result.crop.angle());
 
 	// The renderer rotates the perspective axes by the crop angle, so undo that here.
@@ -825,8 +810,10 @@ document_correction fit_document_correction(const std::array<pointd, 4>& corners
 	return result;
 }
 
-document_detection_result detect_document(const core::const_surface_ptr& surface, const sizei source_extent)
+document_detection_result detect_document(const core::const_surface_ptr& picture, const sizei source_extent)
 {
+	// Read a byte a channel, whatever precision the picture was loaded at.
+	const auto surface = core::to_8_bit(picture);
 	if (!is_valid(surface) || surface->width() < 32 || surface->height() < 32) return {};
 
 	const auto width = static_cast<int>(surface->width());
@@ -838,10 +825,7 @@ document_detection_result detect_document(const core::const_surface_ptr& surface
 		const auto* pixels = std::bit_cast<const core::color32*>(surface->pixels_line(y));
 		for (auto x = 0; x < width; ++x)
 		{
-			const auto color = pixels[x];
-			luminance[static_cast<size_t>(y) * width + x] =
-				static_cast<float>((0.299 * core::get_r(color) + 0.587 * core::get_g(color) +
-					0.114 * core::get_b(color)) / 255.0);
+			luminance[static_cast<size_t>(y) * width + x] = static_cast<float>(packed_luma(pixels[x]));
 		}
 	}
 
@@ -861,19 +845,22 @@ document_detection_result detect_document(const core::const_surface_ptr& surface
 
 bool edit_view_controls::is_tracking() const
 {
-	const log_slider_control* sliders[] = {
-		_straighten_slider.get(), _perspective_horizontal_slider.get(), _perspective_vertical_slider.get(),
-		_vibrance_slider.get(), _darks_slider.get(), _midtones_slider.get(), _lights_slider.get(),
-		_contrast_slider.get(), _brightness_slider.get(), _saturation_slider.get(), _temperature_slider.get(),
-		_tint_slider.get()
-	};
+	const log_slider_control* sliders[] = {_straighten_slider.get(),
+	                                       _perspective_horizontal_slider.get(),
+	                                       _perspective_vertical_slider.get(),
+	                                       _vibrance_slider.get(),
+	                                       _darks_slider.get(),
+	                                       _midtones_slider.get(),
+	                                       _lights_slider.get(),
+	                                       _contrast_slider.get(),
+	                                       _brightness_slider.get(),
+	                                       _saturation_slider.get(),
+	                                       _temperature_slider.get(),
+	                                       _tint_slider.get()};
 
-	return std::ranges::any_of(sliders, [](const log_slider_control* slider)
-	{
-		return slider && slider->is_tracking();
-	});
+	return std::ranges::any_of(sliders,
+	                           [](const log_slider_control* slider) { return slider && slider->is_tracking(); });
 }
-
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -884,7 +871,7 @@ class task_toolbar_control final : public view_element, public std::enable_share
 	ui::toolbar_ptr _tb;
 
 public:
-	task_toolbar_control(const ui::frame_ptr& h, const std::vector<ui::command_ptr>& buttons)
+	task_toolbar_control(const ui::frame_ptr& /*h*/, const std::vector<ui::command_ptr>& buttons)
 	{
 		_tb = ui::make_toolbar({}, buttons);
 	}
@@ -894,10 +881,7 @@ public:
 		return {width_limit, ui::default_control_height(mc)};
 	}
 
-	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
-	{
-		visit(_tb);
-	}
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override { visit(_tb); }
 
 	void layout(render::measure_context& mc, const recti bounds_in) override
 	{
@@ -912,10 +896,12 @@ public:
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
 // Five stars, as many filled as the rating; pointing at one shows the rating choosing it would give, and
 // choosing it gives it.
-class star_rating final : public view_element, public std::enable_shared_from_this<star_rating>
+class star_rating final :
+	public view_element,
+	public std::enable_shared_from_this<star_rating>,
+	public keyboard_parts_source
 {
 public:
 	int _rating = -1;
@@ -923,13 +909,22 @@ public:
 	int _cell_width = 18;
 	std::function<void(int)> _chosen;
 
-	explicit star_rating(std::function<void(int)> chosen) : _chosen(std::move(chosen))
-	{
-	}
+	explicit star_rating(std::function<void(int)> chosen) : _chosen(std::move(chosen)) {}
 
 	int point_to_stars(const pointi loc) const
 	{
 		return std::clamp(1 + (loc.x - bounds.left) / std::max(1, _cell_width), 0, 5);
+	}
+
+	// A star each, where point_to_stars finds it.
+	std::vector<recti> keyboard_parts() const override
+	{
+		std::vector<recti> parts;
+		parts.reserve(5);
+		const auto cell = std::max(1, _cell_width);
+		for (auto i = 0; i < 5; ++i)
+			parts.emplace_back(bounds.left + i * cell, bounds.top, bounds.left + (i + 1) * cell, bounds.bottom);
+		return parts;
 	}
 
 	void layout(render::measure_context& mc, const recti bounds_in) override
@@ -941,9 +936,8 @@ public:
 	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
 		const auto hover = _hover_rating >= 0;
-		const auto bg = hover
-			                ? view_handle_color(false, true, false, dc.frame_has_focus, true).aa(dc.colors.alpha)
-			                : core::color{};
+		const auto bg = hover ? view_handle_color(false, true, false, dc.frame_has_focus, true).aa(dc.colors.alpha)
+		                      : core::color{};
 		const auto rating = hover ? _hover_rating : _rating;
 		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
 
@@ -954,8 +948,8 @@ public:
 			text += icon_to_utf8(i < rating ? icon_index::star_solid : icon_index::star);
 		}
 
-		dc.draw_text(text, bounds.offset(element_offset), render::font_face::icons,
-		             render::text_style::single_line, clr, bg);
+		dc.draw_text(text, bounds.offset(element_offset), render::font_face::icons, render::text_style::single_line,
+		             clr, bg);
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
@@ -966,6 +960,7 @@ class star_rating_controller final : public view_controller
 {
 	std::shared_ptr<star_rating> _stars;
 	pointi _origin;
+	bool _pressed = false;
 
 	void hover_at(const int stars) const
 	{
@@ -986,18 +981,19 @@ public:
 		_host->invalidate_element(_stars);
 	}
 
-	platform::cursor cursor() const override
+	platform::cursor cursor() const override { return platform::cursor::link; }
+
+	void on_mouse_move(const pointi loc) override { hover_at(_stars->point_to_stars(loc - _origin)); }
+
+	void on_mouse_left_button_down(const pointi /*loc*/, const platform::key_state /*keys*/) override
 	{
-		return platform::cursor::link;
+		_pressed = true;
 	}
 
-	void on_mouse_move(const pointi loc) override
+	// The rating is the click's, so a release whose press went elsewhere - the one that closed a menu - rates nothing.
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
-		hover_at(_stars->point_to_stars(loc - _origin));
-	}
-
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
-	{
+		if (!std::exchange(_pressed, false)) return;
 		_stars->_rating = _stars->point_to_stars(loc - _origin);
 		_host->invalidate_element(_stars);
 		if (_stars->_chosen) _stars->_chosen(_stars->_rating);
@@ -1005,7 +1001,7 @@ public:
 };
 
 view_controller_ptr star_rating::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                          const pointi element_offset, hit_test_context& ctx)
+                                                          const pointi element_offset, hit_test_context& /*ctx*/)
 {
 	if (!bounds.offset(element_offset).contains(loc)) return nullptr;
 	return std::make_shared<star_rating_controller>(host, shared_from_this(), element_offset);
@@ -1022,13 +1018,13 @@ class rating_bar_control final : public view_element, public std::enable_shared_
 	int& _val;
 
 public:
-	rating_bar_control(ui::frame_ptr owner, const std::string_view label, int& v) : _owner(std::move(owner)),
-		_label(label), _val(v)
+	rating_bar_control(ui::frame_ptr owner, const std::string_view label, int& v) :
+		_owner(std::move(owner)), _label(label), _val(v)
 	{
-		ui::edit_styles style;
-		style.number = true;
-		style.align_center = true;
-		_edit = ui::make_edit(style, {}, [this](const std::string_view text) { edit_change(text); });
+		ui::edit_styles edit_style;
+		edit_style.number = true;
+		edit_style.align_center = true;
+		_edit = ui::make_edit(edit_style, {}, [this](const std::string_view text) { edit_change(text); });
 		_stars = std::make_shared<star_rating>([this](const int stars)
 		{
 			_val = std::clamp(stars, 0, 5);
@@ -1036,10 +1032,7 @@ public:
 		});
 	}
 
-	void label(const std::string_view label)
-	{
-		_label = label;
-	}
+	void label(const std::string_view label) { _label = label; }
 
 	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
 	{
@@ -1113,7 +1106,6 @@ public:
 	}
 };
 
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1125,9 +1117,7 @@ class save_buttons_control final : public view_element, public std::enable_share
 	ui::button_ptr _cancel;
 
 public:
-	save_buttons_control(const ui::frame_ptr& h,
-	                     std::function<void()> fn_save,
-	                     std::function<void()> fn_dont,
+	save_buttons_control(const ui::frame_ptr& /*h*/, std::function<void()> fn_save, std::function<void()> fn_dont,
 	                     std::function<void()> fn_cancel)
 	{
 		_ok = ui::make_button(tt.button_save, std::move(fn_save), true);
@@ -1170,9 +1160,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 edit_view::edit_view(view_state& s, view_host_ptr host, edit_view_state& evs) :
-	_state(s),
-	_host(std::move(host)),
-	_edit_state(evs)
+	_state(s), _host(std::move(host)), _edit_state(evs)
 {
 }
 
@@ -1189,8 +1177,7 @@ view_controls_host_ptr edit_view::controls(const ui::frame_ptr& owner)
 }
 
 core::const_surface_ptr edit_view::build_preview_surface(const core::const_surface_ptr& source,
-                                                       const sizei loaded_dimensions,
-                                                       const image_edits& edits)
+                                                         const sizei loaded_dimensions, const image_edits& edits)
 {
 	if (!is_valid(source) || loaded_dimensions.is_empty()) return nullptr;
 
@@ -1270,10 +1257,10 @@ void edit_view::layout(render::measure_context& mc, const sizei extent)
 		const auto controls_height = std::max(play_extent.cy, scrubber_extent.cy);
 		const auto controls_top = std::max(outer_bounds.top, outer_bounds.bottom - controls_height);
 		const auto controls_bounds = recti(outer_bounds.left, controls_top, outer_bounds.right, outer_bounds.bottom);
-		const auto play_bounds = recti(controls_bounds.left, controls_bounds.top,
-		                               controls_bounds.left + play_extent.cx, controls_bounds.bottom);
-		const auto scrubber_bounds = recti(play_bounds.right + mc.padding1, controls_bounds.top,
-		                                   controls_bounds.right, controls_bounds.bottom);
+		const auto play_bounds = recti(controls_bounds.left, controls_bounds.top, controls_bounds.left + play_extent.cx,
+		                               controls_bounds.bottom);
+		const auto scrubber_bounds = recti(play_bounds.right + mc.padding1, controls_bounds.top, controls_bounds.right,
+		                                   controls_bounds.bottom);
 		const auto media_bounds = recti(outer_bounds.left, outer_bounds.top, outer_bounds.right,
 		                                std::max(outer_bounds.top, controls_bounds.top - mc.padding2));
 
@@ -1343,15 +1330,14 @@ bool should_accept_edit_preview_result(const size_t current_display_generation, 
                                        const sizei current_request_dimensions, const sizei result_dimensions)
 {
 	return should_accept_edit_async_result(current_display_generation, result_display_generation) &&
-		current_preview_generation == result_preview_generation &&
-		current_request_dimensions == result_dimensions;
+	       current_preview_generation == result_preview_generation && current_request_dimensions == result_dimensions;
 }
 
 bool should_accept_edit_analysis(const size_t current_display_generation, const size_t result_display_generation,
                                  const size_t current_edit_generation, const size_t result_edit_generation)
 {
 	return should_accept_edit_async_result(current_display_generation, result_display_generation) &&
-		current_edit_generation == result_edit_generation;
+	       current_edit_generation == result_edit_generation;
 }
 
 bool edit_preview_is_current(const core::const_surface_ptr& preview, const sizei answered_request, const sizei wanted)
@@ -1363,9 +1349,8 @@ file_load_result::failure edit_preview_failure(const core::const_surface_ptr& pr
                                                const sizei request)
 {
 	if (is_valid(preview)) return file_load_result::failure::none;
-	return files::exceeds_decode_budget(loaded.i, request)
-		       ? file_load_result::failure::too_large
-		       : file_load_result::failure::unreadable;
+	return files::exceeds_decode_budget(loaded.i, request) ? file_load_result::failure::too_large
+	                                                       : file_load_result::failure::unreadable;
 }
 
 file_load_result edit_load_without_preview(const file_load_result& loaded, const file_load_result::failure failure)
@@ -1393,12 +1378,13 @@ edit_preview_render_decision decide_edit_preview_render(const bool has_texture, 
                                                         const bool has_loading_status)
 {
 	return {has_texture || has_current_preview, !has_texture && !has_current_preview && has_loading_status,
-		has_texture || has_current_preview};
+	        has_texture || has_current_preview};
 }
 
 edit_request_coalescing_decision decide_edit_request_coalescing(const bool request_in_flight)
 {
-	return request_in_flight ? edit_request_coalescing_decision{false, true} : edit_request_coalescing_decision{true, false};
+	return request_in_flight ? edit_request_coalescing_decision{false, true}
+	                         : edit_request_coalescing_decision{true, false};
 }
 
 bool should_start_edit_follow_up_request(const bool has_latest_request)
@@ -1413,22 +1399,23 @@ void edit_view::queue_source_load(source_load_request request)
 	const auto decision = decide_edit_request_coalescing(_source_load_in_flight);
 	if (decision.remember_latest)
 	{
-		_pending_source_load_request = std::move(request);
+		_pending_source_load_request = request;
 		return;
 	}
 
-	start_source_load(std::move(request));
+	start_source_load(request);
 }
 
 void edit_view::start_source_load(source_load_request request)
 {
 	_source_load_in_flight = true;
 	const auto weak = weak_from_this();
-	_state.queue_async(async_queue::load, [weak, request = std::move(request), &s = _state]
+	_state.queue_async(async_queue::load, [weak, request, &s = _state]
 	{
 		core::scope_locked_inc l(df::loading_media);
 		files loader;
-		auto loaded = loader.load(request.path, false);
+		// At the precision the source holds, as the save will load it, so the preview shows what is saved.
+		auto loaded = loader.load(request.path, false, decode_intent::edit);
 		s.queue_ui([weak, request, loaded = std::move(loaded)]() mutable
 		{
 			if (const auto self = weak.lock()) self->complete_source_load(request, std::move(loaded));
@@ -1468,17 +1455,18 @@ void edit_view::complete_source_load(const source_load_request& request, file_lo
 			const auto dialog_generation = _display_generation;
 			_state.queue_async(async_queue::render,
 			                   [weak_dialog, loaded_copy, preview_dimensions, dialog_generation, &s = _state]
-			                   {
-				                   const auto source = loaded_copy.to_surface(preview_dimensions);
-				                   s.queue_ui([weak_dialog, source, dialog_generation]
-				                   {
-					                   if (const auto current = weak_dialog.lock();
-						                   current && current->_display_generation == dialog_generation)
-					                   {
-						                   current->_dialog_preview_source = source;
-					                   }
-				                   });
-			                   });
+			{
+				// A dialog's thumbnail, for which a byte a channel is plenty.
+				const auto source = core::to_8_bit(loaded_copy.to_surface(preview_dimensions));
+				s.queue_ui([weak_dialog, source, dialog_generation]
+				{
+					if (const auto current = weak_dialog.lock();
+					    current && current->_display_generation == dialog_generation)
+					{
+						current->_dialog_preview_source = source;
+					}
+				});
+			});
 		}
 
 		if (_edit_controls->_frame)
@@ -1492,9 +1480,9 @@ void edit_view::complete_source_load(const source_load_request& request, file_lo
 
 	if (should_start_edit_follow_up_request(_pending_source_load_request.has_value()))
 	{
-		auto next = std::move(*_pending_source_load_request);
+		auto next = *_pending_source_load_request;
 		_pending_source_load_request.reset();
-		start_source_load(std::move(next));
+		start_source_load(next);
 	}
 }
 
@@ -1516,30 +1504,29 @@ void edit_view::queue_preview_decode()
 		return;
 	}
 
-	start_preview_decode(std::move(request));
+	start_preview_decode(request);
 }
 
-void edit_view::start_preview_decode(preview_decode_request request)
+void edit_view::start_preview_decode(const preview_decode_request& request)
 {
 	_preview_decode_in_flight = true;
 	_preview_request_dimensions = request.dimensions;
 	const auto weak = weak_from_this();
-	_state.queue_async(async_queue::render,
-	                   [weak, request, &s = _state]
-	                   {
-		                   const auto source = request.loaded.to_surface(request.dimensions);
-		                   const auto failure = edit_preview_failure(source, request.loaded, request.dimensions);
-		                   s.queue_ui([weak, request, source, failure]
-		                   {
-			                   if (const auto self = weak.lock())
-			                   {
-				                   self->complete_preview_decode(request, source, failure);
-			                   }
-		                   });
-	                   });
+	_state.queue_async(async_queue::render, [weak, request, &s = _state]
+	{
+		const auto source = request.loaded.to_surface(request.dimensions, false, {}, decode_intent::edit);
+		const auto failure = edit_preview_failure(source, request.loaded, request.dimensions);
+		s.queue_ui([weak, request, source, failure]
+		{
+			if (const auto self = weak.lock())
+			{
+				self->complete_preview_decode(request, source, failure);
+			}
+		});
+	});
 }
 
-void edit_view::complete_preview_decode(const preview_decode_request& request, core::const_surface_ptr source,
+void edit_view::complete_preview_decode(const preview_decode_request& request, const core::const_surface_ptr& source,
                                         const file_load_result::failure failure)
 {
 	_preview_decode_in_flight = false;
@@ -1582,7 +1569,7 @@ void edit_view::complete_preview_decode(const preview_decode_request& request, c
 	{
 		auto next = std::move(*_pending_preview_decode_request);
 		_pending_preview_decode_request.reset();
-		start_preview_decode(std::move(next));
+		start_preview_decode(next);
 	}
 }
 
@@ -1600,8 +1587,8 @@ void edit_view::draw_loading_status(render::draw_context& dc, const std::string_
 	if (status.empty()) return;
 
 	const recti status_bounds(0, 0, _extent.cx, _extent.cy);
-	dc.draw_text(status, status_bounds, render::font_face::title,
-	             render::text_style::single_line_center, core::color(dc.colors.foreground, dc.colors.alpha), {});
+	dc.draw_text(status, status_bounds, render::font_face::title, render::text_style::single_line_center,
+	             core::color(dc.colors.foreground, dc.colors.alpha), {});
 }
 
 df::item_element_ptr edit_view::next_editable_item(const bool forward) const
@@ -1630,7 +1617,7 @@ df::item_element_ptr edit_view::next_editable_item(const bool forward) const
 }
 
 view_controller_ptr edit_view::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                       hit_test_context& ctx)
+                                                        hit_test_context& ctx)
 {
 	if (is_photo() && !_edit_state._preview_mode)
 	{
@@ -1725,12 +1712,12 @@ bool edit_view::check_path(core::file_path& path, const ui::frame_ptr& owner) co
 		if (_edit_state.has_pixel_changes() && !files::can_save(path))
 		{
 			const std::vector<view_element_ptr> controls{
-				set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon_index::save, tt.save_changes,
-				                                                str_format(tt.save_as_jpeg_fmt.sv(), path.extension()),
-				                                                std::vector<core::const_surface_ptr>{preview_surface()})),
+				set_margin(
+					std::make_shared<ui::title_control2>(dlg->_frame, icon_index::save, tt.save_changes,
+			                                             str_format(tt.save_as_jpeg_fmt.sv(), path.extension()),
+			                                             std::vector<core::const_surface_ptr>{preview_surface()})),
 				std::make_shared<divider_element>(),
-				std::make_shared<ui::ok_cancel_control>(dlg->_frame, tt.button_save_as_jpeg)
-			};
+				std::make_shared<ui::ok_cancel_control>(dlg->_frame, tt.button_save_as_jpeg)};
 
 			const auto result = dlg->show_modal(controls);
 
@@ -1752,16 +1739,13 @@ bool edit_view::check_path(core::file_path& path, const ui::frame_ptr& owner) co
 		}
 	}
 
-
 	return true;
 }
 
 view_bars edit_view::bars() const
 {
-	return task_view_bars({
-		commands::edit_item_preview, commands::edit_item_save_and_prev, commands::edit_item_save_and_next,
-		commands::edit_item_save_as, commands::edit_item_save
-	});
+	return task_view_bars({commands::edit_item_preview, commands::edit_item_save_and_prev,
+	                       commands::edit_item_save_and_next, commands::edit_item_save_as, commands::edit_item_save});
 }
 
 bool edit_view::can_exit()
@@ -1797,13 +1781,10 @@ bool edit_view::can_exit()
 
 		const std::vector<view_element_ptr> controls = {
 			set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon_index::save, tt.changes,
-			                                                str_format(tt.has_changes.sv(), _path.name()),
-			                                                std::vector<core::const_surface_ptr>{preview_surface()})),
+		                                                    str_format(tt.has_changes.sv(), _path.name()),
+		                                                    std::vector<core::const_surface_ptr>{preview_surface()})),
 			std::make_shared<divider_element>(),
-			std::make_shared<save_buttons_control>(dlg->_frame,
-			                                       save_fn,
-			                                       cancel_fn,
-			                                       [dlg] { dlg->close(true); })
+			std::make_shared<save_buttons_control>(dlg->_frame, save_fn, cancel_fn, [dlg] { dlg->close(true); }),
 		};
 
 		dlg->show_modal(controls);
@@ -1852,10 +1833,10 @@ void edit_view::select_item(const df::item_element_ptr& item)
 
 	const std::vector<view_element_ptr> controls = {
 		set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon_index::save, tt.changes,
-		                                                str_format(tt.has_changes.sv(), _path.name()),
-		                                                std::vector<core::const_surface_ptr>{preview_surface()})),
+	                                                    str_format(tt.has_changes.sv(), _path.name()),
+	                                                    std::vector<core::const_surface_ptr>{preview_surface()})),
 		std::make_shared<divider_element>(),
-		std::make_shared<save_buttons_control>(dlg->_frame, save_fn, discard_fn, [dlg] { dlg->close(true); })
+		std::make_shared<save_buttons_control>(dlg->_frame, save_fn, discard_fn, [dlg] { dlg->close(true); }),
 	};
 
 	dlg->show_modal(controls);
@@ -1912,99 +1893,93 @@ void edit_view::save(const core::file_path src_path, const core::file_path dst_p
 	const auto scan_request = _state.item_index.make_scan_request(_state._edit_item, true, false);
 
 	_state.queue_async(async_queue::work,
-	                   [update_result, detach, dst_path, me, pe, &s = _state, src_path, scan_request,
-		                   dimensions, xmp_name = std::string(xmp_name), photo_metadata, video_metadata,
-		                   music_metadata, has_pixel_changes, dlg, complete = std::move(complete)]() mutable
-	                   {
-		                   try
-		                   {
-			                   files ff;
-			                   file_encode_params encode_params;
-			                   encode_params.jpeg_save_quality = setting.jpeg_save_quality;
-			                   encode_params.webp_lossless = setting.webp_lossless;
-			                   encode_params.webp_quality = setting.webp_quality;
-			                   encode_params.jxl_lossless = setting.jxl_lossless;
-			                   encode_params.jxl_quality = setting.jxl_quality;
+	                   [update_result, detach, dst_path, me, pe, &s = _state, src_path, scan_request, dimensions,
+	                    xmp_name = std::string(xmp_name), photo_metadata, video_metadata, music_metadata,
+	                    has_pixel_changes, dlg, complete = std::move(complete), function = __FUNCTION__]() mutable
+	{
+		try
+		{
+			files ff;
+			file_encode_params encode_params;
+			encode_params.jpeg_save_quality = setting.jpeg_save_quality;
+			encode_params.webp_lossless = setting.webp_lossless;
+			encode_params.webp_quality = setting.webp_quality;
+			encode_params.jxl_lossless = setting.jxl_lossless;
+			encode_params.jxl_quality = setting.jxl_quality;
 
-			                   const auto is_in_place = src_path == dst_path;
-			                   // Whatever file the save replaces gets its backup: the source in place, or
-			                   // one whose overwrite was confirmed - beside a RAW, the camera's own JPEG.
-			                   const auto create_original = setting.create_originals && pe.has_changes(dimensions);
-			                   *update_result = ff.update(src_path, dst_path, me, pe, encode_params, create_original,
-			                                              xmp_name, {},
-			                                              is_in_place
-				                                              ? index_state::make_rescan_spec(scan_request, xmp_name,
-					                                              true)
-				                                              : rescan_spec{});
+			const auto is_in_place = src_path == dst_path;
+			// Whatever file the save replaces gets its backup: the source in place, or
+			// one whose overwrite was confirmed - beside a RAW, the camera's own JPEG.
+			const auto create_original = setting.create_originals && pe.has_changes(dimensions);
+			*update_result = ff.update(src_path, dst_path, me, pe, encode_params, create_original, xmp_name, {},
+			                           is_in_place ? index_state::make_rescan_spec(scan_request, xmp_name, true)
+			                                       : rescan_spec{});
 
-			                   if (update_result->success())
-			                   {
-				                   if (is_in_place)
-				                   {
-					                   const auto force = s.item_index.apply_write_scan(scan_request, *update_result);
-					                   s._async.queue_ui([&s, scan_request, force, update_result]
-					                   {
-						                   // The writer's own bytes, so the display never reads back
-						                   // what it just saved.
-						                   s.publish_written_image(scan_request.path,
-						                                           std::move(update_result->loaded),
-						                                           core::date_t(update_result->modified));
+			if (update_result->success())
+			{
+				if (is_in_place)
+				{
+					const auto force = s.item_index.apply_write_scan(scan_request, *update_result);
+					s._async.queue_ui([&s, scan_request, force, update_result]
+					{
+						// The writer's own bytes, so the display never reads back
+						// what it just saved.
+						s.publish_written_image(scan_request.path, std::move(update_result->loaded),
+						                        core::date_t(update_result->modified));
 
-						                   const auto item = scan_request.lifetime.lock();
-						                   if (!item || item->path() != scan_request.path) return;
+						const auto item = scan_request.lifetime.lock();
+						if (!item || item->path() != scan_request.path) return;
 
-						                   df::item_set items;
-						                   items.add(item);
-						                   s.item_index.queue_scan_modified_items(std::move(items), force);
-					                   });
-				                   }
-				                   else
-				                   {
-					                   s.item_index.queue_scan_folder(dst_path.folder());
-				                   }
-			                   }
-		                   }
-		                   catch (const std::exception& e)
-		                   {
-			                   core::log(__FUNCTION__, e.what());
-			                   update_result->code = platform::file_op_result_code::FAILED;
-			                   update_result->error_message = core::utf8_cast(e.what());
-		                   }
+						df::item_set items;
+						items.add(item);
+						s.item_index.queue_scan_modified_items(std::move(items), force);
+					});
+				}
+				else
+				{
+					s.item_index.queue_scan_folder(dst_path.folder());
+				}
+			}
+		}
+		catch (const std::exception& e)
+		{
+			core::log(function, e.what());
+			update_result->code = platform::file_op_result_code::FAILED;
+			update_result->error_message = core::utf8_cast(e.what());
+		}
 
-		                   s.queue_ui([update_result, detach, dst_path, me, photo_metadata, video_metadata,
-				                   music_metadata, has_pixel_changes, dlg,
-				                   complete = std::move(complete)]() mutable
-			                   {
-				                   detach.reset();
+		s.queue_ui([update_result, detach, dst_path, me, photo_metadata, video_metadata, music_metadata,
+		            has_pixel_changes, dlg, complete = std::move(complete)]() mutable
+		{
+			detach.reset();
 
-				                   if (update_result->success())
-				                   {
-					                   if (photo_metadata)
-					                   {
-						                   if (me.has_changes()) record_feature_use(features::edit_photo_metadata);
-						                   if (has_pixel_changes) record_feature_use(features::edit_photo_bitmap);
-					                   }
-					                   else if (video_metadata)
-					                   {
-						                   record_feature_use(features::edit_video_metadata);
-					                   }
-					                   else if (music_metadata)
-					                   {
-						                   record_feature_use(features::edit_audio_metadata);
-					                   }
-				                   }
-				                   else
-				                   {
-					                   dlg->show_message(icon_index::error, core::app_name(),
-					                                     update_result->format_error(str_format(
-						                                     tt.error_create_file_failed_fmt.sv(), dst_path)));
-				                   }
+			if (update_result->success())
+			{
+				if (photo_metadata)
+				{
+					if (me.has_changes()) record_feature_use(features::edit_photo_metadata);
+					if (has_pixel_changes) record_feature_use(features::edit_photo_bitmap);
+				}
+				else if (video_metadata)
+				{
+					record_feature_use(features::edit_video_metadata);
+				}
+				else if (music_metadata)
+				{
+					record_feature_use(features::edit_audio_metadata);
+				}
+			}
+			else
+			{
+				dlg->show_message(icon_index::error, core::app_name(),
+				                  update_result->format_error(
+									  str_format(tt.error_create_file_failed_fmt.sv(), dst_path)));
+			}
 
-				                   complete(update_result->success());
-			                   });
-	                   });
+			complete(update_result->success());
+		});
+	});
 }
-
 
 void edit_view::save_and_next(const bool forward)
 {
@@ -2060,7 +2035,6 @@ void edit_view::save_as()
 		});
 	}
 }
-
 
 void edit_view::cancel() const
 {
@@ -2132,9 +2106,9 @@ void edit_view::report_no_result(const std::string_view title) const
 
 // Decoding and scanning the image must not stall the window, so the analysis runs on a worker and
 // returns a detached applier. An empty applier means the adjustment found nothing to improve.
-void edit_view::queue_auto_adjust(const int max_dimension, std::string title,
-                                  std::function<std::function<void(edit_view_state&)>(const core::const_surface_ptr&)>
-                                  analyze)
+void edit_view::queue_auto_adjust(
+	const int max_dimension, std::string title,
+	std::function<std::function<void(edit_view_state&)>(const core::const_surface_ptr&)> analyze)
 {
 	if (!can_edit_pixels()) return;
 
@@ -2146,139 +2120,148 @@ void edit_view::queue_auto_adjust(const int max_dimension, std::string title,
 
 	_state.queue_async(async_queue::render,
 	                   [weak, loaded, scale_hint, generation, edit_generation, title = std::move(title),
-		                   analyze = std::move(analyze), &s = _state]() mutable
-	                   {
-		                   auto apply = analyze(loaded.to_surface(scale_hint));
+	                    analyze = std::move(analyze), &s = _state]() mutable
+	{
+		auto apply = analyze(loaded.to_surface(scale_hint));
 
-		                   s.queue_ui([weak, generation, edit_generation, title = std::move(title),
-			                   apply = std::move(apply)]
-		                   {
-			                   const auto self = weak.lock();
-			                   if (!self || !should_accept_edit_analysis(self->_display_generation, generation,
-				                   self->_edit_generation, edit_generation))
-			                   {
-				                   return;
-			                   }
+		s.queue_ui([weak, generation, edit_generation, title = std::move(title), apply = std::move(apply)]
+		{
+			const auto self = weak.lock();
+			if (!self || !should_accept_edit_analysis(self->_display_generation, generation, self->_edit_generation,
+			                                          edit_generation))
+			{
+				return;
+			}
 
-			                   // The analysis describes the picture as it stood when it was asked
-			                   // for. Anything adjusted since is newer than its answer, and applying
-			                   // it now would undo the user's own work with a reply to a question
-			                   // they have already moved past.
+			// The analysis describes the picture as it stood when it was asked
+			// for. Anything adjusted since is newer than its answer, and applying
+			// it now would undo the user's own work with a reply to a question
+			// they have already moved past.
 
-			                   if (!apply)
-			                   {
-				                   self->report_no_result(title);
-				                   return;
-			                   }
+			if (!apply)
+			{
+				self->report_no_result(title);
+				return;
+			}
 
-			                   apply(self->_edit_state);
-			                   self->_edit_controls->populate();
-			                   self->changed();
-		                   });
-	                   });
+			apply(self->_edit_state);
+			self->_edit_controls->populate();
+			self->changed();
+		});
+	});
+}
+
+std::optional<auto_color_settings> analyze_auto_color(const core::const_surface_ptr& picture)
+{
+	// Read a byte a channel, whatever precision the picture was loaded at.
+	const auto surface = core::to_8_bit(picture);
+	if (!is_valid(surface)) return {};
+
+	const auto has_alpha = core::has_alpha(surface->format());
+	std::array<uint32_t, 256> luminance_histogram{};
+	double neutral_red = 0;
+	double neutral_green = 0;
+	double neutral_blue = 0;
+	size_t neutral_count = 0;
+	size_t sample_count = 0;
+	double chroma_sum = 0;
+
+	for (auto y = 0u; y < surface->height(); ++y)
+	{
+		const auto* pixel = surface->pixels_line(static_cast<int>(y));
+
+		// Blue, green, red, then alpha or padding.
+		for (auto x = 0u; x < surface->width(); ++x, pixel += 4)
+		{
+			if (has_alpha && pixel[3] < 128) continue;
+
+			const auto blue = pixel[0] / 255.0;
+			const auto green = pixel[1] / 255.0;
+			const auto red = pixel[2] / 255.0;
+			const auto luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+			const auto maximum = std::max({red, green, blue});
+			const auto minimum = std::min({red, green, blue});
+			const auto chroma = maximum - minimum;
+
+			++luminance_histogram[std::clamp(core::round(luminance * 255), 0, 255)];
+			chroma_sum += chroma;
+			++sample_count;
+
+			if (luminance > 0.15 && luminance < 0.85 && chroma < 0.12)
+			{
+				neutral_red += red;
+				neutral_green += green;
+				neutral_blue += blue;
+				++neutral_count;
+			}
+		}
+	}
+
+	if (sample_count == 0) return {};
+
+	const auto percentile = [&](const double fraction)
+	{
+		const auto target = static_cast<size_t>(sample_count * fraction);
+		size_t accumulated = 0;
+
+		for (size_t index = 0; index < luminance_histogram.size(); ++index)
+		{
+			accumulated += luminance_histogram[index];
+			if (accumulated >= target) return index / 255.0;
+		}
+
+		return 1.0;
+	};
+
+	const auto low = percentile(0.02);
+	const auto median = percentile(0.50);
+	const auto high = percentile(0.98);
+	const auto range = std::max(0.05, high - low);
+
+	auto_color_settings result;
+	result.brightness = std::clamp((0.48 - median) * 2.0, -0.45, 0.45);
+	result.contrast = std::clamp((0.82 / range - 1.0) * 0.75, -0.35, 0.35);
+	result.darks = std::clamp((0.08 - percentile(0.20)) * 2.5, -0.3, 0.3);
+	result.lights = std::clamp((0.82 - percentile(0.80)) * 2.5, -0.3, 0.3);
+	result.midtones = std::clamp((0.5 - median) * 1.5, -0.25, 0.25);
+	result.vibrance = chroma_sum / sample_count < 0.18 ? 0.08 : 0.0;
+
+	// A cast is read from the near-neutral pixels: a warm one, red above blue, asks for a cooler temperature,
+	// and a green one for tint towards magenta.
+	if (neutral_count > sample_count / 50)
+	{
+		const auto red = neutral_red / neutral_count;
+		const auto green = neutral_green / neutral_count;
+		const auto blue = neutral_blue / neutral_count;
+		const auto mean = std::max(0.05, (red + green + blue) / 3.0);
+		result.temperature = std::clamp((blue - red) / (0.4 * mean), -0.4, 0.4);
+		result.tint = std::clamp((green - (red + blue) * 0.5) / (0.3 * mean), -0.35, 0.35);
+	}
+
+	return result;
 }
 
 void edit_view::auto_color()
 {
 	queue_auto_adjust(512, std::string(tt.command_auto_color.sv()),
 	                  [](const core::const_surface_ptr& surface) -> std::function<void(edit_view_state&)>
-	                  {
-		                  if (!is_valid(surface)) return {};
+	{
+		const auto settings = analyze_auto_color(surface);
+		if (!settings) return {};
 
-		                  std::array<uint32_t, 256> luminance_histogram{};
-		                  double neutral_red = 0;
-		                  double neutral_green = 0;
-		                  double neutral_blue = 0;
-		                  size_t neutral_count = 0;
-		                  size_t sample_count = 0;
-		                  double chroma_sum = 0;
-
-		                  for (auto y = 0u; y < surface->height(); ++y)
-		                  {
-			                  const auto* pixels = std::bit_cast<const core::color32*>(surface->pixels_line(y));
-
-			                  for (auto x = 0u; x < surface->width(); ++x)
-			                  {
-				                  const auto color = pixels[x];
-				                  if (core::get_a(color) < 128) continue;
-
-				                  const auto red = core::get_r(color) / 255.0;
-				                  const auto green = core::get_g(color) / 255.0;
-				                  const auto blue = core::get_b(color) / 255.0;
-				                  const auto luminance = 0.299 * red + 0.587 * green + 0.114 * blue;
-				                  const auto maximum = std::max({red, green, blue});
-				                  const auto minimum = std::min({red, green, blue});
-				                  const auto chroma = maximum - minimum;
-
-				                  ++luminance_histogram[std::clamp(core::round(luminance * 255), 0, 255)];
-				                  chroma_sum += chroma;
-				                  ++sample_count;
-
-				                  if (luminance > 0.15 && luminance < 0.85 && chroma < 0.12)
-				                  {
-					                  neutral_red += red;
-					                  neutral_green += green;
-					                  neutral_blue += blue;
-					                  ++neutral_count;
-				                  }
-			                  }
-		                  }
-
-		                  if (sample_count == 0) return {};
-
-		                  const auto percentile = [&](const double fraction)
-		                  {
-			                  const auto target = static_cast<size_t>(sample_count * fraction);
-			                  size_t accumulated = 0;
-
-			                  for (size_t index = 0; index < luminance_histogram.size(); ++index)
-			                  {
-				                  accumulated += luminance_histogram[index];
-				                  if (accumulated >= target) return index / 255.0;
-			                  }
-
-			                  return 1.0;
-		                  };
-
-		                  const auto low = percentile(0.02);
-		                  const auto median = percentile(0.50);
-		                  const auto high = percentile(0.98);
-		                  const auto range = std::max(0.05, high - low);
-
-		                  const auto brightness = std::clamp((0.48 - median) * 2.0, -0.45, 0.45);
-		                  const auto contrast = std::clamp((0.82 / range - 1.0) * 0.75, -0.35, 0.35);
-		                  const auto darks = std::clamp((0.08 - percentile(0.20)) * 2.5, -0.3, 0.3);
-		                  const auto lights = std::clamp((0.82 - percentile(0.80)) * 2.5, -0.3, 0.3);
-		                  const auto midtones = std::clamp((0.5 - median) * 1.5, -0.25, 0.25);
-		                  const auto vibrance = chroma_sum / sample_count < 0.18 ? 0.08 : 0.0;
-
-		                  auto temperature = 0.0;
-		                  auto tint = 0.0;
-
-		                  if (neutral_count > sample_count / 50)
-		                  {
-			                  const auto red = neutral_red / neutral_count;
-			                  const auto green = neutral_green / neutral_count;
-			                  const auto blue = neutral_blue / neutral_count;
-			                  const auto mean = std::max(0.05, (red + green + blue) / 3.0);
-			                  temperature = std::clamp((blue - red) / (0.4 * mean), -0.4, 0.4);
-			                  tint = std::clamp((green - (red + blue) * 0.5) / (0.3 * mean), -0.35, 0.35);
-		                  }
-
-		                  return [brightness, contrast, darks, lights, midtones, vibrance, temperature, tint](
-			                  edit_view_state& state)
-		                  {
-			                  state._brightness = brightness;
-			                  state._contrast = contrast;
-			                  state._darks = darks;
-			                  state._lights = lights;
-			                  state._midtones = midtones;
-			                  state._vibrance = vibrance;
-			                  state._saturation = 0;
-			                  state._temperature = temperature;
-			                  state._tint = tint;
-		                  };
-	                  });
+		return [s = *settings](edit_view_state& state)
+		{
+			state._brightness = s.brightness;
+			state._contrast = s.contrast;
+			state._darks = s.darks;
+			state._lights = s.lights;
+			state._midtones = s.midtones;
+			state._vibrance = s.vibrance;
+			state._saturation = 0;
+			state._temperature = s.temperature;
+			state._tint = s.tint;
+		};
+	});
 }
 
 void edit_view::auto_straighten()
@@ -2287,188 +2270,177 @@ void edit_view::auto_straighten()
 	const auto rotation_angle = _edit_state._edits.rotation_angle();
 
 	queue_auto_adjust(768, std::string(tt.command_auto_straighten.sv()),
-	                  [current_straighten, rotation_angle](const core::const_surface_ptr& surface) ->
-	                  std::function<void(edit_view_state&)>
-	                  {
-		                  if (!is_valid(surface) || surface->width() < 3 || surface->height() < 3) return {};
+	                  [current_straighten,
+	                   rotation_angle](const core::const_surface_ptr& picture) -> std::function<void(edit_view_state&)>
+	{
+		const auto surface = core::to_8_bit(picture);
+		if (!is_valid(surface) || surface->width() < 3 || surface->height() < 3) return {};
 
-		                  const auto width = static_cast<int>(surface->width());
-		                  const auto height = static_cast<int>(surface->height());
-		                  std::vector<float> grayscale(static_cast<size_t>(width) * height);
+		const auto width = static_cast<int>(surface->width());
+		const auto height = static_cast<int>(surface->height());
+		std::vector<float> grayscale(static_cast<size_t>(width) * height);
 
-		                  for (auto y = 0; y < height; ++y)
-		                  {
-			                  const auto* pixels = std::bit_cast<const core::color32*>(surface->pixels_line(y));
-			                  for (auto x = 0; x < width; ++x)
-			                  {
-				                  grayscale[static_cast<size_t>(y) * width + x] =
-					                  static_cast<float>((0.299 * core::get_r(pixels[x]) + 0.587 * core::get_g(pixels[x]) +
-						                  0.114 * core::get_b(pixels[x])) / 255.0);
-			                  }
-		                  }
+		for (auto y = 0; y < height; ++y)
+		{
+			const auto* pixels = std::bit_cast<const core::color32*>(surface->pixels_line(y));
+			for (auto x = 0; x < width; ++x)
+			{
+				grayscale[static_cast<size_t>(y) * width + x] = static_cast<float>(packed_luma(pixels[x]));
+			}
+		}
 
-		                  struct edge_sample
-		                  {
-			                  double angle = 0;
-			                  double position = 0;
-			                  double weight = 0;
-			                  bool horizontal = false;
-		                  };
+		struct edge_sample
+		{
+			double angle = 0;
+			double position = 0;
+			double weight = 0;
+			bool horizontal = false;
+		};
 
-		                  const auto gradient = [&](const int x, const int y)
-		                  {
-			                  const auto at = [&](const int xx, const int yy)
-			                  {
-				                  return grayscale[static_cast<size_t>(yy) * width + xx];
-			                  };
-			                  const auto gx = -at(x - 1, y - 1) - 2.0f * at(x - 1, y) - at(x - 1, y + 1) +
-				                  at(x + 1, y - 1) + 2.0f * at(x + 1, y) + at(x + 1, y + 1);
-			                  const auto gy = -at(x - 1, y - 1) - 2.0f * at(x, y - 1) - at(x + 1, y - 1) +
-				                  at(x - 1, y + 1) + 2.0f * at(x, y + 1) + at(x + 1, y + 1);
-			                  return std::pair{gx, gy};
-		                  };
+		const auto gradient = [&](const int x, const int y)
+		{
+			const auto at = [&](const int xx, const int yy)
+			{
+				return grayscale[static_cast<size_t>(yy) * width + xx];
+			};
+			const auto gx = -at(x - 1, y - 1) - 2.0f * at(x - 1, y) - at(x - 1, y + 1) + at(x + 1, y - 1) +
+			                2.0f * at(x + 1, y) + at(x + 1, y + 1);
+			const auto gy = -at(x - 1, y - 1) - 2.0f * at(x, y - 1) - at(x + 1, y - 1) + at(x - 1, y + 1) +
+			                2.0f * at(x, y + 1) + at(x + 1, y + 1);
+			return std::pair{gx, gy};
+		};
 
-		                  float maximum_gradient = 0;
-		                  for (auto y = 1; y < height - 1; ++y)
-		                  {
-			                  for (auto x = 1; x < width - 1; ++x)
-			                  {
-				                  const auto [gx, gy] = gradient(x, y);
-				                  maximum_gradient = (std::max)(maximum_gradient, std::hypot(gx, gy));
-			                  }
-		                  }
-		                  if (maximum_gradient < 0.02f) return {};
+		float maximum_gradient = 0;
+		for (auto y = 1; y < height - 1; ++y)
+		{
+			for (auto x = 1; x < width - 1; ++x)
+			{
+				const auto [gx, gy] = gradient(x, y);
+				maximum_gradient = (std::max)(maximum_gradient, std::hypot(gx, gy));
+			}
+		}
+		if (maximum_gradient < 0.02f) return {};
 
-		                  constexpr auto pi = 3.14159265358979323846;
-		                  constexpr auto half_pi = pi / 2.0;
-		                  constexpr auto maximum_axis_angle = 25.0 * pi / 180.0;
-		                  const auto gradient_threshold = (std::max)(0.08f, maximum_gradient * 0.10f);
-		                  std::vector<edge_sample> samples;
-		                  samples.reserve(static_cast<size_t>(width) * height / 8);
+		constexpr auto pi = 3.14159265358979323846;
+		constexpr auto half_pi = pi / 2.0;
+		constexpr auto maximum_axis_angle = 25.0 * pi / 180.0;
+		const auto gradient_threshold = (std::max)(0.08f, maximum_gradient * 0.10f);
+		std::vector<edge_sample> samples;
+		samples.reserve(static_cast<size_t>(width) * height / 8);
 
-		                  for (auto y = 1; y < height - 1; ++y)
-		                  {
-			                  for (auto x = 1; x < width - 1; ++x)
-			                  {
-				                  const auto [gx, gy] = gradient(x, y);
-				                  const auto magnitude = std::hypot(gx, gy);
-				                  if (magnitude < gradient_threshold) continue;
+		for (auto y = 1; y < height - 1; ++y)
+		{
+			for (auto x = 1; x < width - 1; ++x)
+			{
+				const auto [gx, gy] = gradient(x, y);
+				const auto magnitude = std::hypot(gx, gy);
+				if (magnitude < gradient_threshold) continue;
 
-				                  const auto tangent = std::atan2(gy, gx) + half_pi;
-				                  const auto axis_angle = std::fmod(tangent + pi, pi);
-				                  const auto horizontal = axis_angle < pi / 4.0 || axis_angle > 3.0 * pi / 4.0;
-				                  const auto residual = std::remainder(tangent, half_pi);
-				                  if (std::abs(residual) > maximum_axis_angle) continue;
+				const auto tangent = std::atan2(gy, gx) + half_pi;
+				const auto axis_angle = std::fmod(tangent + pi, pi);
+				const auto horizontal = axis_angle < pi / 4.0 || axis_angle > 3.0 * pi / 4.0;
+				const auto residual = std::remainder(tangent, half_pi);
+				if (std::abs(residual) > maximum_axis_angle) continue;
 
-				                  const auto position = horizontal
-					                                        ? (y + 0.5) / height - 0.5
-					                                        : (x + 0.5) / width - 0.5;
-				                  samples.emplace_back(residual, position, magnitude, horizontal);
-			                  }
-		                  }
-		                  if (samples.size() < 100) return {};
+				const auto position = horizontal ? (y + 0.5) / height - 0.5 : (x + 0.5) / width - 0.5;
+				samples.emplace_back(residual, position, magnitude, horizontal);
+			}
+		}
+		if (samples.size() < 100) return {};
 
-		                  constexpr auto inlier_angle = 12.0 * pi / 180.0;
-		                  const auto estimate_angle = [&](const bool horizontal)
-		                  {
-			                  double initial_sum = 0;
-			                  double initial_weight = 0;
-			                  for (const auto& sample : samples)
-			                  {
-				                  if (sample.horizontal == horizontal)
-				                  {
-					                  initial_sum += sample.angle * sample.weight;
-					                  initial_weight += sample.weight;
-				                  }
-			                  }
-			                  if (initial_weight <= 0) return std::pair{0.0, 0.0};
-			                  const auto initial = initial_sum / initial_weight;
+		constexpr auto inlier_angle = 12.0 * pi / 180.0;
+		const auto estimate_angle = [&](const bool horizontal)
+		{
+			double initial_sum = 0;
+			double initial_weight = 0;
+			for (const auto& sample : samples)
+			{
+				if (sample.horizontal == horizontal)
+				{
+					initial_sum += sample.angle * sample.weight;
+					initial_weight += sample.weight;
+				}
+			}
+			if (initial_weight <= 0) return std::pair{0.0, 0.0};
+			const auto initial = initial_sum / initial_weight;
 
-			                  double angle_sum = 0;
-			                  double weight_sum = 0;
-			                  for (const auto& sample : samples)
-			                  {
-				                  if (sample.horizontal == horizontal && std::abs(sample.angle - initial) <=
-					                  inlier_angle)
-				                  {
-					                  angle_sum += sample.angle * sample.weight;
-					                  weight_sum += sample.weight;
-				                  }
-			                  }
-			                  return std::pair{weight_sum > 0 ? angle_sum / weight_sum : 0.0, weight_sum};
-		                  };
+			double angle_sum = 0;
+			double weight_sum = 0;
+			for (const auto& sample : samples)
+			{
+				if (sample.horizontal == horizontal && std::abs(sample.angle - initial) <= inlier_angle)
+				{
+					angle_sum += sample.angle * sample.weight;
+					weight_sum += sample.weight;
+				}
+			}
+			return std::pair{weight_sum > 0 ? angle_sum / weight_sum : 0.0, weight_sum};
+		};
 
-		                  const auto horizontal_estimate = estimate_angle(true);
-		                  const auto vertical_estimate = estimate_angle(false);
-		                  if (horizontal_estimate.second <= 0 && vertical_estimate.second <= 0) return {};
+		const auto horizontal_estimate = estimate_angle(true);
+		const auto vertical_estimate = estimate_angle(false);
+		if (horizontal_estimate.second <= 0 && vertical_estimate.second <= 0) return {};
 
-		                  const auto detected_angle = horizontal_estimate.second >= vertical_estimate.second
-			                                              ? horizontal_estimate.first
-			                                              : vertical_estimate.first;
-		                  const auto straighten_correction = std::clamp(detected_angle * 180.0 / pi, -15.0, 15.0);
-		                  const auto detected_straighten = std::clamp(straighten_correction, -45.0, 45.0);
+		const auto detected_angle = horizontal_estimate.second >= vertical_estimate.second ? horizontal_estimate.first
+		                                                                                   : vertical_estimate.first;
+		const auto straighten_correction = std::clamp(detected_angle * 180.0 / pi, -15.0, 15.0);
+		const auto detected_straighten = std::clamp(straighten_correction, -45.0, 45.0);
 
-		                  const auto perspective_slope = [&](const bool horizontal, const double baseline_angle)
-		                  {
-			                  constexpr auto bin_count = 10;
-			                  std::array<double, bin_count> bin_angle_sum{};
-			                  std::array<double, bin_count> bin_weight{};
+		const auto perspective_slope = [&](const bool horizontal, const double baseline_angle)
+		{
+			constexpr auto bin_count = 10;
+			std::array<double, bin_count> bin_angle_sum{};
+			std::array<double, bin_count> bin_weight{};
 
-			                  for (const auto& sample : samples)
-			                  {
-				                  if (sample.horizontal == horizontal && std::abs(sample.angle - baseline_angle) <=
-					                  inlier_angle)
-				                  {
-					                  const auto bin = std::clamp(static_cast<int>((sample.position + 0.5) * bin_count),
-					                                              0,
-					                                              bin_count - 1);
-					                  bin_angle_sum[bin] += sample.angle * sample.weight;
-					                  bin_weight[bin] += sample.weight;
-				                  }
-			                  }
+			for (const auto& sample : samples)
+			{
+				if (sample.horizontal == horizontal && std::abs(sample.angle - baseline_angle) <= inlier_angle)
+				{
+					const auto bin = std::clamp(static_cast<int>((sample.position + 0.5) * bin_count), 0,
+					                            bin_count - 1);
+					bin_angle_sum[bin] += sample.angle * sample.weight;
+					bin_weight[bin] += sample.weight;
+				}
+			}
 
-			                  double numerator = 0;
-			                  double denominator = 0;
-			                  auto populated_bins = 0;
-			                  auto first_bin = bin_count;
-			                  auto last_bin = -1;
-			                  for (auto bin = 0; bin < bin_count; ++bin)
-			                  {
-				                  if (bin_weight[bin] > 0)
-				                  {
-					                  const auto position = (bin + 0.5) / bin_count - 0.5;
-					                  const auto angle = bin_angle_sum[bin] / bin_weight[bin];
-					                  numerator += position * (angle - baseline_angle);
-					                  denominator += position * position;
-					                  ++populated_bins;
-					                  first_bin = (std::min)(first_bin, bin);
-					                  last_bin = (std::max)(last_bin, bin);
-				                  }
-			                  }
-			                  return populated_bins >= 5 && last_bin - first_bin >= 6 && denominator > 0.1
-				                         ? numerator / denominator
-				                         : 0.0;
-		                  };
+			double numerator = 0;
+			double denominator = 0;
+			auto populated_bins = 0;
+			auto first_bin = bin_count;
+			auto last_bin = -1;
+			for (auto bin = 0; bin < bin_count; ++bin)
+			{
+				if (bin_weight[bin] > 0)
+				{
+					const auto position = (bin + 0.5) / bin_count - 0.5;
+					const auto angle = bin_angle_sum[bin] / bin_weight[bin];
+					numerator += position * (angle - baseline_angle);
+					denominator += position * position;
+					++populated_bins;
+					first_bin = (std::min)(first_bin, bin);
+					last_bin = (std::max)(last_bin, bin);
+				}
+			}
+			return populated_bins >= 5 && last_bin - first_bin >= 6 && denominator > 0.1 ? numerator / denominator
+			                                                                             : 0.0;
+		};
 
-		                  const auto source_horizontal = std::clamp(-perspective_slope(true, horizontal_estimate.first),
-		                                                            -0.4, 0.4);
-		                  const auto source_vertical = std::clamp(perspective_slope(false, vertical_estimate.first),
-		                                                          -0.4,
-		                                                          0.4);
-		                  const auto target_rotation = rotation_angle - current_straighten + detected_straighten;
-		                  const auto display_angle = to_radian(-target_rotation);
-		                  const auto angle_sin = sin(display_angle);
-		                  const auto angle_cos = cos(display_angle);
-		                  const auto horizontal = source_horizontal * angle_cos + source_vertical * angle_sin;
-		                  const auto vertical = -source_horizontal * angle_sin + source_vertical * angle_cos;
+		const auto source_horizontal = std::clamp(-perspective_slope(true, horizontal_estimate.first), -0.4, 0.4);
+		const auto source_vertical = std::clamp(perspective_slope(false, vertical_estimate.first), -0.4, 0.4);
+		const auto target_rotation = rotation_angle - current_straighten + detected_straighten;
+		const auto display_angle = to_radian(-target_rotation);
+		const auto angle_sin = sin(display_angle);
+		const auto angle_cos = cos(display_angle);
+		const auto horizontal = source_horizontal * angle_cos + source_vertical * angle_sin;
+		const auto vertical = -source_horizontal * angle_sin + source_vertical * angle_cos;
 
-		                  return [detected_straighten, horizontal, vertical](edit_view_state& state)
-		                  {
-			                  state._straighten = detected_straighten;
-			                  state._perspective_horizontal = horizontal;
-			                  state._perspective_vertical = vertical;
-		                  };
-	                  });
+		return [detected_straighten, horizontal, vertical](edit_view_state& state)
+		{
+			state._straighten = detected_straighten;
+			state._perspective_horizontal = horizontal;
+			state._perspective_vertical = vertical;
+		};
+	});
 }
 
 void edit_view::auto_document()
@@ -2477,25 +2449,25 @@ void edit_view::auto_document()
 	const auto orientation = _loaded.orientation();
 
 	queue_auto_adjust(768, std::string(tt.command_auto_document.sv()),
-	                  [dimensions, orientation](const core::const_surface_ptr& surface) ->
-	                  std::function<void(edit_view_state&)>
-	                  {
-		                  const auto detected = detect_document(surface, dimensions);
-		                  if (!detected) return {};
+	                  [dimensions,
+	                   orientation](const core::const_surface_ptr& surface) -> std::function<void(edit_view_state&)>
+	{
+		const auto detected = detect_document(surface, dimensions);
+		if (!detected) return {};
 
-		                  // Propose the correction through the straighten, perspective and crop controls
-		                  // so the page is presented upright while every value stays adjustable.
-		                  const auto correction = fit_document_correction(detected.corners, dimensions, orientation);
-		                  if (!correction) return {};
+		// Propose the correction through the straighten, perspective and crop controls
+		// so the page is presented upright while every value stays adjustable.
+		const auto correction = fit_document_correction(detected.corners, dimensions, orientation);
+		if (!correction) return {};
 
-		                  return [correction](edit_view_state& state)
-		                  {
-			                  state._edits.crop_bounds(correction.crop);
-			                  state._straighten = correction.straighten;
-			                  state._perspective_horizontal = correction.perspective_horizontal;
-			                  state._perspective_vertical = correction.perspective_vertical;
-		                  };
-	                  });
+		return [correction](edit_view_state& state)
+		{
+			state._edits.crop_bounds(correction.crop);
+			state._straighten = correction.straighten;
+			state._perspective_horizontal = correction.perspective_horizontal;
+			state._perspective_vertical = correction.perspective_vertical;
+		};
+	});
 }
 
 void edit_view::toggle_preview()
@@ -2520,8 +2492,8 @@ void edit_view::changed()
 	if (_mt && _edit_controls && _edit_controls->_straighten_slider)
 	{
 		const auto geometry_tracking = _edit_controls->_straighten_slider->is_tracking() ||
-			_edit_controls->_perspective_horizontal_slider->is_tracking() ||
-			_edit_controls->_perspective_vertical_slider->is_tracking();
+		                               _edit_controls->_perspective_horizontal_slider->is_tracking() ||
+		                               _edit_controls->_perspective_vertical_slider->is_tracking();
 		_edit_state.changed(_extent, geometry_tracking);
 
 		if (_mt->has_trait(file_traits::bitmap))
@@ -2535,12 +2507,10 @@ void edit_view::changed()
 	}
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 
 void edit_view_controls::layout_controls(render::measure_context& mc)
 {
@@ -2572,7 +2542,6 @@ void edit_view_controls::layout_controls(render::measure_context& mc)
 	}
 }
 
-
 void edit_view_controls::options_changed()
 {
 	view_controls_host::options_changed();
@@ -2602,39 +2571,40 @@ void edit_view_controls::options_changed()
 
 void edit_view_controls::create_controls()
 {
-	const std::vector<ui::command_ptr> rotate_buttons =
-	{
+	const std::vector<ui::command_ptr> rotate_buttons = {
 		std::make_shared<ui::command>(icon_index::rotate_anticlockwise, commands::tool_rotate_anticlockwise,
-		                              [this] { _view->rotate_anticlockwise(); }),
+	                                  [this] { _view->rotate_anticlockwise(); }),
 		std::make_shared<ui::command>(icon_index::rotate_clockwise, commands::tool_rotate_clockwise,
-		                              [this] { _view->rotate_clockwise(); }),
+	                                  [this] { _view->rotate_clockwise(); }),
 		std::make_shared<ui::command>(icon_index::lightbulb, commands::edit_item_auto_straighten,
-		                              [this] { _view->auto_straighten(); }),
+	                                  [this] { _view->auto_straighten(); }),
 		std::make_shared<ui::command>(icon_index::scan_text, commands::edit_item_auto_document,
-		                              [this] { _view->auto_document(); }),
-		std::make_shared<ui::command>(icon_index::undo, commands::tool_rotate_reset,
-		                              [this] { _view->rotate_reset(); }),
+	                                  [this] { _view->auto_document(); }),
+		std::make_shared<ui::command>(icon_index::undo, commands::tool_rotate_reset, [this] { _view->rotate_reset(); }),
 	};
 
-	const std::vector<ui::command_ptr> color_buttons =
-	{
+	const std::vector<ui::command_ptr> color_buttons = {
 		std::make_shared<ui::command>(icon_index::lightbulb, commands::edit_item_auto_color,
-		                              [this] { _view->auto_color(); }),
+	                                  [this] { _view->auto_color(); }),
 		std::make_shared<ui::command>(icon_index::undo, commands::edit_item_color_reset,
-		                              [this] { _view->color_reset(); })
+	                                  [this] { _view->color_reset(); }),
 	};
 
-
-	auto changed_func = [this] { _view->changed(); };
+	auto changed_func = [this]
+	{
+		_view->changed();
+	};
 
 	_info = create_view_info_element(tt.edit_info);
 	_straighten_title = std::make_shared<ui::title_control>(icon_index::rotate_clockwise, tt.straighten);
 	_straighten_slider = std::make_shared<log_slider_control>(_frame, std::string_view{}, _edit_state._straighten,
 	                                                          -44.9, 44.9, changed_func);
-	_perspective_horizontal_slider = std::make_shared<log_slider_control>(
-		_frame, tt.perspective_horizontal, _edit_state._perspective_horizontal, -0.6, 0.6, changed_func);
-	_perspective_vertical_slider = std::make_shared<log_slider_control>(
-		_frame, tt.perspective_vertical, _edit_state._perspective_vertical, -0.6, 0.6, changed_func);
+	_perspective_horizontal_slider = std::make_shared<log_slider_control>(_frame, tt.perspective_horizontal,
+	                                                                      _edit_state._perspective_horizontal, -0.6,
+	                                                                      0.6, changed_func);
+	_perspective_vertical_slider = std::make_shared<log_slider_control>(_frame, tt.perspective_vertical,
+	                                                                    _edit_state._perspective_vertical, -0.6, 0.6,
+	                                                                    changed_func);
 	_rotate_toolbar = std::make_shared<task_toolbar_control>(_frame, rotate_buttons);
 	_color_divider = std::make_shared<divider_element>();
 	_color_title = std::make_shared<ui::title_control>(icon_index::color, tt.color);
@@ -2659,8 +2629,8 @@ void edit_view_controls::create_controls()
 	_backup_check = std::make_shared<ui::check_control>(_frame, tt.options_backup_copy, setting.create_originals);
 	_jpeg_quality_slider = std::make_shared<ui::slider_control>(_frame, tt.options_jpeg_quality,
 	                                                            setting.jpeg_save_quality, 0, 100);
-	_webp_quality_slider = std::make_shared<ui::slider_control>(_frame, tt.options_webp_quality, setting.webp_quality, 1,
-	                                                            100);
+	_webp_quality_slider = std::make_shared<ui::slider_control>(_frame, tt.options_webp_quality, setting.webp_quality,
+	                                                            1, 100);
 	_webp_lossless_check = std::make_shared<ui::check_control>(_frame, tt.lossless_compression, setting.webp_lossless);
 	_jxl_quality_slider = std::make_shared<ui::slider_control>(_frame, tt.options_jxl_quality, setting.jxl_quality, 1,
 	                                                           100);
@@ -2702,7 +2672,7 @@ void edit_view_controls::create_controls()
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void edit_view_state::reset(const prop::item_metadata_const_ptr& md, const sizei dimensions,
+void edit_view_state::reset(const prop::item_metadata_const_ptr& /*md*/, const sizei dimensions,
                             const core::orientation orientation)
 {
 	_edits.clear();
@@ -2729,7 +2699,6 @@ void edit_view_state::reset(const prop::item_metadata_const_ptr& md, const sizei
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 
 void edit_view::display_changed()
 {
@@ -2797,7 +2766,7 @@ void edit_view::draw_handle(render::draw_context& dc, const recti handle_bounds2
 	               handle_bg_clr);
 }
 
-void edit_view::render(render::draw_context& dc, view_controller_ptr controller)
+void edit_view::render(render::draw_context& dc, view_controller_ptr /*controller*/)
 {
 	auto clip_rect = dc.clip_bounds();
 
@@ -2812,14 +2781,17 @@ void edit_view::render(render::draw_context& dc, view_controller_ptr controller)
 		const auto selection_bounds = _edit_state._edits.effective_crop_bounds(image_extent);
 		const auto selection_angle = -selection_bounds.angle();
 		const auto preview_bounds = _edit_state._preview_mode ? selection_bounds : image_bounds;
-		const auto selection_rotated_bounds = preview_bounds.transform(affined().rotate(selection_angle)).
-		                                                     bounding_rect();
+		const auto selection_rotated_bounds = preview_bounds.transform(affined().rotate(selection_angle))
+		                                          .bounding_rect();
 		const auto view_bounds = rectd(0, 0, _extent.cx, _extent.cy);
 		const auto view_scale = std::min((view_bounds.Width - pad30) / selection_rotated_bounds.Width,
 		                                 (view_bounds.Height - pad30) / selection_rotated_bounds.Height);
 
-		_image_transform = affined().translate(-image_bounds.center_point()).rotate(selection_angle).scale(view_scale).
-		                             translate(view_bounds.center());
+		_image_transform = affined()
+		                       .translate(-image_bounds.center_point())
+		                       .rotate(selection_angle)
+		                       .scale(view_scale)
+		                       .translate(view_bounds.center());
 		if (_edit_state._preview_mode)
 		{
 			const auto transformed_crop = selection_bounds.transform(_image_transform).bounding_rect();
@@ -2843,7 +2815,7 @@ void edit_view::render(render::draw_context& dc, view_controller_ptr controller)
 				if (!(_texture && _texture->is_valid()) && is_valid(_preview_source))
 				{
 					if (const auto t = dc.create_texture();
-						t && t->update(_preview_source) != render::texture_update_result::failed)
+					    t && t->update(_preview_source) != render::texture_update_result::failed)
 					{
 						_texture = t;
 					}
@@ -2924,22 +2896,26 @@ void edit_view::render(render::draw_context& dc, view_controller_ptr controller)
 				const rectd target_bounds(bounds);
 				const auto scale = std::min(target_bounds.Width / selection_rotated_bounds.Width,
 				                            target_bounds.Height / selection_rotated_bounds.Height);
-				const auto transform = affined().
-				                       translate(-image_bounds.center_point()).rotate(selection_angle).scale(scale).
-				                       translate(target_bounds.center());
+				const auto transform = affined()
+				                           .translate(-image_bounds.center_point())
+				                           .rotate(selection_angle)
+				                           .scale(scale)
+				                           .translate(target_bounds.center());
 				const auto transformed_crop = selection_bounds.transform(transform).bounding_rect();
 				return transform.translate(target_bounds.center() - transformed_crop.center());
 			};
 			const auto original_transform = [&](const recti bounds)
 			{
 				const rectd target_bounds(bounds);
-				const auto original_rotated_bounds = original_selection_bounds.transform(
-					affined().rotate(original_angle)).bounding_rect();
+				const auto original_rotated_bounds =
+					original_selection_bounds.transform(affined().rotate(original_angle)).bounding_rect();
 				const auto scale = std::min(target_bounds.Width / original_rotated_bounds.Width,
 				                            target_bounds.Height / original_rotated_bounds.Height);
-				const auto transform = affined().
-				                       translate(-original_image_bounds.center_point()).rotate(original_angle).
-				                       scale(scale).translate(target_bounds.center());
+				const auto transform = affined()
+				                           .translate(-original_image_bounds.center_point())
+				                           .rotate(original_angle)
+				                           .scale(scale)
+				                           .translate(target_bounds.center());
 				const auto transformed_crop = original_selection_bounds.transform(transform).bounding_rect();
 				return transform.translate(target_bounds.center() - transformed_crop.center());
 			};
@@ -2948,8 +2924,8 @@ void edit_view::render(render::draw_context& dc, view_controller_ptr controller)
 			{
 				const auto& comparison_image_bounds = edited ? image_bounds : original_image_bounds;
 				const auto transformed_image_bounds = comparison_image_bounds.transform(transform);
-				const auto crop_rect = (edited ? selection_bounds : original_selection_bounds).transform(transform).
-					bounding_rect();
+				const auto crop_rect =
+					(edited ? selection_bounds : original_selection_bounds).transform(transform).bounding_rect();
 				constexpr auto rounding_tolerance = 1e-6;
 				const recti crop_clip(static_cast<int>(std::ceil(crop_rect.left() - rounding_tolerance)),
 				                      static_cast<int>(std::ceil(crop_rect.top() - rounding_tolerance)),
@@ -2986,8 +2962,7 @@ void edit_view::render(render::draw_context& dc, view_controller_ptr controller)
 
 		if (texture_transform.has_changes())
 			dc.draw_texture(_texture, image_view_bounds, _texture->dimensions(), alpha, sampler, texture_transform);
-		else
-			dc.draw_texture(_texture, image_view_bounds, _texture->dimensions(), alpha, sampler);
+		else dc.draw_texture(_texture, image_view_bounds, _texture->dimensions(), alpha, sampler);
 
 		const auto draw_crop = selection_bounds.crop(rectd(0, 0, image_extent.cx, image_extent.cy));
 		const auto actual_size = draw_crop.actual_extent();
@@ -3047,8 +3022,8 @@ void edit_view::render(render::draw_context& dc, view_controller_ptr controller)
 
 		const auto text_dims = std::format("{}x{}", core::round(actual_size.Width), core::round(actual_size.Height));
 		const sizei text_size = dc.measure_text(text_dims, render::font_face::dialog,
-		                                        render::text_style::single_line_center, bounding.width()).inflate(
-			dc.padding2);
+		                                        render::text_style::single_line_center, bounding.width())
+		                            .inflate(dc.padding2);
 		const auto text_x = (bounding.left + bounding.right - text_size.cx) / 2;
 		const recti draw_text_rect(text_x, bounding.top - text_size.cy, text_x + text_size.cx, bounding.top);
 
@@ -3059,8 +3034,7 @@ void edit_view::render(render::draw_context& dc, view_controller_ptr controller)
 		{
 			const auto text_degs = core::print("%3.3f degrees", selection_angle);
 			dc.draw_text(text_degs, crop_bounding.round().inflate(core::round(100 * dc.scale_factor)),
-			             render::font_face::title,
-			             render::text_style::single_line_center,
+			             render::font_face::title, render::text_style::single_line_center,
 			             core::color(ui::style::colors.warning_background, alpha), {});
 		}
 	}
@@ -3113,11 +3087,10 @@ void edit_view::render(render::draw_context& dc, view_controller_ptr controller)
 
 		auto draw_text_rect = recti(_extent);
 		draw_text_rect.top = bounds.bottom + dc.padding2;
-		draw_text_rect.bottom = draw_text_rect.top + dc.text_line_height(render::font_face::title) + dc.padding2 *
-			2;
+		draw_text_rect.bottom = draw_text_rect.top + dc.text_line_height(render::font_face::title) + dc.padding2 * 2;
 
-		dc.draw_text(_path.name(), draw_text_rect, render::font_face::title,
-		             render::text_style::single_line_center, core::color(dc.colors.foreground, alpha), {});
+		dc.draw_text(_path.name(), draw_text_rect, render::font_face::title, render::text_style::single_line_center,
+		             core::color(dc.colors.foreground, alpha), {});
 	}
 	else
 	{

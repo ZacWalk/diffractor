@@ -1,12 +1,12 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: Compact horizontal item selector used by edit and locate workflows.
+// Purpose: Compact horizontal item selector used by edit and locate workflows, picked from by the pointer or, once
+// Tab has brought the keyboard to it, by the arrows and Enter.
 
 #pragma once
 
@@ -34,10 +34,7 @@ private:
 		bool decode_failed = false;
 		uint64_t decode_request = 0;
 
-		bool has_retained_resource() const
-		{
-			return texture || surface || decode_pending;
-		}
+		bool has_retained_resource() const { return texture || surface || decode_pending; }
 
 		void retire_resources()
 		{
@@ -72,12 +69,17 @@ private:
 	item_filter_fn _item_filter;
 	std::vector<selector_item> _items;
 	df::item_element_ptr _selection_anchor;
+	// The item the keyboard is on while the strip has it: the focused item until the keyboard moves it, and again
+	// once the view moves on from the item it was on then.
+	df::item_element_ptr _key_item;
+	df::item_element_ptr _key_from;
 	sizei _extent;
 	int _scroll_x = 0;
 	int _content_width = 0;
 	int _gap = 0;
 	int _scrollbar_height = 0;
 	bool _active = false;
+	bool _enabled = true;
 	// Item bounds only exist once layout has run, so activation defers the scroll that reveals focus.
 	bool _scroll_to_focus = false;
 
@@ -93,10 +95,11 @@ private:
 	void update_visible_items();
 	recti resource_logical_bounds() const;
 	void retire_off_band_resources();
-	bool publish_decoded_surface(const df::item_element_ptr& item, const core::const_image_ptr& image,
-	                             uint64_t request, core::surface_ptr surface);
+	bool publish_decoded_surface(const df::item_element_ptr& item, const core::const_image_ptr& image, uint64_t request,
+	                             core::surface_ptr surface);
 	selector_item* item_from_location(pointi loc);
 	const selector_item* item_from_location(pointi loc) const;
+	const selector_item* key_entry() const;
 
 public:
 	selector_view(view_state& state, view_host_ptr host, select_item_fn select_item);
@@ -124,6 +127,15 @@ public:
 	recti scrollbar_thumb_bounds() const;
 	void scrollbar_to(int x);
 	void scroll_by(int delta_x);
+	// A strip whose task is running takes no clicks on its items and draws them dimmed, as the task's panel
+	// does: what the run works on stays what the strip showed when it began.
+	void enable(bool enabled);
+	bool is_enabled() const { return _enabled; }
+	bool has_items() const { return !_items.empty(); }
+	// The keys of the strip while it has the keyboard: the arrows, Home and End move the item the keyboard is on,
+	// and Enter or Space picks it as a click does - with Ctrl to add it to or take it from the selection, with
+	// Shift to select up to it.
+	bool key_down(char32_t key, platform::key_state keys) override;
 
 	static rebuild_stats test_rebuild_reuse(size_t count);
 	static resource_stats test_resource_retirement(size_t count, sizei extent, int item_width, int scroll_x);

@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The metadata blocks a file carries - EXIF, IPTC, XMP and ICC profiles - which libfiles reads,
 // writes and lists: the EXIF written with a re-encoded or turned image, the edits Diffractor makes
@@ -40,7 +39,12 @@ df_assert_pod(metadata_exif::srational32_t);
 
 static bool is_junk(const uint8_t* p, const uint32_t s)
 {
-	static constexpr uint8_t junk_marker[] = {0x12, 0xf8, 0x0f, 0x3b,};
+	static constexpr uint8_t junk_marker[] = {
+		0x12,
+		0xf8,
+		0x0f,
+		0x3b,
+	};
 	return s >= 4 && memcmp(p, junk_marker, 4) == 0;
 }
 
@@ -94,9 +98,9 @@ core::blob metadata_exif::fix_dims(const core::span cs, const int image_width, c
 	const libfiles::exif_number numbers[] = {
 		{exif_directory::primary, 0x0112, 1}, // Orientation
 		{exif_directory::thumbnail, 0x0112, 1},
-		{exif_directory::exif, 0xa002, width}, // PixelXDimension
-		{exif_directory::exif, 0xa003, height}, // PixelYDimension
-		{exif_directory::interoperability, 0x1001, width}, // RelatedImageWidth
+		{exif_directory::exif, 0xa002, width},              // PixelXDimension
+		{exif_directory::exif, 0xa003, height},             // PixelYDimension
+		{exif_directory::interoperability, 0x1001, width},  // RelatedImageWidth
 		{exif_directory::interoperability, 0x1002, height}, // RelatedImageLength
 	};
 
@@ -168,25 +172,27 @@ static bool read_listed_number(const libfiles::exif_listing& listing, const uint
 
 			const auto* const p = e.bytes.data();
 			const auto little = listing.little_endian;
-			const auto u16 = [&](const uint8_t* q) { return static_cast<uint16_t>(little ? q[0] | q[1] << 8 : q[0] << 8 | q[1]); };
+			const auto u16 = [&](const uint8_t* q)
+			{
+				return static_cast<uint16_t>(little ? q[0] | q[1] << 8 : q[0] << 8 | q[1]);
+			};
 			const auto u32 = [&](const uint8_t* q)
 			{
-				return little
-					       ? static_cast<uint32_t>(q[0]) | static_cast<uint32_t>(q[1]) << 8 | static_cast<uint32_t>(q[2]) << 16 |
-					       static_cast<uint32_t>(q[3]) << 24
-					       : static_cast<uint32_t>(q[0]) << 24 | static_cast<uint32_t>(q[1]) << 16 |
-					       static_cast<uint32_t>(q[2]) << 8 | static_cast<uint32_t>(q[3]);
+				return little ? static_cast<uint32_t>(q[0]) | static_cast<uint32_t>(q[1]) << 8 |
+				                    static_cast<uint32_t>(q[2]) << 16 | static_cast<uint32_t>(q[3]) << 24
+				              : static_cast<uint32_t>(q[0]) << 24 | static_cast<uint32_t>(q[1]) << 16 |
+				                    static_cast<uint32_t>(q[2]) << 8 | static_cast<uint32_t>(q[3]);
 			};
 
 			size_t size = 0;
 			switch (e.type)
 			{
-			case 3: case 8: size = 2;
-				break;
-			case 4: case 9: size = 4;
-				break;
-			case 5: case 10: size = 8;
-				break;
+			case 3:
+			case 8: size = 2; break;
+			case 4:
+			case 9: size = 4; break;
+			case 5:
+			case 10: size = 8; break;
 			default: return false;
 			}
 
@@ -194,14 +200,10 @@ static bool read_listed_number(const libfiles::exif_listing& listing, const uint
 
 			switch (e.type)
 			{
-			case 3: out = u16(p);
-				return true;
-			case 8: out = static_cast<int16_t>(u16(p));
-				return true;
-			case 4: out = u32(p);
-				return true;
-			case 9: out = static_cast<int32_t>(u32(p));
-				return true;
+			case 3: out = u16(p); return true;
+			case 8: out = static_cast<int16_t>(u16(p)); return true;
+			case 4: out = u32(p); return true;
+			case 9: out = static_cast<int32_t>(u32(p)); return true;
 			case 5:
 				if (u32(p + 4) == 0) return false;
 				out = static_cast<double>(u32(p)) / u32(p + 4);
@@ -229,7 +231,8 @@ metadata_kv_list metadata_exif::to_info(const std::span<const uint8_t> data)
 	for (const auto& directory : listing.directories)
 	{
 		const auto ifd_index = static_cast<int>(directory.directory);
-		auto& section = result.emplace_back(std::format("{} ({})", directory_title(ifd_index), directory.entries.size()),
+		auto& section = result.emplace_back(std::format("{} ({})", directory_title(ifd_index),
+		                                                directory.entries.size()),
 		                                    std::string{});
 		section.container = true;
 		section.id = std::format("exif.ifd.{}", ifd_index);
@@ -245,14 +248,15 @@ metadata_kv_list metadata_exif::to_info(const std::span<const uint8_t> data)
 			// An empty render over a payload of real size means the value stopped at a nul inside a binary
 			// blob, so report the size rather than a blank value.
 			const auto readable = vendor.empty() && (!rendered.empty() || e.bytes.size() <= 4) &&
-				!is_junk(std::bit_cast<const uint8_t*>(rendered.data()), static_cast<uint32_t>(len)) &&
-				!is_binary_text(rendered);
+			                      !is_junk(std::bit_cast<const uint8_t*>(rendered.data()),
+			                               static_cast<uint32_t>(len)) &&
+			                      !is_binary_text(rendered);
 
-			auto& row = result.emplace_back(
-				e.name ? *e.name : std::format("Tag 0x{:04x}", e.tag),
-				readable
-					? std::string(core::utf8_cast(rendered))
-					: std::format("{}, {} bytes", vendor.empty() ? std::string_view{"binary"} : vendor, e.bytes.size()));
+			auto& row = result.emplace_back(e.name ? *e.name : std::format("Tag 0x{:04x}", e.tag),
+			                                readable ? std::string(core::utf8_cast(rendered))
+			                                         : std::format("{}, {} bytes",
+			                                                       vendor.empty() ? std::string_view{"binary"} : vendor,
+			                                                       e.bytes.size()));
 
 			row.depth = 1;
 			row.shape = std::format("{} x{}, 0x{:04x}", libfiles::exif_type_name(e.type), e.count, e.tag);
@@ -278,11 +282,13 @@ metadata_kv_list metadata_exif::to_info(const std::span<const uint8_t> data)
 		// The decoder does not say which vendor it recognised, so the camera's own Make names the section.
 		for (const auto& directory : listing.directories)
 		{
-			const auto make = std::ranges::find(directory.entries, uint16_t{0x010f}, &libfiles::exif_listing_entry::tag);
+			const auto make = std::ranges::find(directory.entries, uint16_t{0x010f},
+			                                    &libfiles::exif_listing_entry::tag);
 			if (make == directory.entries.end()) continue;
 
 			const auto trimmed = core::trim(std::string_view{make->value});
-			if (!trimmed.empty() && !is_binary_text(trimmed)) title = std::format("MakerNote ({})", core::utf8_cast(trimmed));
+			if (!trimmed.empty() && !is_binary_text(trimmed))
+				title = std::format("MakerNote ({})", core::utf8_cast(trimmed));
 			break;
 		}
 
@@ -294,8 +300,9 @@ metadata_kv_list metadata_exif::to_info(const std::span<const uint8_t> data)
 		{
 			const std::string_view rendered = v.value;
 			const auto readable = !rendered.empty() &&
-				!is_junk(std::bit_cast<const uint8_t*>(rendered.data()), static_cast<uint32_t>(rendered.size())) &&
-				!is_binary_text(rendered);
+			                      !is_junk(std::bit_cast<const uint8_t*>(rendered.data()),
+			                               static_cast<uint32_t>(rendered.size())) &&
+			                      !is_binary_text(rendered);
 
 			auto& row = result.emplace_back(v.name ? *v.name : std::format("Tag 0x{:04x}", v.id),
 			                                readable ? std::string(core::utf8_cast(rendered)) : std::string{"binary"});
@@ -322,7 +329,7 @@ metadata_kv_list metadata_exif::to_info(const std::span<const uint8_t> data)
 		const auto has_f_number = read_listed_number(listing, 0x829d, f_number) && f_number > 0.0;
 		const auto has_exposure = read_listed_number(listing, 0x829a, exposure) && exposure > 0.0;
 		const auto has_pixels = read_listed_number(listing, 0xa002, pixel_x) &&
-			read_listed_number(listing, 0xa003, pixel_y) && pixel_x > 0.0 && pixel_y > 0.0;
+		                        read_listed_number(listing, 0xa003, pixel_y) && pixel_x > 0.0 && pixel_y > 0.0;
 
 		const auto crop = (has_focal && has_focal_35) ? focal_35 / focal_length : 0.0;
 
@@ -393,9 +400,9 @@ metadata_kv_list metadata_exif::to_info(const std::span<const uint8_t> data)
 		// The whole payload is kept rather than a hex-sized prefix: a truncated image cannot decode.
 		constexpr size_t max_embedded_image_bytes = 8_z * 1024_z * 1024_z;
 		const auto kept = std::min<size_t>(listing.thumbnail.size(), max_embedded_image_bytes);
-		row.detail = metadata_binary_detail{
-			std::vector<uint8_t>(listing.thumbnail.begin(), listing.thumbnail.begin() + kept), true
-		};
+		row.detail = metadata_binary_detail{std::vector<uint8_t>(listing.thumbnail.begin(),
+		                                                         listing.thumbnail.begin() + kept),
+		                                    true};
 	}
 
 	return result;
@@ -455,11 +462,10 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 		const auto position = location_coordinate.value();
 
 		meta.set_property(xmp_ns::exif, "GPSLatitude",
-		                 core::utf8_cast2(gps_coordinate::decimal_to_dms_str(position.latitude(), true)));
+		                  core::utf8_cast2(gps_coordinate::decimal_to_dms_str(position.latitude(), true)));
 		meta.set_property(xmp_ns::exif, "GPSLongitude",
-		                 core::utf8_cast2(gps_coordinate::decimal_to_dms_str(position.longitude(), false)));
+		                  core::utf8_cast2(gps_coordinate::decimal_to_dms_str(position.longitude(), false)));
 	}
-
 
 	if (location_place.has_value())
 	{
@@ -535,7 +541,8 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 				const auto name = core::trim(part);
 				if (!name.empty())
 				{
-					meta.append_array_item(xmp_ns::dc, "creator", libfiles::xmp::array_is_ordered, core::utf8_cast2(name));
+					meta.append_array_item(xmp_ns::dc, "creator", libfiles::xmp::array_is_ordered,
+					                       core::utf8_cast2(name));
 				}
 			}
 		}
@@ -659,7 +666,8 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 	if (orientation.has_value())
 	{
 		meta.set_property(xmp_ns::tiff, "Orientation",
-		                 core::utf8_cast2(core::to_string(static_cast<int>(orientation.value()))), libfiles::xmp::delete_existing);
+		                  core::utf8_cast2(core::to_string(static_cast<int>(orientation.value()))),
+		                  libfiles::xmp::delete_existing);
 	}
 
 	if (!remove_tags.is_empty() || !add_tags.is_empty())
@@ -696,7 +704,7 @@ void metadata_edits::apply(libfiles::xmp::meta& meta) const
 		// as an empty value rather than a deleted property: the TIFF export leaves tags that are
 		// simply absent from XMP alone, so deleting here would leave the old keywords in place.
 		meta.set_property(xmp_ns::exif, "XPKeywords",
-		                 tags.is_empty() ? std::string() : core::utf8_cast2(tags.to_string(";", false)));
+		                  tags.is_empty() ? std::string() : core::utf8_cast2(tags.to_string(";", false)));
 	}
 
 	if (remove_rating)
@@ -830,7 +838,8 @@ static libfiles::file_format libfiles_update_format(const core::file_path path)
 // named as an MP3 - is refused for an edit before anything is planned, whichever way the edit is written.
 static void require_updatable(const core::file_path path)
 {
-	if (!libfiles::can_update(libfiles_update_format(path))) throw app_exception("this file format cannot store the metadata");
+	if (!libfiles::can_update(libfiles_update_format(path)))
+		throw app_exception("this file format cannot store the metadata");
 }
 
 // The packet a file holds, where libfiles reads and writes it, including compressed JPEG XL boxes.
@@ -950,7 +959,7 @@ static libfiles::legacy_edits legacy_edits_of(const metadata_edits& edits, const
 	if (edits.disk_num) legacy.disc = core::utf8_cast2(edits.disk_num->str());
 
 	// A bare year is the packet's Created date when no full date is given, as apply() writes it.
-	if (edits.year && !edits.date_created) legacy.year = edits.year.value();
+	if (edits.year && !edits.date_created) legacy.year = edits.year;
 
 	return legacy;
 }
@@ -994,7 +1003,10 @@ static void write_with_libfiles(const core::file_path path, const libfiles::meta
 
 	const auto temp = platform::temp_file(path.extension(), path.folder());
 	auto swapped = false;
-	const core::scope_exit discard([temp, &swapped] { if (!swapped) platform::delete_file(temp); });
+	const core::scope_exit discard([temp, &swapped]
+	{
+		if (!swapped) platform::delete_file(temp);
+	});
 
 	{
 		const auto out = platform::open_file(temp, platform::file_open_mode::create);
@@ -1084,8 +1096,8 @@ static void run_test_update_failure(const core::file_path update_path)
 // DNG's too, when it has one - or, for a raw file without a sidecar, the one its scan finds. Where the
 // metadata lives is the caller's answer, so the file read is the one the caller decided to write.
 static void read_edit_source(const core::file_path src_path, const file_type_ref src_ft, const bool converting,
-                             const metadata_edits& edits, const std::string_view src_xmp_name,
-                             const bool in_sidecar, libfiles::xmp::meta& xmp)
+                             const metadata_edits& edits, const std::string_view src_xmp_name, const bool in_sidecar,
+                             libfiles::xmp::meta& xmp)
 {
 	if (!in_sidecar)
 	{
@@ -1172,10 +1184,10 @@ xmp_update_result metadata_xmp::update(const core::file_path update_path, const 
 		// A raw is written where its source keeps its metadata. The source is asked, because a copy being
 		// staged has no sidecar of its own yet.
 		const auto is_embedded_dst = dst_ft->has_trait(file_traits::embedded_xmp) &&
-			!(dst_ft->has_trait(file_traits::raw) && in_sidecar);
+		                             !(dst_ft->has_trait(file_traits::raw) && in_sidecar);
 
 		const auto converting = is_embedded_src && is_embedded_dst &&
-			libfiles_update_format(src_path) != libfiles_update_format(update_path);
+		                        libfiles_update_format(src_path) != libfiles_update_format(update_path);
 
 		libfiles::xmp::meta xmp;
 		read_edit_source(src_path, src_ft, converting, edits, src_xmp_name, in_sidecar, xmp);
@@ -1240,7 +1252,7 @@ xmp_update_result metadata_xmp::update(const core::file_path update_path, const 
 }
 
 core::blob metadata_xmp::encoded_packet(const core::file_path src_path, const core::file_path dst_path,
-                                      const metadata_edits& edits, const std::string_view src_xmp_name)
+                                        const metadata_edits& edits, const std::string_view src_xmp_name)
 {
 	run_test_update_failure(dst_path);
 
@@ -1250,7 +1262,7 @@ core::blob metadata_xmp::encoded_packet(const core::file_path src_path, const co
 		// The destination is not written yet, so its format is the one its name gives.
 		const auto dst_format = libfiles::info(libfiles::file_type_from_extension(dst_path.extension())).update_format;
 		const auto converting = src_ft->has_trait(file_traits::embedded_xmp) &&
-			libfiles_update_format(src_path) != dst_format;
+		                        libfiles_update_format(src_path) != dst_format;
 
 		libfiles::xmp::meta xmp;
 		read_edit_source(src_path, src_ft, converting, edits, src_xmp_name,
@@ -1274,8 +1286,7 @@ core::blob metadata_xmp::encoded_packet(const core::file_path src_path, const co
 }
 
 std::optional<xmp_update_result> metadata_xmp::stage_update(const core::file_path stage_path,
-                                                            const core::file_path src_path,
-                                                            const metadata_edits& edits,
+                                                            const core::file_path src_path, const metadata_edits& edits,
                                                             const std::string_view src_xmp_name)
 {
 	const auto* const src_ft = files::file_type_from_name(src_path);
@@ -1443,7 +1454,8 @@ static std::string_view xmp_schema_title(const std::string_view ns)
 static int xmp_path_depth(const std::string_view path)
 {
 	auto depth = 0;
-	for (const auto c : path) if (c == '/' || c == '[') ++depth;
+	for (const auto c : path)
+		if (c == '/' || c == '[') ++depth;
 	return depth;
 }
 
@@ -1518,8 +1530,8 @@ metadata_kv_list metadata_xmp::to_info(const std::span<const uint8_t> xmp, bool&
 
 			const auto is_container = libfiles::xmp::is_array(node.options) || libfiles::xmp::is_struct(node.options);
 			const auto array_count = libfiles::xmp::is_array(node.options)
-				                         ? meta.count_array_items(node.schema, node.path)
-				                         : 0;
+			                             ? meta.count_array_items(node.schema, node.path)
+			                             : 0;
 
 			auto& row = result.emplace_back(node.path, core::utf8_cast(node.value));
 			row.depth = xmp_path_depth(node.path) + 1;

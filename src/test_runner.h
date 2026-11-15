@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Embedded test registration and command-line test runner declarations.
 
@@ -16,6 +15,7 @@
 // documented in docs/testing.md; a test whose subject moves moves file with it.
 void register_app_tests(view_state& state, test_registry& tests);
 void register_av_tests(view_state& state, test_registry& tests);
+void register_faces_tests(view_state& state, test_registry& tests);
 void register_files_tests(view_state& state, test_registry& tests);
 void register_index_tests(view_state& state, test_registry& tests);
 void register_location_tests(view_state& state, test_registry& tests);
@@ -37,6 +37,7 @@ inline void register_tests(view_state& state, test_registry& registry)
 	register_files_tests(state, registry);
 	register_metadata_tests(state, registry);
 	register_media_edit_tests(state, registry);
+	register_faces_tests(state, registry);
 	register_av_tests(state, registry);
 	register_index_tests(state, registry);
 	register_search_tests(state, registry);

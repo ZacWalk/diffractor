@@ -33,14 +33,14 @@ outside that accessor is a lint failure.
 
 **Existence is not visibility.** Never bind a handle's lifetime to whether the thing is on screen.
 A hidden panel still populates, counts, ticks and invalidates: attach it unconditionally and gate
-only the repaint. Diffractor 1.27.0 shipped a startup crash that was exactly this conflation.
+only the repaint.
 
-## Naming is closed
+## Naming
 
-[design](../../docs/design.md) closes the vocabulary and source must match it. A **view** is one of
-the named top-level presentations; there are exactly two **modes** (zoom mode, Slideshow);
-everything else the user chooses is a **presentation choice**. "Edit mode", "tag mode" and
-"items mode" name nothing. **Fullscreen** is one word.
+Source uses [design](../../docs/design.md#naming-views-modes-and-presentation-choices)'s names. A
+**view** is one of the named top-level presentations; the modes are zoom mode and a running
+Slideshow; everything else the user chooses is a **presentation choice**. "Edit mode", "tag mode"
+and "items mode" name nothing. **Fullscreen** is one word.
 
 ## Layout and relayout
 
@@ -57,9 +57,10 @@ write back to the captured control.
 `view_state` runs headless with `null_state_strategy`, `null_async_strategy` and a null
 `view_host_base_ptr` — see `browsing_fixture` in [test_app.cpp](../../src/test_app.cpp). Where a
 decision is trapped inside a method that also performs it, **extract the decision** rather than
-building a window; that is how zoom, playback advance, the address-box session and the accelerator
-table became testable.
+building a window; zoom, playback advance, the address-box session and the accelerator table are
+tested that way.
 
 ## Checks
 
-`/test:*layout*`, `/test:*scroll*`, `/test:*selection*`, `/test:*zoom*`, `/test:*command*`.
+`/test:*layout*`, `/test:*scroll*`, `/test:*selection*`, `/test:*zoom*`, `/test:*command*`, after a
+Debug build with `python tools\dd.py build`.

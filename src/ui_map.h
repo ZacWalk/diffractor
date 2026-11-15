@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Map control dialog widget for location picking in metadata edit and
 // advanced search dialogs. Adds clustered item markers, hover previews and a
@@ -14,9 +13,11 @@
 
 #include "ui_map_common.h"
 
-// A frame of its own, placed where the element is laid out, so the map draws and pans apart from the dialog.
-class map_control final : public ui::frame_element, public std::enable_shared_from_this<map_control>,
-                          public ui::frame_host
+// A map region composed into the dialog's surface, with local drawing and pointer coordinates.
+class map_control final :
+	public ui::frame_element,
+	public std::enable_shared_from_this<map_control>,
+	public ui::frame_host
 {
 public:
 	ui::frame_ptr _owner;
@@ -29,6 +30,7 @@ public:
 	std::unique_ptr<map_engine> _engine;
 
 	bool _hover = false;
+	bool _pressed = false;
 	bool _panned = false;
 	pointi _start_loc;
 
@@ -42,7 +44,7 @@ public:
 	// `needs_refresh` asks for the bubble to be rebuilt on the next tick, which is how a
 	// thumbnail that is still loading eventually appears.
 	std::function<void(view_hover_element&, int marker_index, int count, pointi anchor, bool& needs_refresh)>
-	marker_hover;
+		marker_hover;
 
 	// Raised after the user zooms so the owner can rebuild markers for the new zoom.
 	std::function<void(int zoom)> zoom_changed;
@@ -55,10 +57,7 @@ public:
 	// thumbnail is loading); the bubble is then rebuilt on the next tick.
 	bool hover_needs_refresh = false;
 
-	map_control(async_strategy& async, std::function<void(gps_coordinate)> cb) : _async(async), _cb(
-			std::move(cb))
-	{
-	}
+	map_control(async_strategy& async, std::function<void(gps_coordinate)> cb) : _async(async), _cb(std::move(cb)) {}
 
 	void init(const ui::frame_ptr& owner)
 	{
@@ -66,30 +65,22 @@ public:
 
 		// A slow timer drives tick(), which is the only chance this control has to notice
 		// that an asynchronously loaded hover thumbnail has arrived.
-		ui::frame_style style;
-		style.timer_milliseconds = 250;
+		ui::frame_style window_style;
+		window_style.embedded = true;
+		window_style.timer_milliseconds = 250;
 
-		_frame = owner->create_frame(weak_from_this(), style);
+		_frame = owner->create_frame(weak_from_this(), window_style);
 		_engine = std::make_unique<map_engine>(_async, [this] { frame()->invalidate(); });
 	}
 
 	// Never null: the control is measured, laid out and asked to repaint before init() runs.
-	const ui::frame_ptr& frame() const
-	{
-		return _frame ? _frame : ui::no_frame();
-	}
+	const ui::frame_ptr& frame() const { return _frame ? _frame : ui::no_frame(); }
 
-	sizei measure(render::measure_context& mc, const int cx) const override
-	{
-		return {cx, cx};
-	}
+	sizei measure(render::measure_context& /*mc*/, const int cx) const override { return {cx, cx}; }
 
-	ui::frame_ptr placed_frame() const override
-	{
-		return _frame;
-	}
+	ui::frame_ptr placed_frame() const override { return _frame; }
 
-	void on_window_layout(render::measure_context& mc, const sizei extent, const bool is_minimized) override
+	void on_window_layout(render::measure_context& /*mc*/, const sizei extent, const bool /*is_minimized*/) override
 	{
 		const bool extent_changed = _extent != extent;
 		_extent = extent;
@@ -129,16 +120,19 @@ public:
 		}
 	}
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
+		_pressed = true;
 		_start_loc = loc;
 		_panned = false;
-		if (_engine)
-			_engine->pan_start();
+		if (_engine) _engine->pan_start();
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	// A release whose press went elsewhere - the one that closed a menu - neither picks nor pans.
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
+		if (!std::exchange(_pressed, false)) return;
+
 		if (_engine)
 		{
 			pointi anchor;
@@ -167,7 +161,7 @@ public:
 		_start_loc = {0, 0};
 	}
 
-	void on_mouse_leave(const pointi loc) override
+	void on_mouse_leave(const pointi /*loc*/) override
 	{
 		hide_marker_bubble();
 
@@ -186,7 +180,8 @@ public:
 		}
 	}
 
-	void on_mouse_wheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled) override
+	void on_mouse_wheel(const pointi /*loc*/, const int delta, const platform::key_state /*keys*/,
+	                    bool& was_handled) override
 	{
 		if (_engine)
 		{
@@ -209,14 +204,9 @@ public:
 		}
 	}
 
-	void activate(bool is_active) override
-	{
-	}
+	void activate(bool /*is_active*/) override {}
 
-	bool key_down(const int c, const platform::key_state keys) override
-	{
-		return false;
-	}
+	bool key_down(const char32_t /*c*/, const platform::key_state /*keys*/) override { return false; }
 
 	void on_window_paint(render::draw_context& dc) override
 	{
@@ -226,10 +216,7 @@ public:
 		}
 	}
 
-	recti calc_bounds() const
-	{
-		return recti(_extent);
-	}
+	recti calc_bounds() const { return recti(_extent); }
 
 	void set_location_marker(const gps_coordinate loc)
 	{
@@ -268,10 +255,7 @@ public:
 		}
 	}
 
-	uint32_t view_generation() const
-	{
-		return _view_generation;
-	}
+	uint32_t view_generation() const { return _view_generation; }
 
 	std::vector<gps_coordinate> visible_cluster_coordinates() const
 	{
@@ -299,10 +283,7 @@ public:
 		}
 	}
 
-	int zoom_level() const
-	{
-		return _engine ? _engine->zoom_level() : 0;
-	}
+	int zoom_level() const { return _engine ? _engine->zoom_level() : 0; }
 
 private:
 	map_box _pending_frame;
@@ -372,9 +353,8 @@ private:
 			return;
 		}
 
-		// The bubble is a top-level window, so translate the anchor from map-local
-		// coordinates into screen coordinates before showing it.
-		const auto offset = frame()->window_bounds().top_left();
+		// Translate the map-local anchor through its embedded frame exactly once.
+		const auto offset = frame()->client_to_screen({});
 		_bubble->show(hover.elements, hover.window_bounds.offset(offset), hover.x_focus, hover.preferred_size,
 		              hover.horizontal);
 	}

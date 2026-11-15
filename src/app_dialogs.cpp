@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The dialogs commands open that are features in their own right - advanced search, the
 // update offer, the keyboard reference, About, index maintenance and sharing. app_commands.cpp registers
@@ -81,7 +80,7 @@ bool ui::browse_for_term(view_state& vs, const frame_ptr& parent, std::string& r
 		set_margin(std::make_shared<select_control>(dlg_parent, tt.scope, scope, create_commands)),
 		set_margin(edit_control),
 		std::make_shared<divider_element>(),
-		std::make_shared<ok_cancel_control>(dlg->_frame)
+		std::make_shared<ok_cancel_control>(dlg->_frame),
 	};
 
 	if (dlg->show_modal(controls) == close_result::ok)
@@ -100,7 +99,6 @@ bool ui::browse_for_term(view_state& vs, const frame_ptr& parent, std::string& r
 
 	return false;
 }
-
 
 // UI-thread state behind the advanced search location column. Marker sets are built off
 // the UI thread and published here, so the generation counter drops results that arrive
@@ -139,8 +137,7 @@ struct advanced_search_location_state
 	int hover_retries = 0;
 };
 
-void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
-                                   const view_host_base_ptr& view)
+void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent, const view_host_base_ptr& view)
 {
 	auto dlg = make_dlg(parent);
 	auto dlg_parent = dlg->_frame;
@@ -196,17 +193,15 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 	webp_group->add(std::make_shared<ui::check_control>(dlg_parent, tt.search_sub_folders, search_sub_folders));
 	search_folder_ratio->child(webp_group);
 
-	auto file_type_control = std::make_shared<ui::col_control>(std::vector<view_element_ptr>{
-		std::make_shared<ui::check_control>(dlg_parent, tt.search_photos, search_photos),
-		std::make_shared<ui::check_control>(dlg_parent, tt.search_videos, search_videos),
-		std::make_shared<ui::check_control>(dlg_parent, tt.search_audio, search_audio)
-	});
+	auto file_type_control = std::make_shared<ui::col_control>(
+		std::vector<view_element_ptr>{std::make_shared<ui::check_control>(dlg_parent, tt.search_photos, search_photos),
+	                                  std::make_shared<ui::check_control>(dlg_parent, tt.search_videos, search_videos),
+	                                  std::make_shared<ui::check_control>(dlg_parent, tt.search_audio, search_audio)});
 
 	auto date_type_control = std::make_shared<ui::col_control>(std::vector<view_element_ptr>{
 		std::make_shared<ui::check_control>(dlg_parent, tt_prep(tt.prop_name_original.sv()), search_date_original),
 		std::make_shared<ui::check_control>(dlg_parent, tt.prop_name_created, search_date_created),
-		std::make_shared<ui::check_control>(dlg_parent, tt.prop_name_modified, search_date_modified)
-	});
+		std::make_shared<ui::check_control>(dlg_parent, tt.prop_name_modified, search_date_modified)});
 
 	auto from_check = std::make_shared<ui::check_control>(dlg->_frame, tt.search_date_from, search_date_from, false,
 	                                                      true);
@@ -233,10 +228,9 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 	{
 		if (!location.position.is_valid()) return std::string{};
 
-		const auto where = location_name.empty()
-			                   ? std::format("{:.5f}, {:.5f}", location.position.latitude(),
-			                                 location.position.longitude())
-			                   : location_name;
+		const auto where = location_name.empty() ? std::format("{:.5f}, {:.5f}", location.position.latitude(),
+		                                                       location.position.longitude())
+		                                         : location_name;
 
 		return str_format(tt.search_within_fmt.sv(), format_distance_km(location.km), where);
 	};
@@ -261,8 +255,8 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 		// A remembered pick is what the dialog is about, so the map opens showing that area
 		// and the distance it covers rather than the whole collection.
 		const auto lat_span = location.km / 111.0;
-		const auto lon_span = location.km / (111.0 * std::max(
-			0.05, std::cos(gps_coordinate::deg2rad(location.position.latitude()))));
+		const auto lon_span = location.km /
+		                      (111.0 * std::max(0.05, std::cos(gps_coordinate::deg2rad(location.position.latitude()))));
 
 		map_box box;
 		box.add(gps_coordinate(std::max(-85.0, location.position.latitude() - lat_span),
@@ -274,26 +268,26 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 	}
 
 	// Applies whatever the pick resolved to, and is the only writer of the location statics.
-	ls->apply_place = [location_check, location_summary, describe_location, dlg, ls,
-			search_collection_radio, search_folder_ratio](
-		const std::string& name, const gps_coordinate centre, const double radius_km)
-		{
-			core::assert_true(platform::is_ui_thread());
+	ls->apply_place =
+		[location_check, location_summary, describe_location, dlg, ls, search_collection_radio,
+	     search_folder_ratio](const std::string& name, const gps_coordinate centre, const double radius_km)
+	{
+		core::assert_true(platform::is_ui_thread());
 
-			location_name = name;
-			location.position = centre;
-			location.km = location_distance_at_detent(location_distance_detent_at_least(radius_km));
-			location_summary->text(describe_location());
-			location_check->checked(true);
+		location_name = name;
+		location.position = centre;
+		location.km = location_distance_at_detent(location_distance_detent_at_least(radius_km));
+		location_summary->text(describe_location());
+		location_check->checked(true);
 
-			// The hot spots are the whole collection's, so picking one under a folder scope would
-			// promise items the search then refuses to look for.
-			search_folder_ratio->checked(false);
-			search_collection_radio->checked(true);
+		// The hot spots are the whole collection's, so picking one under a folder scope would
+		// promise items the search then refuses to look for.
+		search_folder_ratio->checked(false);
+		search_collection_radio->checked(true);
 
-			dlg->_frame->invalidate();
-			dlg->layout();
-		};
+		dlg->_frame->invalidate();
+		dlg->layout();
+	};
 
 	// Clicking a hot spot is the whole gesture: it names the area and turns the option on.
 	// The coordinate answers straight away; the gazetteer then upgrades it to a place name so
@@ -381,37 +375,39 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 
 			auto marker_snapshot = map_engine::prepare_marker_snapshot(markers, zoom);
 
-			state._async.queue_ui(
-				[weak_ls, generation, box,
-					marker_snapshot = std::move(marker_snapshot), paths = std::move(paths)]() mutable
+			state._async.queue_ui([weak_ls, generation, box, marker_snapshot = std::move(marker_snapshot),
+			                       paths = std::move(paths)]() mutable
+			{
+				const auto s = weak_ls.lock();
+				if (!s || s->generation != generation) return;
+
+				const auto m = s->map.lock();
+				if (!m) return;
+
+				s->marker_paths = std::move(paths);
+				s->marker_place_states.assign(s->marker_paths.size(),
+				                              advanced_search_location_state::marker_place_state::unknown);
+				s->marker_place_view_generations.assign(s->marker_paths.size(), 0);
+				s->marker_place_names.assign(s->marker_paths.size(), {});
+				s->hover_path = {};
+				s->hover_item.reset();
+				m->set_marker_snapshot(std::move(marker_snapshot));
+
+				if (!s->framed && box.valid)
 				{
-					const auto s = weak_ls.lock();
-					if (!s || s->generation != generation) return;
-
-					const auto m = s->map.lock();
-					if (!m) return;
-
-					s->marker_paths = std::move(paths);
-					s->marker_place_states.assign(s->marker_paths.size(),
-					                              advanced_search_location_state::marker_place_state::unknown);
-					s->marker_place_view_generations.assign(s->marker_paths.size(), 0);
-					s->marker_place_names.assign(s->marker_paths.size(), {});
-					s->hover_path = {};
-					s->hover_item.reset();
-					m->set_marker_snapshot(std::move(marker_snapshot));
-
-					if (!s->framed && box.valid)
-					{
-						// Framing changes the zoom, which asks for a rebuild at that zoom; the
-						// generation check drops this now-stale set when that answer arrives.
-						s->framed = true;
-						m->frame_on(box);
-					}
-				});
+					// Framing changes the zoom, which asks for a rebuild at that zoom; the
+					// generation check drops this now-stale set when that answer arrives.
+					s->framed = true;
+					m->frame_on(box);
+				}
+			});
 		});
 	};
 
-	map->zoom_changed = [rebuild_markers](const int zoom) { rebuild_markers(zoom); };
+	map->zoom_changed = [rebuild_markers](const int zoom)
+	{
+		rebuild_markers(zoom);
+	};
 
 	map->marker_hover = [&state, ls](view_hover_element& hover, const int marker_index, const int count,
 	                                 const pointi anchor, bool& needs_refresh)
@@ -438,52 +434,50 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 
 			const auto generation = ls->generation;
 			const auto marker_coordinate = map->gps_at_screen(anchor);
-			const auto visible_coordinates =
-				std::make_shared<const std::vector<gps_coordinate>>(map->visible_cluster_coordinates());
+			const auto visible_coordinates = std::make_shared<const std::vector<gps_coordinate>>(
+				map->visible_cluster_coordinates());
 			const std::weak_ptr<advanced_search_location_state> weak_ls = ls;
 
 			state.queue_location([&async = state._async, weak_ls, generation, view_generation, marker_index,
-					marker_coordinate, visible_coordinates](
-				const location_cache& locations)
+			                      marker_coordinate, visible_coordinates](const location_cache& locations)
+			{
+				std::string unique_name;
+				const auto found = locations.find_largest_attributed(marker_coordinate);
+
+				if (found.id != 0)
 				{
-					std::string unique_name;
-					const auto found = locations.find_largest_attributed(marker_coordinate);
+					const auto radius_km = location_attribution_radius_km(found.population);
+					auto unique = true;
 
-					if (found.id != 0)
+					for (const auto coordinate : *visible_coordinates)
 					{
-						const auto radius_km = location_attribution_radius_km(found.population);
-						auto unique = true;
+						if (!unique) break;
+						if (coordinate == marker_coordinate ||
+						    coordinate.distance_in_kilometers(found.position) > radius_km)
+							continue;
 
-						for (const auto coordinate : *visible_coordinates)
-						{
-							if (!unique) break;
-							if (coordinate == marker_coordinate ||
-								coordinate.distance_in_kilometers(found.position) > radius_km)
-								continue;
-
-							unique = locations.find_largest_attributed(coordinate).id != found.id;
-						}
-
-						if (unique) unique_name = qualified_name(found);
+						unique = locations.find_largest_attributed(coordinate).id != found.id;
 					}
 
-					async.queue_ui([weak_ls, generation, view_generation, marker_index,
-						unique_name = std::move(unique_name)]
-					{
-						const auto s = weak_ls.lock();
-						if (!s || s->generation != generation ||
-							marker_index >= static_cast<int>(s->marker_place_states.size()))
-							return;
+					if (unique) unique_name = qualified_name(found);
+				}
 
-						const auto map = s->map.lock();
-						if (!map || map->view_generation() != view_generation) return;
+				async.queue_ui(
+					[weak_ls, generation, view_generation, marker_index, unique_name = std::move(unique_name)]
+				{
+					const auto s = weak_ls.lock();
+					if (!s || s->generation != generation ||
+					    marker_index >= static_cast<int>(s->marker_place_states.size()))
+						return;
 
-						s->marker_place_states[marker_index] =
-							advanced_search_location_state::marker_place_state::resolved;
-						s->marker_place_names[marker_index] = unique_name;
-						if (const auto m = s->map.lock()) m->hover_needs_refresh = true;
-					});
+					const auto map = s->map.lock();
+					if (!map || map->view_generation() != view_generation) return;
+
+					s->marker_place_states[marker_index] = advanced_search_location_state::marker_place_state::resolved;
+					s->marker_place_names[marker_index] = unique_name;
+					if (const auto m = s->map.lock()) m->hover_needs_refresh = true;
 				});
+			});
 		}
 		else if (place_state == advanced_search_location_state::marker_place_state::pending)
 		{
@@ -513,13 +507,14 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 
 		if (is_valid(surface))
 		{
-			elements->add(std::make_shared<surface_element>(surface, 160, flex_item::center,
-			                                                item->layout_orientation()));
+			elements->add(
+				std::make_shared<surface_element>(surface, 160, flex_item::center, item->layout_orientation()));
 		}
 		else if (is_valid(item->thumbnail()))
 		{
-			needs_refresh = should_refresh_advanced_search_hover_thumbnail(
-				false, true, item->is_staging_thumbnail_surface(), ls->hover_retries);
+			needs_refresh = should_refresh_advanced_search_hover_thumbnail(false, true,
+			                                                               item->is_staging_thumbnail_surface(),
+			                                                               ls->hover_retries);
 			if (needs_refresh && !item->is_staging_thumbnail_surface())
 			{
 				item->stage_thumbnail_surface(state._async, false, true);
@@ -539,12 +534,11 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 		}
 
 		const auto& place_name = ls->marker_place_names[marker_index];
-		const auto caption = count <= 1
-			                     ? std::string(item->name().sv())
-			                     : place_name.empty()
-			                     ? format_plural_text(tt.map_items_here_fmt, count)
-			                     : str_format(tt.map_items_close_to_fmt.sv(),
-			                                  platform::format_number(core::to_string(count)), place_name);
+		const auto caption = count <= 1 ? std::string(item->name().sv())
+		                     : place_name.empty()
+		                         ? format_plural_text(tt.map_items_here_fmt, count)
+		                         : str_format(tt.map_items_close_to_fmt.sv(),
+		                                      platform::format_number(core::to_string(count)), place_name);
 
 		elements->add(std::make_shared<text_element>(caption, flex_item::center | flex_item::new_line));
 
@@ -559,10 +553,10 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 	criteria_col->add(set_margin(search_collection_radio));
 	criteria_col->add(set_margin(search_folder_ratio));
 	criteria_col->add(std::make_shared<divider_element>());
-	criteria_col->add(set_margin(std::make_shared<ui::term_picker_control>(state, dlg_parent, tt.search_all_terms,
-	                                                                       all_terms)));
-	criteria_col->add(set_margin(std::make_shared<ui::term_picker_control>(state, dlg_parent, tt.search_none_terms,
-	                                                                       none_terms)));
+	criteria_col->add(
+		set_margin(std::make_shared<ui::term_picker_control>(state, dlg_parent, tt.search_all_terms, all_terms)));
+	criteria_col->add(
+		set_margin(std::make_shared<ui::term_picker_control>(state, dlg_parent, tt.search_none_terms, none_terms)));
 	criteria_col->add(std::make_shared<divider_element>());
 	// "Created" and "Modified" mean nothing on their own, so the block says what the boxes
 	// are about before the user reads them.
@@ -586,7 +580,7 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 		std::make_shared<divider_element>(),
 		cols,
 		std::make_shared<divider_element>(),
-		std::make_shared<ui::ok_cancel_control>(dlg->_frame)
+		std::make_shared<ui::ok_cancel_control>(dlg->_frame),
 	};
 
 	// The first pass only has to say where the collection is, so it runs at the coarsest zoom
@@ -627,8 +621,7 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 			else
 			{
 				// A named centre keeps the search readable and retypable in the address box.
-				auto term = df::search_term(df::search_term_type::location, location_name,
-				                            df::search_term_modifier{});
+				auto term = df::search_term(df::search_term_type::location, location_name, df::search_term_modifier{});
 				term.float_val = location.km;
 				new_search.with(term);
 			}
@@ -653,7 +646,7 @@ void advanced_search_invoke(view_state& state, const ui::frame_ptr& parent,
 		// is what the range means with nothing said about which date it applies to.
 		auto date_target = df::date_parts_prop::any;
 		const auto date_boxes_checked = (search_date_original ? 1 : 0) + (search_date_created ? 1 : 0) +
-			(search_date_modified ? 1 : 0);
+		                                (search_date_modified ? 1 : 0);
 
 		if (date_boxes_checked == 1)
 		{
@@ -717,8 +710,7 @@ void show_update_dialog(view_state& s, const ui::frame_ptr& parent)
 	pause_media pause(s);
 
 	// Phase 1: always check online for a newer version, showing a busy indicator.
-	controls.emplace_back(
-		set_margin(std::make_shared<ui::title_control>(icon_index::lightbulb, title)));
+	controls.emplace_back(set_margin(std::make_shared<ui::title_control>(icon_index::lightbulb, title)));
 	controls.emplace_back(std::make_shared<ui::busy_control>(dlg->_frame, icon_index::lightbulb, tt.update_checking));
 	controls.emplace_back(std::make_shared<ui::close_control>(dlg->_frame, true, tt.button_close));
 
@@ -789,30 +781,26 @@ void show_update_dialog(view_state& s, const ui::frame_ptr& parent)
 
 	controls.clear();
 	controls.emplace_back(set_margin(std::make_shared<ui::title_control>(icon_index::lightbulb, title)));
-	controls.emplace_back(set_margin(std::make_shared<text_element>(
-		str_format(tt.update_help_fmt.sv(), setting.available_version, s_app_version))));
+	controls.emplace_back(set_margin(
+		std::make_shared<text_element>(str_format(tt.update_help_fmt.sv(), setting.available_version, s_app_version))));
 
 	controls.emplace_back(std::make_shared<ui::button_control>(dlg->_frame, icon_index::import, tt.update_install_now,
 	                                                           tt.update_help, [f = dlg->_frame] { f->close(); }));
 
 	controls.emplace_back(std::make_shared<ui::button_control>(dlg->_frame, icon_index::time, tt.update_not_now,
 	                                                           tt.update_not_now_help, [&s, f = dlg->_frame]
-	                                                           {
-		                                                           setting.min_show_update_day = core::utc_now().
-			                                                           to_days() + 7;
-		                                                           s.invalidate_view(
-			                                                           view_invalid::view_layout |
-			                                                           view_invalid::app_layout);
-		                                                           f->close(true);
-	                                                           }));
+	{
+		setting.min_show_update_day = core::utc_now().to_days() + 7;
+		s.invalidate_view(view_invalid::view_layout | view_invalid::app_layout);
+		f->close(true);
+	}));
 
 	controls.emplace_back(std::make_shared<ui::button_control>(dlg->_frame, icon_index::question, tt.update_more_info,
 	                                                           tt.update_more_info_help, [f = dlg->_frame]
-	                                                           {
-		                                                           platform::open(
-			                                                           "https://www.diffractor.com/blog");
-		                                                           f->close(true);
-	                                                           }));
+	{
+		platform::open("https://www.diffractor.com/blog");
+		f->close(true);
+	}));
 
 	if (dlg->show_modal(controls) == ui::close_result::ok)
 	{
@@ -846,9 +834,7 @@ void show_update_dialog(view_state& s, const ui::frame_ptr& parent)
 		};
 
 		s.queue_async(async_queue::web, [download_complete]
-		{
-			platform::download_and_verify("diffractor.com"sv, "diffractor-setup.exe"sv, download_complete);
-		});
+		{ platform::download_and_verify("diffractor.com"sv, "diffractor-setup.exe"sv, download_complete); });
 
 		if (dlg->show_modal(controls) == ui::close_result::ok)
 		{
@@ -910,10 +896,7 @@ static void add_keyboard_section(std::vector<keyboard_ref_section>& sections, co
 	// A group with no accelerators would otherwise render as a heading over nothing.
 	if (items.empty()) return;
 
-	std::ranges::sort(items, [](auto&& left, auto&& right)
-	{
-		return core::icmp(left->text, right->text) < 0;
-	});
+	std::ranges::sort(items, [](auto&& left, auto&& right) { return core::icmp(left->text, right->text) < 0; });
 
 	keyboard_ref_section section;
 	section.title = title;
@@ -935,32 +918,37 @@ static std::vector<keyboard_ref_section> build_keyboard_reference(const commands
 
 	keyboard_ref_section basics;
 	basics.title = tt.keyboard_basics_title;
-	basics.rows.emplace_back(platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::RETURN}}),
+	basics.rows.emplace_back(platform::format_keyboard_accelerator(
+								 {platform::keyboard_accelerator_t{platform::keys::RETURN}}),
 	                         std::string(tt.keyboard_enter_desc.sv()));
-	basics.rows.emplace_back(platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::SPACE}}),
+	basics.rows.emplace_back(platform::format_keyboard_accelerator(
+								 {platform::keyboard_accelerator_t{platform::keys::SPACE}}),
 	                         std::string(tt.keyboard_space_desc.sv()));
-	basics.rows.emplace_back(platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::ESCAPE}}),
+	basics.rows.emplace_back(platform::format_keyboard_accelerator(
+								 {platform::keyboard_accelerator_t{platform::keys::ESCAPE}}),
 	                         std::string(tt.keyboard_escape_desc.sv()));
-	basics.rows.emplace_back(
-		platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::LEFT},
-			platform::keyboard_accelerator_t{platform::keys::RIGHT}}),
-		std::string(tt.keyboard_left_right_desc.sv()));
-	basics.rows.emplace_back(
-		platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::UP},
-			platform::keyboard_accelerator_t{platform::keys::DOWN}}),
-		std::string(tt.keyboard_up_down_desc.sv()));
-	basics.rows.emplace_back(
-		platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::HOME},
-			platform::keyboard_accelerator_t{platform::keys::END}}),
-		std::string(tt.keyboard_home_end_desc.sv()));
-	basics.rows.emplace_back(
-		platform::format_keyboard_accelerator({platform::keyboard_accelerator_t{platform::keys::OEM_PLUS},
-			platform::keyboard_accelerator_t{platform::keys::OEM_MINUS}}),
-		std::string(tt.keyboard_zoom_keys_desc.sv()));
-	basics.rows.emplace_back(platform::format_keyboard_accelerator({
-		                         platform::keyboard_accelerator_t{platform::keys::LEFT, platform::keyboard_accelerator_t::control},
-		                         platform::keyboard_accelerator_t{platform::keys::RIGHT, platform::keyboard_accelerator_t::control}
-	                         }), std::string(tt.keyboard_ctrl_left_right_desc.sv()));
+	basics.rows.emplace_back(platform::format_keyboard_accelerator(
+								 {platform::keyboard_accelerator_t{platform::keys::LEFT},
+	                              platform::keyboard_accelerator_t{platform::keys::RIGHT}}),
+	                         std::string(tt.keyboard_left_right_desc.sv()));
+	basics.rows.emplace_back(platform::format_keyboard_accelerator(
+								 {platform::keyboard_accelerator_t{platform::keys::UP},
+	                              platform::keyboard_accelerator_t{platform::keys::DOWN}}),
+	                         std::string(tt.keyboard_up_down_desc.sv()));
+	basics.rows.emplace_back(platform::format_keyboard_accelerator(
+								 {platform::keyboard_accelerator_t{platform::keys::HOME},
+	                              platform::keyboard_accelerator_t{platform::keys::END}}),
+	                         std::string(tt.keyboard_home_end_desc.sv()));
+	basics.rows.emplace_back(platform::format_keyboard_accelerator(
+								 {platform::keyboard_accelerator_t{platform::keys::OEM_PLUS},
+	                              platform::keyboard_accelerator_t{platform::keys::OEM_MINUS}}),
+	                         std::string(tt.keyboard_zoom_keys_desc.sv()));
+	basics.rows.emplace_back(platform::format_keyboard_accelerator(
+								 {platform::keyboard_accelerator_t{platform::keys::LEFT,
+	                                                               platform::keyboard_accelerator_t::control},
+	                              platform::keyboard_accelerator_t{platform::keys::RIGHT,
+	                                                               platform::keyboard_accelerator_t::control}}),
+	                         std::string(tt.keyboard_ctrl_left_right_desc.sv()));
 	sections.emplace_back(std::move(basics));
 
 	const auto& c = commands;
@@ -1038,13 +1026,10 @@ void show_keyboard_reference(view_state& s, const ui::frame_ptr& parent, const c
 	}
 
 	controls.emplace_back(std::make_shared<divider_element>());
-	controls.emplace_back(std::make_shared<ui::button_row>(std::vector<ui::control_ptr>{
-		ui::make_button(tt.copy_to_clipboard, [&sections]
-		{
-			platform::set_clipboard(format_keyboard_reference(sections));
-		}),
-		ui::make_button(tt.button_close, [h = dlg->_frame] { h->close(false); }, true)
-	}));
+	controls.emplace_back(std::make_shared<ui::button_row>(
+		std::vector<ui::control_ptr>{ui::make_button(tt.copy_to_clipboard, [&sections]
+	{ platform::set_clipboard(format_keyboard_reference(sections)); }),
+	                                 ui::make_button(tt.button_close, [h = dlg->_frame] { h->close(false); }, true)}));
 
 	pause_media pause(s);
 	// Title above and actions below stay put; only the key list scrolls.
@@ -1138,11 +1123,9 @@ void about_invoke(view_state& s, const ui::frame_ptr& parent, commands_map& comm
 	auto dlg_parent = dlg->_frame;
 
 	std::vector<view_element_ptr> controls;
-	controls.emplace_back(create_app_logo_element(s, render::font_face::mega, false, false, 1.6,
-	                                              flex_item::center));
+	controls.emplace_back(create_app_logo_element(s, render::font_face::mega, false, false, 1.6, flex_item::center));
 	controls.emplace_back(std::make_shared<text_element>(df::format_version(false), render::font_face::dialog,
-	                                                     render::text_style::single_line_center,
-	                                                     flex_item::center));
+	                                                     render::text_style::single_line_center, flex_item::center));
 	controls.emplace_back(std::make_shared<divider_element>());
 
 	auto cols = std::make_shared<ui::col_control>();
@@ -1154,9 +1137,7 @@ void about_invoke(view_state& s, const ui::frame_ptr& parent, commands_map& comm
 	learn->add(std::make_shared<link_element>(tt.releases, [] { platform::open(releases_url); }));
 	learn->add(std::make_shared<ui::title_control>(icon_index::keyboard, tt.keyboard));
 	learn->add(std::make_shared<link_element>(tt.list_of_accelerators, [&s, dlg_parent, &c = commands]
-	{
-		show_keyboard_reference(s, dlg_parent, c);
-	}));
+	{ show_keyboard_reference(s, dlg_parent, c); }));
 
 	const auto support = std::make_shared<ui::group_control>();
 	support->add(std::make_shared<ui::title_control>(icon_index::buy, tt.donate));
@@ -1176,7 +1157,6 @@ void about_invoke(view_state& s, const ui::frame_ptr& parent, commands_map& comm
 	dlg->show_modal(controls, {55});
 };
 
-
 std::string format_index_text(const view_state& s)
 {
 	const auto file_types = s.item_index.file_types();
@@ -1195,10 +1175,8 @@ class path_text_element final : public std::enable_shared_from_this<path_text_el
 	render::text_style _text_style = render::text_style::multiline;
 
 public:
-	path_text_element(const core::file_path path) noexcept : view_element(
-		                                                       view_element_style::has_tooltip |
-		                                                       view_element_style::can_invoke), _text(path.str()),
-	                                                       _path(path)
+	path_text_element(const core::file_path path) noexcept :
+		view_element(view_element_style::has_tooltip | view_element_style::can_invoke), _text(path.str()), _path(path)
 	{
 	}
 
@@ -1229,18 +1207,16 @@ public:
 		}
 	}
 
-	void tooltip(view_hover_element& result, const pointi loc, const pointi element_offset) const override
+	void tooltip(view_hover_element& result, const pointi /*loc*/, const pointi element_offset) const override
 	{
 		result.elements->add(make_icon_element(icon_index::data, flex_item::no_break));
 		result.elements->add(std::make_shared<text_element>(_text, render::font_face::title,
-		                                                    render::text_style::multiline,
-		                                                    flex_item::line_break));
+		                                                    render::text_style::multiline, flex_item::line_break));
 		result.active_bounds = result.window_bounds = bounds.offset(element_offset);
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
@@ -1305,22 +1281,23 @@ void index_maintenance_invoke(const view_state& s, const ui::frame_ptr& parent)
 	}
 
 	std::vector<view_element_ptr> controls = {
-		set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon_index::settings, title,
-		                                                tt.defragment_and_compact)),
+		set_margin(
+			std::make_shared<ui::title_control2>(dlg->_frame, icon_index::settings, title, tt.defragment_and_compact)),
 		std::make_shared<divider_element>(),
 		set_margin(std::make_shared<text_element>(format_index_text(s))),
 		set_margin(std::make_shared<path_text_element>(s.item_index.stats.database_path)),
 		set_margin(std::make_shared<text_element>(tt.index_maintenance_help)),
 		set_margin(std::make_shared<ui::check_control>(dlg->_frame, tt.reset_database, is_reset)),
 		std::make_shared<divider_element>(),
-		std::make_shared<ui::ok_cancel_control>(dlg->_frame)
+		std::make_shared<ui::ok_cancel_control>(dlg->_frame),
 	};
 
 	if (check_result->has_errors)
 	{
-		controls.emplace_back(set_margin(set_padding(
-			std::make_shared<text_element>(tt.index_maintenance_reset_recommended, render::text_style::multiline), 8,
-			8)));
+		controls.emplace_back(
+			set_margin(set_padding(std::make_shared<text_element>(tt.index_maintenance_reset_recommended,
+		                                                          render::text_style::multiline),
+		                           8, 8)));
 	}
 
 	if (dlg->show_modal(controls) == ui::close_result::ok)
@@ -1375,9 +1352,8 @@ void index_maintenance_invoke(const view_state& s, const ui::frame_ptr& parent)
 // The share sheet needs a title. One file is named; several are counted.
 static std::string share_sheet_title(const std::vector<core::file_path>& paths)
 {
-	return paths.size() == 1
-		       ? paths.front().name().str()
-		       : format_plural_text(tt.title_item_count_fmt, static_cast<int64_t>(paths.size()));
+	return paths.size() == 1 ? paths.front().name().str()
+	                         : format_plural_text(tt.title_item_count_fmt, static_cast<int64_t>(paths.size()));
 }
 
 // MAPI shows the mail client's own modal UI, so the draft is created on the UI thread despite
@@ -1393,11 +1369,9 @@ static void email_outgoing_files(view_state& s, const item_results_ptr& results,
 		// A cancel that lands after the last file is still a decision not to send.
 		if (!prepared.success || results->is_canceled())
 		{
-			results->complete(results->is_canceled()
-				                  ? std::string_view{}
-				                  : prepared.error.empty()
-				                  ? tt.email_failed.sv()
-				                  : std::string_view{prepared.error});
+			results->complete(results->is_canceled()   ? std::string_view{}
+			                  : prepared.error.empty() ? tt.email_failed.sv()
+			                                           : std::string_view{prepared.error});
 			return;
 		}
 
@@ -1467,29 +1441,30 @@ void share_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_ba
 		for (;;)
 		{
 			std::vector<view_element_ptr> controls;
-			auto title_control = std::make_shared<ui::title_control2>(
-				dlg->_frame, icon, title,
-				format_plural_text(use_sheet ? tt.share_info_fmt : tt.email_info_fmt, items),
-				std::vector<core::const_surface_ptr>{}, items.size());
+			auto title_control = std::make_shared<ui::title_control2>(dlg->_frame, icon, title,
+			                                                          format_plural_text(use_sheet ? tt.share_info_fmt
+			                                                                                       : tt.email_info_fmt,
+			                                                                             items),
+			                                                          std::vector<core::const_surface_ptr>{},
+			                                                          items.size());
 			title_control->selection_async(items.thumbs(), items.size(), s._async);
 			controls.emplace_back(set_margin(title_control));
 			controls.emplace_back(std::make_shared<divider_element>());
-			controls.emplace_back(set_margin(std::make_shared<text_element>(
-				use_sheet ? tt.share_small_help : tt.email_small_help)));
-			controls.emplace_back(std::make_shared<ui::check_control>(
-				dlg->_frame, use_sheet ? tt.share_zip : tt.email_zip, choices.zip));
+			controls.emplace_back(
+				set_margin(std::make_shared<text_element>(use_sheet ? tt.share_small_help : tt.email_small_help)));
+			controls.emplace_back(
+				std::make_shared<ui::check_control>(dlg->_frame, use_sheet ? tt.share_zip : tt.email_zip, choices.zip));
 			controls.emplace_back(
 				std::make_shared<ui::check_control>(dlg->_frame, tt.email_convert_to_jpeg, choices.convert));
 
-			auto limit = std::make_shared<ui::check_control>(dlg->_frame, tt.email_limit_dimensions,
-			                                                 choices.limit);
+			auto limit = std::make_shared<ui::check_control>(dlg->_frame, tt.email_limit_dimensions, choices.limit);
 			limit->child(std::make_shared<ui::num_control>(dlg->_frame, std::string_view{}, choices.max_side));
 			controls.emplace_back(limit);
 
 			if (!validation_error.empty())
 			{
-				auto warning = std::make_shared<text_element>(
-					validation_error, flex_item::stretch | view_element_style::important);
+				auto warning = std::make_shared<text_element>(validation_error,
+				                                              flex_item::stretch | view_element_style::important);
 				warning->margin = {10, 10};
 				warning->padding = {10, 10};
 				warning->update_background_color();
@@ -1497,8 +1472,8 @@ void share_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_ba
 			}
 
 			controls.emplace_back(std::make_shared<divider_element>());
-			controls.emplace_back(std::make_shared<ui::ok_cancel_control>(
-				dlg->_frame, use_sheet ? tt.button_share : tt.button_send));
+			controls.emplace_back(
+				std::make_shared<ui::ok_cancel_control>(dlg->_frame, use_sheet ? tt.button_share : tt.button_send));
 
 			if (ui::close_result::ok != dlg->show_modal(controls)) return;
 
@@ -1525,8 +1500,9 @@ void share_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_ba
 
 		if (!use_sheet)
 		{
-			email_outgoing_files(s, std::make_shared<command_status>(s._async, dlg, icon, title, file_paths.size(),
-			                                                         tt.email_preparing),
+			email_outgoing_files(s,
+			                     std::make_shared<command_status>(s._async, dlg, icon, title, file_paths.size(),
+			                                                      tt.email_preparing),
 			                     file_paths, outgoing);
 			return;
 		}
@@ -1550,11 +1526,9 @@ void share_invoke(view_state& s, const ui::frame_ptr& parent, const view_host_ba
 				// A cancel that lands after the last file is still a decision not to share.
 				if (results->is_canceled()) prepared->success = false;
 
-				rr.complete(prepared->success || results->is_canceled()
-					            ? std::string_view{}
-					            : prepared->error.empty()
-					            ? tt.share_failed.sv()
-					            : std::string_view{prepared->error});
+				rr.complete(prepared->success || results->is_canceled() ? std::string_view{}
+				            : prepared->error.empty()                   ? tt.share_failed.sv()
+				                                                        : std::string_view{prepared->error});
 			});
 
 			results->wait_for_complete();

@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Tagging workflow view. Adds and removes tags across the visibly selected set
 // using the same selector, preview, run and results steps as the other task views.
@@ -24,9 +23,7 @@ using tag_action = std::pair<std::string, bool>;
 std::vector<tag_action> parse_tag_actions(std::string_view text);
 std::string serialize_tag_actions(const std::vector<tag_action>& actions);
 
-class tags_view final :
-	public list_view,
-	public std::enable_shared_from_this<tags_view>
+class tags_view final : public list_view, public std::enable_shared_from_this<tags_view>
 {
 	// The action field: what to add or remove, not a view of current state (issue #228).
 	std::string _tags;
@@ -47,20 +44,11 @@ class tags_view final :
 	std::string _title;
 
 public:
-	tags_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host))
-	{
-		col_count = 3;
-	}
+	tags_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host)) { col_count = 3; }
 
 	std::array<text_t, max_col_count> col_titles() override
 	{
-		return std::array<text_t, max_col_count>
-		{
-			tt.tags_column_item,
-			text_t{},
-			tt.tags_column_result,
-			text_t{}
-		};
+		return std::array<text_t, max_col_count>{tt.tags_column_item, text_t{}, tt.tags_column_result, text_t{}};
 	}
 
 	text_t empty_message() override { return tt.tags_view_empty_message; }

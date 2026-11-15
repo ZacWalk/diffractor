@@ -3826,8 +3826,8 @@ msgstr "Řadit podle data originálu"
 msgid "Movie mixer"
 msgstr "Mixér filmu"
 
-msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
-msgstr "Sestavte z vybraných fotografií a videí jedno video. Klipy na pásu níže přidávejte, odebírejte a přeuspořádávejte a vybraný klip ořízněte. Náhled odpovídá tomu, co se vykreslí; dokud nevykreslíte nebo neuložíte, nic se nezapisuje."
+msgid "Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Sestavte z vybraných fotografií, videí a zvukových souborů jedno video a kde chcete, vložte obrazovky s textem. Položky na pásu níže přidávejte, odebírejte a přeuspořádávejte a vybranou položku upravujte zde. Náhled odpovídá tomu, co se vykreslí; dokud nevykreslíte nebo neuložíte, nic se nezapisuje."
 
 msgid "Movie"
 msgstr "Film"
@@ -3835,50 +3835,38 @@ msgstr "Film"
 msgid "Selected clip"
 msgstr "Vybraný klip"
 
-msgid "Crossfade between clips"
-msgstr "Prolínání mezi klipy"
+msgid "Text screen"
+msgstr "Textová obrazovka"
 
-msgid "Cut between clips"
-msgstr "Střih mezi klipy"
+msgid "Text"
+msgstr "Text"
 
-msgid "Transition (tenths of a second)"
-msgstr "Přechod (desetiny sekundy)"
+msgid "Caption"
+msgstr "Popisek"
 
-msgid "Fade (tenths of a second)"
-msgstr "Rozjasnění/ztmavení (desetiny sekundy)"
+msgid "Shown for (tenths of a second)"
+msgstr "Zobrazit po dobu (desetiny sekundy)"
 
-msgid "Fade in from black"
-msgstr "Rozjasnit z černé"
+msgid "Stabilize (not applied yet)"
+msgstr "Stabilizovat (zatím se nepoužije)"
 
-msgid "Fade out to black"
-msgstr "Ztmavit do černé"
-
-msgid "Photo duration (tenths of a second)"
-msgstr "Doba zobrazení fotografie (desetiny sekundy)"
-
-msgid "This photo (tenths of a second)"
-msgstr "Tato fotografie (desetiny sekundy)"
-
-msgid "Use the movie default"
-msgstr "Použít výchozí hodnotu filmu"
-
-msgid "Add photos and videos to build a movie."
-msgstr "Přidejte fotografie a videa a sestavte film."
+msgid "Add photos, videos and audio files to build a movie."
+msgstr "Přidejte fotografie, videa a zvukové soubory a sestavte film."
 
 msgid "Output {} x {} at {} fps, {} long."
 msgstr "Výstup {} x {} při {} fps, délka {}."
 
-msgid "{} - clip {} of {}, starting at {}."
-msgstr "{} - klip {} z {}, začíná v {}."
+msgid "{} - item {} of {}, starting at {}."
+msgstr "{} - položka {} z {}, začíná v {}."
+
+msgid "Item {} of {}, starting at {}."
+msgstr "Položka {} z {}, začíná v {}."
 
 msgid "Movie project"
 msgstr "Projekt filmu"
 
-msgid "Windows Movie Maker project"
-msgstr "Projekt Windows Movie Maker"
-
-msgid "Photos and videos"
-msgstr "Fotografie a videa"
+msgid "Photos, videos and audio"
+msgstr "Fotografie, videa a zvuk"
 
 msgid "Could not read the project {}."
 msgstr "Projekt {} se nepodařilo načíst."
@@ -3886,11 +3874,17 @@ msgstr "Projekt {} se nepodařilo načíst."
 msgid "Could not save the project {}."
 msgstr "Projekt {} se nepodařilo uložit."
 
-msgid "Assemble the selected photos and videos into one video."
-msgstr "Sestaví z vybraných fotografií a videí jedno video."
+msgid "Assemble the selected photos, videos and audio files into one video."
+msgstr "Sestaví z vybraných fotografií, videí a zvukových souborů jedno video."
 
 msgid "Add files"
 msgstr "Přidat soubory"
+
+msgid "Add text screen"
+msgstr "Přidat textovou obrazovku"
+
+msgid "Add a screen of text on black after the selected item."
+msgstr "Přidá za vybranou položku obrazovku s textem na černém pozadí."
 
 msgid "Remove from movie"
 msgstr "Odebrat z filmu"
@@ -3903,9 +3897,6 @@ msgstr "Otevřít projekt"
 
 msgid "Save project"
 msgstr "Uložit projekt"
-
-msgid "Import Movie Maker project"
-msgstr "Importovat projekt Movie Maker"
 
 msgid "Video"
 msgstr "Video"
@@ -3961,11 +3952,11 @@ msgstr "Znovu propojit chybějící soubory"
 msgid "Point clips whose source file has moved at a folder you choose."
 msgstr "Nasměruje klipy, jejichž zdrojový soubor se přesunul, do vybrané složky."
 
-msgid "1 element of the imported project was left out because Movie cannot represent it."
-msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
-msgstr[0] "1 prvek importovaného projektu byl vynechán, protože jej Film neumí zachytit."
-msgstr[1] "{count} prvky importovaného projektu byly vynechány, protože je Film neumí zachytit."
-msgstr[2] "{count} prvků importovaného projektu bylo vynecháno, protože je Film neumí zachytit."
+msgid "1 line of the project could not be read and was left out."
+msgid_plural "{count} lines of the project could not be read and were left out."
+msgstr[0] "1 řádek projektu nešlo přečíst a byl vynechán."
+msgstr[1] "{count} řádky projektu nešlo přečíst a byly vynechány."
+msgstr[2] "{count} řádků projektu nešlo přečíst a bylo vynecháno."
 
 msgid "1 clip cannot find its source file."
 msgid_plural "{count} clips cannot find their source files."
@@ -3973,15 +3964,42 @@ msgstr[0] "1 klip nemůže najít svůj zdrojový soubor."
 msgstr[1] "{count} klipy nemohou najít své zdrojové soubory."
 msgstr[2] "{count} klipů nemůže najít své zdrojové soubory."
 
-msgid "1 clip was relinked."
-msgid_plural "{count} clips were relinked."
-msgstr[0] "1 klip byl znovu propojen."
-msgstr[1] "{count} klipy byly znovu propojeny."
-msgstr[2] "{count} klipů bylo znovu propojeno."
 
+msgid "Pattern"
+msgstr "Vzor"
 
-msgid "SID monitor"
-msgstr "SID monitor"
+msgid "Row"
+msgstr "Řádek"
+
+msgid "Speed"
+msgstr "Rychlost"
+
+msgid "Samples"
+msgstr "Vzorky"
+
+msgid "Instruments"
+msgstr "Nástroje"
+
+msgid "Follow playback"
+msgstr "Sledovat přehrávání"
+
+msgid "Notes"
+msgstr "Noty"
+
+msgid "Range"
+msgstr "Rozsah"
+
+msgid "Compressed"
+msgstr "Komprimováno"
+
+msgid "Codec"
+msgstr "Kodek"
+
+msgid "Format"
+msgstr "Formát"
+
+msgid "Sidecars"
+msgstr "Vedlejší soubory"
 
 msgid "Voice {}"
 msgstr "Hlas {}"
@@ -4000,6 +4018,21 @@ msgstr "Zápisy do registrů"
 
 msgid "Solo"
 msgstr "Sólo"
+
+msgid "Run on an emulated Commodore 64"
+msgstr "Spustit na emulovaném Commodore 64"
+
+msgid "Start"
+msgstr "Spustit"
+
+msgid "Joystick port {}"
+msgstr "Port joysticku {}"
+
+msgid "Arrow keys and Space: joystick. Esc: back."
+msgstr "Šipky a mezerník: joystick. Esc: zpět."
+
+msgid "This file could not be started."
+msgstr "Tento soubor nelze spustit."
 
 msgid "Same film"
 msgstr "Stejný film"

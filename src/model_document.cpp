@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Decodes, lays out and selects the read-only document model_document.h describes: which
 // encoding the head of a file reads in, its lines and highlighter states, rows wrapped at word
@@ -91,9 +90,8 @@ namespace
 
 		for (size_t i = 0; i + 1 < n; i += 2)
 		{
-			units.push_back(big_endian
-				                ? static_cast<char16_t>(p[i] << 8 | p[i + 1])
-				                : static_cast<char16_t>(p[i] | p[i + 1] << 8));
+			units.push_back(big_endian ? static_cast<char16_t>(p[i] << 8 | p[i + 1])
+			                           : static_cast<char16_t>(p[i] | p[i + 1] << 8));
 		}
 
 		// A lead surrogate the end of the head separated from its trail is not a character.
@@ -105,10 +103,12 @@ namespace
 	// The 0x80 to 0x9F row of Windows-1252. The five bytes it leaves undefined stay the C1 controls
 	// they name in Latin-1, as Windows decodes them.
 	constexpr char16_t windows_1252_row8[32] = {
+		// clang-format off
 		0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
 		0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
 		0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
 		0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
+		// clang-format on
 	};
 
 	void append_windows_1252(std::string& out, const uint8_t* p, const size_t n)
@@ -136,8 +136,8 @@ namespace
 
 			if (c < 0x20 || c == 0x7F)
 			{
-				if (c != '\t' && c != '\n' && c != '\r' && c != 0x0B && c != 0x0C && c != 0x08 && c != 0x1A && c !=
-					0x1B)
+				if (c != '\t' && c != '\n' && c != '\r' && c != 0x0B && c != 0x0C && c != 0x08 && c != 0x1A &&
+				    c != 0x1B)
 				{
 					++controls;
 				}
@@ -262,6 +262,9 @@ document_text decode_document(const core::cspan bytes, const std::string_view ex
 
 	result.encoding = encoding;
 	result.language = language_of(extension);
+	auto format_extension = extension;
+	if (format_extension.starts_with('.')) format_extension.remove_prefix(1);
+	result.csv = core::icmp(format_extension, "csv") == 0;
 	result.text = std::move(text);
 	split_lines(result);
 	record_cookies(result);
@@ -273,17 +276,17 @@ int document_column_width(const uint32_t cp)
 	// Combining marks, zero-width spaces and joiners, variation selectors and the byte order mark
 	// draw on what precedes them.
 	if ((cp >= 0x0300 && cp <= 0x036F) || (cp >= 0x1AB0 && cp <= 0x1AFF) || (cp >= 0x1DC0 && cp <= 0x1DFF) ||
-		(cp >= 0x200B && cp <= 0x200F) || (cp >= 0x20D0 && cp <= 0x20FF) || (cp >= 0xFE00 && cp <= 0xFE0F) ||
-		(cp >= 0xFE20 && cp <= 0xFE2F) || cp == 0xFEFF)
+	    (cp >= 0x200B && cp <= 0x200F) || (cp >= 0x20D0 && cp <= 0x20FF) || (cp >= 0xFE00 && cp <= 0xFE0F) ||
+	    (cp >= 0xFE20 && cp <= 0xFE2F) || cp == 0xFEFF)
 	{
 		return 0;
 	}
 
 	if ((cp >= 0x1100 && cp <= 0x115F) || (cp >= 0x2E80 && cp <= 0x303E) || (cp >= 0x3041 && cp <= 0x33FF) ||
-		(cp >= 0x3400 && cp <= 0x4DBF) || (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0xA000 && cp <= 0xA4CF) ||
-		(cp >= 0xAC00 && cp <= 0xD7A3) || (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0xFE30 && cp <= 0xFE4F) ||
-		(cp >= 0xFF00 && cp <= 0xFF60) || (cp >= 0xFFE0 && cp <= 0xFFE6) || (cp >= 0x1F300 && cp <= 0x1F64F) ||
-		(cp >= 0x1F900 && cp <= 0x1F9FF) || (cp >= 0x20000 && cp <= 0x3FFFD))
+	    (cp >= 0x3400 && cp <= 0x4DBF) || (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0xA000 && cp <= 0xA4CF) ||
+	    (cp >= 0xAC00 && cp <= 0xD7A3) || (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0xFE30 && cp <= 0xFE4F) ||
+	    (cp >= 0xFF00 && cp <= 0xFF60) || (cp >= 0xFFE0 && cp <= 0xFFE6) || (cp >= 0x1F300 && cp <= 0x1F64F) ||
+	    (cp >= 0x1F900 && cp <= 0x1F9FF) || (cp >= 0x20000 && cp <= 0x3FFFD))
 	{
 		return 2;
 	}
@@ -362,8 +365,7 @@ void document_state::layout(const int columns, const size_t byte_count)
 			const auto end = i < n && space_end > begin ? space_end : i;
 			_rows.push_back({li, begin, end});
 			begin = end;
-		}
-		while (begin < n);
+		} while (begin < n);
 	}
 }
 
@@ -386,9 +388,11 @@ size_t document_state::row_of(const document_position pos) const
 	if (!is_text()) return std::clamp(static_cast<size_t>(std::max(0, pos.line)), 0_z, count - 1);
 
 	// The last row starting at or before the position: one at a wrap belongs to the row it starts.
-	const auto found = std::upper_bound(_rows.begin(), _rows.end(), pos, [](const document_position p, const text_row& r)
+	const auto found = std::upper_bound(_rows.begin(), _rows.end(), pos,
+	                                    [](const document_position p, const text_row& r)
 	{
-		return p.line < static_cast<int>(r.line) || (p.line == static_cast<int>(r.line) && p.offset < static_cast<int>(r.begin));
+		return p.line < static_cast<int>(r.line) ||
+		       (p.line == static_cast<int>(r.line) && p.offset < static_cast<int>(r.begin));
 	});
 
 	return found == _rows.begin() ? 0 : static_cast<size_t>(found - _rows.begin()) - 1;
@@ -531,7 +535,7 @@ document_position document_state::character_at(const size_t row, const double co
 	return {line, static_cast<int>(cells[last].source)};
 }
 
-int document_state::line_count(const core::cspan bytes) const
+int document_state::line_count(const core::cspan /*bytes*/) const
 {
 	return is_text() ? static_cast<int>(_text.lines.size()) : static_cast<int>(row_count());
 }

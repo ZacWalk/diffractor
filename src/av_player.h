@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Media playback session and player management. Coordinates audio/video decoding threads,
 // handles play/pause/seek operations, synchronizes audio-video timing, and keeps the subtitles a session
@@ -51,17 +50,13 @@ inline bool should_upload_video_frame(const av_texture_upload_state& state, cons
 // barely started or effectively completed media".
 inline bool should_resume_at(const double start_time, const double end_time, const double saved_position)
 {
-	return end_time - start_time > 10.0 &&
-		saved_position > start_time + 2.0 &&
-		saved_position < end_time - 5.0;
+	return end_time - start_time > 10.0 && saved_position > start_time + 2.0 && saved_position < end_time - 5.0;
 }
-
 
 // design.md: closing "saves the last presented position ...; if a seek or resume is still
 // synchronizing, it saves the accepted target instead, so closing before the first resumed frame
 // arrives does not replace that position with zero".
-inline double position_to_save(const bool is_synchronizing, const double accepted_seek,
-                               const double last_frame_time)
+inline double position_to_save(const bool is_synchronizing, const double accepted_seek, const double last_frame_time)
 {
 	return is_synchronizing ? accepted_seek : last_frame_time;
 }
@@ -111,8 +106,7 @@ inline bool should_coalesce_seek_request(const double last_seek, const double po
 // seek can decode. Asked once per target: one before the stream's first key frame lands after it
 // however often it is sought.
 inline bool should_correct_settled_seek(const bool scrubbing, const bool has_current_frame, const double frame_time,
-                                        const double target, const double frame_interval,
-                                        const double corrected_target)
+                                        const double target, const double frame_interval, const double corrected_target)
 {
 	if (!scrubbing || !has_current_frame || frame_interval <= 0.0) return false;
 	return frame_time - target > frame_interval / 2.0 && !core::equiv(corrected_target, target);
@@ -170,7 +164,6 @@ class av_session final : public std::enable_shared_from_this<av_session>
 	// Seeks the player has queued for this session. Each carries the count when it was queued, and one a
 	// later seek has superseded does nothing when the read thread reaches it.
 	std::atomic<uint64_t> _queued_seeks = 0;
-
 
 	static constexpr int max_loop_iteration = 256;
 
@@ -258,8 +251,7 @@ class av_session final : public std::enable_shared_from_this<av_session>
 	// once rather than on every present. Cleared as soon as the target moves. Under _presentation_mutex.
 	_Guarded_by_(_presentation_mutex) double _correction_target = -1.0;
 
-	_Guarded_by_(_presentation_mutex)
-	av_frame_ptr _frame;
+	_Guarded_by_(_presentation_mutex) av_frame_ptr _frame;
 
 	std::atomic<std::shared_ptr<audio_resampler>> _playback_resampler;
 	std::atomic<std::shared_ptr<audio_resampler>> _vis_resampler;
@@ -280,27 +272,15 @@ public:
 	{
 	}
 
-	~av_session()
-	{
-		close(false);
-	}
+	~av_session() { close(false); }
 
-	int video_stream_id() const
-	{
-		return _video_stream_id;
-	}
+	int video_stream_id() const { return _video_stream_id; }
 
-	int audio_stream_id() const
-	{
-		return _audio_stream_id;
-	}
+	int audio_stream_id() const { return _audio_stream_id; }
 
 	// True when the audio device is driving the clock. A session whose endpoint could not be
 	// opened has an audio track but no device clock, and must be timed like a silent one.
-	bool has_audio_clock() const
-	{
-		return _has_audio && !_audio_unavailable;
-	}
+	bool has_audio_clock() const { return _has_audio && !_audio_unavailable; }
 
 	void mark_audio_output_unavailable(const double time_now = core::now())
 	{
@@ -343,10 +323,7 @@ public:
 	}
 
 	// Seeks that restarted the decoder. A merged seek does not count, which is what makes it cheap.
-	int seek_generation() const
-	{
-		return _seek_gen;
-	}
+	int seek_generation() const { return _seek_gen; }
 
 	// True when this media is presented as an audio visualisation rather than a video texture.
 	bool visualize_audio() const
@@ -375,32 +352,17 @@ public:
 		}
 	}
 
-	void adjust_volume()
-	{
-		_volume = _scrubbing || _mute.load() ? 0 : setting.media_volume;
-	}
+	void adjust_volume() { _volume = _scrubbing || _mute.load() ? 0 : setting.media_volume; }
 
-	bool is_open() const
-	{
-		return _state == av_play_state::playing || _state == av_play_state::paused;
-	}
+	bool is_open() const { return _state == av_play_state::playing || _state == av_play_state::paused; }
 
 	// False for playback that stands for something other than the user viewing this file, so
 	// closing it leaves their resume position alone. See _remembers_position.
-	void remembers_position(const bool x)
-	{
-		_remembers_position = x;
-	}
+	void remembers_position(const bool x) { _remembers_position = x; }
 
-	bool is_playing() const
-	{
-		return _state == av_play_state::playing;
-	}
+	bool is_playing() const { return _state == av_play_state::playing; }
 
-	double last_frame_time() const
-	{
-		return _last_frame_time;
-	}
+	double last_frame_time() const { return _last_frame_time; }
 
 	void state(av_play_state new_state);
 
@@ -426,16 +388,10 @@ public:
 	}
 
 	// Lays lines out for the picture as the UI draws it; see subtitle_events::layout.
-	void subtitles_layout(const sizei video)
-	{
-		_subtitles.layout(video);
-	}
+	void subtitles_layout(const sizei video) { _subtitles.layout(video); }
 
 	// What the video offers and which of it the session shows; null until it opens, or for no video.
-	std::shared_ptr<const subtitle_state> subtitle_info() const
-	{
-		return _subtitle_state.load();
-	}
+	std::shared_ptr<const subtitle_state> subtitle_info() const { return _subtitle_state.load(); }
 
 	// Caller must hold _decoder_rw exclusively; only open() does.
 	void open_subtitles(const subtitle_request& request)
@@ -469,9 +425,8 @@ public:
 
 		offers.insert(offers.end(), request.sidecars.begin(), request.sidecars.end());
 
-		const auto choice = request.chosen
-			                    ? *request.chosen
-			                    : choose_subtitles(offers, request.mode, request.language, audio_language);
+		const auto choice = request.chosen ? *request.chosen
+		                                   : choose_subtitles(offers, request.mode, request.language, audio_language);
 
 		if (choice.stream >= 0 && _decoder.open_subtitle_stream(choice.stream))
 		{
@@ -515,9 +470,8 @@ public:
 
 		// A handle handed over by the write that just replaced this file. Opening the path again is
 		// the read-after-write the hand-over exists to avoid.
-		const auto result = file
-			                    ? _decoder.open(file, path, media_intent::playback)
-			                    : _decoder.open(path, media_intent::playback);
+		const auto result = file ? _decoder.open(file, path, media_intent::playback)
+		                         : _decoder.open(path, media_intent::playback);
 
 		if (result)
 		{
@@ -595,11 +549,8 @@ public:
 		// A session that never opened has nothing on screen to invalidate.
 		if (previous != av_play_state::detached)
 		{
-			_host.invalidate_view(view_invalid::view_layout |
-				view_invalid::screen_saver |
-				view_invalid::app_layout |
-				view_invalid::media_elements |
-				view_invalid::command_state);
+			_host.invalidate_view(view_invalid::view_layout | view_invalid::screen_saver | view_invalid::app_layout |
+			                      view_invalid::media_elements | view_invalid::command_state);
 		}
 
 		core::exclusive_lock lock(_decoder_rw);
@@ -673,15 +624,14 @@ public:
 		return work_left;
 	}
 
-	void process_audio(audio_buffer& playback_buffer, audio_buffer& vis_buffer,
-	                   const core::thread_event& read_event)
+	void process_audio(audio_buffer& playback_buffer, audio_buffer& vis_buffer, const core::thread_event& read_event)
 	{
 		auto loop_iteration = 0;
 
 		if (_has_audio)
 		{
-			while (_audio_frames.should_receive() || playback_buffer.should_fill() || _seek_gen != playback_buffer.
-				generation())
+			while (_audio_frames.should_receive() || playback_buffer.should_fill() ||
+			       _seek_gen != playback_buffer.generation())
 			{
 				if (_audio_frames.should_receive())
 				{
@@ -878,10 +828,7 @@ public:
 		return pos(time_now) >= _end_time;
 	}
 
-	static double time_distance(const double l, const double r)
-	{
-		return l < r ? r - l : l - r;
-	}
+	static double time_distance(const double l, const double r) { return l < r ? r - l : l - r; }
 
 	// Nominal for a variable-rate stream, which is all half a frame of judgement needs.
 	double video_frame_interval() const
@@ -956,7 +903,10 @@ public:
 			taken |= popped;
 			return popped;
 		};
-		const core::scope_exit wake_decoder([this, &taken] { if (taken && _decode_wake) _decode_wake->set(); });
+		const core::scope_exit wake_decoder([this, &taken]
+		{
+			if (taken && _decode_wake) _decode_wake->set();
+		});
 
 		// Consume stale frames and current-generation end-of-stream markers before distance
 		// comparisons. A frame decoded after a seek's queue clear may still arrive with the old
@@ -1003,7 +953,7 @@ public:
 				const auto front_time = _video_frames.front_time();
 
 				if (has_best && time_distance(best_ft, time) <= time_distance(front_time, time) &&
-					!core::equiv(best_ft, front_time))
+				    !core::equiv(best_ft, front_time))
 				{
 					reached = true; // the next frame is past the target; this one is nearest
 					break;
@@ -1068,7 +1018,7 @@ public:
 			for (auto front = _video_frames.front(); front; front = _video_frames.front())
 			{
 				if (classify_video_queue_front(av_seek_gen_from_frame(front), _seek_gen, av_frame_is_eof(front)) ==
-					video_queue_front_action::present)
+				    video_queue_front_action::present)
 				{
 					const auto front_time = av_time_from_frame(front);
 					const auto nearer = time_distance(nearest_ft, time) > time_distance(front_time, time);
@@ -1145,10 +1095,7 @@ public:
 
 	// For a presentation that draws from the session's clock itself rather than through the visualizer or a
 	// texture - the SID monitor - so the position shown, and saved on close, follows what is heard.
-	void mark_presented(const double time_now) const
-	{
-		_last_frame_time = pos(time_now);
-	}
+	void mark_presented(const double time_now) const { _last_frame_time = pos(time_now); }
 
 	render_valid update_texture(const render::texture_ptr& texture) const
 	{
@@ -1159,7 +1106,8 @@ public:
 		if (vf && texture)
 		{
 			const auto time = av_time_from_frame(vf);
-			const auto needs_render = should_upload_video_frame(_last_texture, texture.get(), texture->is_valid(), time);
+			const auto needs_render = should_upload_video_frame(_last_texture, texture.get(), texture->is_valid(),
+			                                                    time);
 
 			if (needs_render)
 			{
@@ -1209,8 +1157,8 @@ class av_player final : public std::enable_shared_from_this<av_player>
 
 public:
 	av_player(av_host& host, std::function<void(core::file_path, double)> save_media_position = {}) :
-		_audio_event(false, false),
-		_read_event(false, false), _host(host), _save_media_position(std::move(save_media_position))
+		_audio_event(false, false), _read_event(false, false), _host(host),
+		_save_media_position(std::move(save_media_position))
 	{
 	}
 
@@ -1240,35 +1188,36 @@ public:
 	}
 
 	void open(const df::item_element_ptr& item, const bool auto_play, const int video_track, const int audio_track,
-	          const bool can_use_hw,
-	          const bool use_last_played_pos,
-	          const std::function<void(std::shared_ptr<av_session>)>& cb,
-	          platform::file_ptr file = {}, subtitle_request subtitles = {})
+	          const bool can_use_hw, const bool use_last_played_pos,
+	          const std::function<void(std::shared_ptr<av_session>)>& cb, platform::file_ptr file = {},
+	          subtitle_request subtitles = {})
 	{
 		const auto path = item->path();
 		const auto file_type = item->file_type();
 		const auto starting_position = item->media_position();
-		queue([path, file_type, starting_position, auto_play, video_track, audio_track, can_use_hw,
-				use_last_played_pos, cb, file = std::move(file), subtitles = std::move(subtitles)](
-			const std::shared_ptr<av_player>& p)
-			{
-				core::scope_locked_inc l(df::loading_media);
-				auto ses = p->open_impl(path, file_type, starting_position, auto_play, video_track, audio_track,
-				                        can_use_hw, use_last_played_pos, false, file, subtitles);
-				if (cb) p->_host.queue_ui([cb, ses] { cb(ses); });
-			});
+		queue([path, file_type, starting_position, auto_play, video_track, audio_track, can_use_hw, use_last_played_pos,
+		       cb, file = std::move(file), subtitles = std::move(subtitles)](const std::shared_ptr<av_player>& p)
+		{
+			core::scope_locked_inc l(df::loading_media);
+			auto ses = p->open_impl(path, file_type, starting_position, auto_play, video_track, audio_track, can_use_hw,
+			                        use_last_played_pos, false, file, subtitles);
+			if (cb) p->_host.queue_ui([cb, ses] { cb(ses); });
+		});
 	}
 
 	// For a caller that has a path rather than an item, and whose playback stands for something
 	// other than the user viewing that file: Movie's clip player plays a clip of a timeline, so it
-	// must not write a resume position for the file that clip came from.
+	// must not write a resume position for the file that clip came from. file, when given, is read
+	// in place of the path - a native tune's render, as open takes one.
 	void open_detached(const core::file_path path, const file_type_ref file_type, const double start_position,
-	                   const bool auto_play, const std::function<void(std::shared_ptr<av_session>)>& cb)
+	                   const bool auto_play, const std::function<void(std::shared_ptr<av_session>)>& cb,
+	                   platform::file_ptr file = {})
 	{
-		queue([path, file_type, start_position, auto_play, cb](const std::shared_ptr<av_player>& p)
+		queue([path, file_type, start_position, auto_play, cb,
+		       file = std::move(file)](const std::shared_ptr<av_player>& p)
 		{
 			core::scope_locked_inc l(df::loading_media);
-			auto ses = p->open_impl(path, file_type, start_position, auto_play, -1, -1, false, false, false, {});
+			auto ses = p->open_impl(path, file_type, start_position, auto_play, -1, -1, false, false, false, file);
 
 			if (ses)
 			{
@@ -1338,15 +1287,29 @@ private:
 	}
 
 	std::shared_ptr<av_session> open_impl(const core::file_path path, const file_type_ref file_type,
-	                                      const double starting_position, const bool auto_play,
-	                                      const int video_track, const int audio_track, const bool can_use_hw,
-	                                      const bool use_last_played_pos, const bool video_only,
-	                                      const platform::file_ptr& file, const subtitle_request& subtitles = {})
+	                                      const double starting_position, const bool auto_play, const int video_track,
+	                                      const int audio_track, const bool can_use_hw, const bool use_last_played_pos,
+	                                      const bool video_only, const platform::file_ptr& file,
+	                                      const subtitle_request& subtitles = {})
 	{
-		const auto ses = std::make_shared<av_session>(_host, _save_media_position, _video_event);
-		const auto open_result = ses->open(path, file_type, starting_position, auto_play, video_track, audio_track,
-		                                   can_use_hw, use_last_played_pos, true, video_only, file, subtitles);
-		auto result = open_result ? ses : nullptr;
+		std::shared_ptr<av_session> result;
+
+		// A file that throws while it opens is a file that did not open: the caller is answered with no
+		// session, rather than the exception ending the read thread, which would terminate the process.
+		try
+		{
+			const auto ses = std::make_shared<av_session>(_host, _save_media_position, _video_event);
+
+			if (ses->open(path, file_type, starting_position, auto_play, video_track, audio_track, can_use_hw,
+			              use_last_played_pos, true, video_only, file, subtitles))
+			{
+				result = ses;
+			}
+		}
+		catch (const std::exception& e)
+		{
+			core::log(__FUNCTION__, e.what());
+		}
 
 		// Only a successful open takes over the decode threads. Publishing a null would silently
 		// stop whatever is still playing, which the caller never asked for.
@@ -1391,17 +1354,25 @@ private:
 		// nothing is looking at for as long as the new one takes to open.
 		if (const auto previous = _frame_sessions[slot].exchange(nullptr)) previous->close(false);
 
-		const auto ses = std::make_shared<av_session>(_host, _save_media_position, _video_event);
+		auto ses = std::make_shared<av_session>(_host, _save_media_position, _video_event);
 
 		// Paused, not playing: the caller decides when the picture moves, because it is composing a
-		// timeline and its playhead is not this file's.
-		if (!ses->open(path, file_type, start_position, false, -1, -1, false, false, true, true, {}))
+		// timeline and its playhead is not this file's. A throw is a failed open, as in open_impl.
+		try
 		{
+			if (!ses->open(path, file_type, start_position, false, -1, -1, false, false, true, true, {}))
+			{
+				return nullptr;
+			}
+
+			ses->remembers_position(false);
+			if (start_position > 0) ses->seek(start_position, true);
+		}
+		catch (const std::exception& e)
+		{
+			core::log(__FUNCTION__, e.what());
 			return nullptr;
 		}
-
-		ses->remembers_position(false);
-		if (start_position > 0) ses->seek(start_position, true);
 
 		_frame_sessions[slot].store(ses);
 
@@ -1443,7 +1414,7 @@ public:
 	bool has_open_sessions() const
 	{
 		return _thread_session.load() != nullptr ||
-			std::ranges::any_of(_frame_sessions, [](const auto& slot) { return slot.load() != nullptr; });
+		       std::ranges::any_of(_frame_sessions, [](const auto& slot) { return slot.load() != nullptr; });
 	}
 
 	// The poll a thread with an open session keeps as a backstop to its events.
@@ -1471,7 +1442,7 @@ public:
 
 			if (const auto session = _thread_session.load())
 			{
-				work_left |= session->process_video(_read_event, packets_per_turn);
+				work_left |= process_video_guarded(session, packets_per_turn);
 			}
 
 			// The frame sources decode on the same thread rather than on one of their own: they are
@@ -1479,12 +1450,50 @@ public:
 			// with playback for the same cores while claiming to be the cheaper path.
 			for (const auto& slot : _frame_sessions)
 			{
-				if (const auto frames = slot.load()) work_left |= frames->process_video(_read_event, packets_per_turn);
+				if (const auto frames = slot.load()) work_left |= process_video_guarded(frames, packets_per_turn);
 			}
 		}
 	}
 
+	// The audio thread. A fault closes the session it was playing and starts the loop again from a clean
+	// device and empty buffers; session survives the restart, so the closed session is not taken up again.
 	void decode_audio() const
+	{
+		const std::vector<std::reference_wrapper<core::thread_event>> exit_only = {platform::event_exit};
+		std::shared_ptr<av_session> session;
+
+		while (!platform::is_closing)
+		{
+			try
+			{
+				// Returns only once the application is closing.
+				play_audio(session);
+				return;
+			}
+			catch (const std::exception& e)
+			{
+				on_audio_fault(session, e.what());
+			}
+			catch (...)
+			{
+				on_audio_fault(session, "unknown exception");
+			}
+
+			// A fault that recurs before the loop waits on anything would otherwise spin.
+			platform::wait_for(exit_only, fault_backoff_ms, false);
+		}
+	}
+
+private:
+	static constexpr uint32_t fault_backoff_ms = 100;
+
+	static void on_audio_fault(const std::shared_ptr<av_session>& session, const std::string_view what) noexcept
+	{
+		if (session) close_faulted(session, what);
+		else log_fault(what);
+	}
+
+	void play_audio(std::shared_ptr<av_session>& session) const
 	{
 		std::string device_id;
 		platform::audio_output_ptr ds;
@@ -1507,12 +1516,10 @@ public:
 		auto pending_fade_in = false;
 		auto need_create_device = false;
 
-		std::shared_ptr<av_session> session;
-
 		while (!platform::is_closing)
 		{
-			const auto device_is_playing = ds && has_audio && session &&
-				session->_state == av_play_state::playing && !session->_scrubbing && !ds->is_stopped();
+			const auto device_is_playing = ds && has_audio && session && session->_state == av_play_state::playing &&
+			                               !session->_scrubbing && !ds->is_stopped();
 
 			if (device_is_playing)
 			{
@@ -1520,9 +1527,7 @@ public:
 			}
 			else
 			{
-				const auto idle_timeout = need_create_device
-					                          ? 1000u
-					                          : std::numeric_limits<uint32_t>::max();
+				const auto idle_timeout = need_create_device ? 1000u : std::numeric_limits<uint32_t>::max();
 				platform::wait_for(events, idle_timeout, false);
 			}
 
@@ -1667,9 +1672,8 @@ public:
 							// at each loop restart) and its clock stalls, running behind the
 							// wall clock for the rest of the clip. Wait for a cushion (or an
 							// already-running device, or the stream's end) before starting.
-							const auto primed = !ds->is_stopped()
-								|| playback_buffer.seconds() >= 0.3
-								|| session->_audio_eof_handled;
+							const auto primed = !ds->is_stopped() || playback_buffer.seconds() >= 0.3 ||
+							                    session->_audio_eof_handled;
 
 							if (primed)
 							{
@@ -1713,7 +1717,7 @@ public:
 					// (see update_for_present). Feeding it during video playback grew the queue for
 					// the whole session because nothing ever popped from it.
 					if (session->visualize_audio() &&
-						vis_buffer.used_bytes() >= session->_visualizer.min_sample_bytes())
+					    vis_buffer.used_bytes() >= session->_visualizer.min_sample_bytes())
 					{
 						// A seek re-generations the buffer; the visualizer's accumulated
 						// samples are then from the old position, so drop them. Compare and
@@ -1760,6 +1764,7 @@ public:
 		}
 	}
 
+public:
 	void reading()
 	{
 		const std::vector<std::reference_wrapper<core::thread_event>> events = {platform::event_exit, _read_event};
@@ -1770,19 +1775,11 @@ public:
 
 			if (!run_queued_commands()) return;
 
-			if (const auto session = _thread_session.load())
-			{
-				session->process_pending_forced_seek();
-				session->process_io(*_video_event, _audio_event);
-			}
+			if (const auto session = _thread_session.load()) process_io_guarded(session);
 
 			for (const auto& slot : _frame_sessions)
 			{
-				if (const auto frames = slot.load())
-				{
-					frames->process_pending_forced_seek();
-					frames->process_io(*_video_event, _audio_event);
-				}
+				if (const auto frames = slot.load()) process_io_guarded(frames);
 			}
 		}
 	}
@@ -1826,11 +1823,23 @@ public:
 			return;
 		}
 
-		queue([ses, cb](const std::shared_ptr<av_player>& p)
+		queue([ses, cb, function = __FUNCTION__](const std::shared_ptr<av_player>& p)
 		{
+			file_load_result lr;
+
+			// A frame that fails to render is answered as no frame, so the caller still hears back.
+			try
+			{
+				lr = ses->capture_first_frame();
+			}
+			catch (const std::exception& e)
+			{
+				core::log(function, e.what());
+			}
+
 			// Delivered on the UI thread so the callback never has to reach back into
 			// UI-owned state from the read thread.
-			p->_host.queue_ui([cb, lr = ses->capture_first_frame()]() mutable { cb(std::move(lr)); });
+			p->_host.queue_ui([cb, lr = std::move(lr)]() mutable { cb(std::move(lr)); });
 		});
 	}
 
@@ -1844,13 +1853,90 @@ public:
 		while (dequeue(f))
 		{
 			if (platform::is_closing) return false;
-			f(player);
+
+			// A command that throws is dropped and the rest still run: nothing above the read thread
+			// could catch it, and an exception leaving a thread terminates the process.
+			try
+			{
+				f(player);
+			}
+			catch (const std::exception& e)
+			{
+				log_fault(e.what());
+			}
+			catch (...)
+			{
+				log_fault("unknown exception");
+			}
 		}
 
 		return true;
 	}
 
 private:
+	static void log_fault(const std::string_view what) noexcept
+	{
+		try
+		{
+			core::log("av_player", what);
+		}
+		catch (...)
+		{
+			// Logging is what failed, so there is nowhere left to report it.
+		}
+	}
+
+	// A media thread has nothing above it to recover, so a session whose work throws is closed instead:
+	// every thread skips a closed session, and the view sees it close as it does any other.
+	static void close_faulted(const std::shared_ptr<av_session>& session, const std::string_view what) noexcept
+	{
+		log_fault(what);
+
+		try
+		{
+			session->close(false);
+		}
+		catch (...)
+		{
+			// close marks the session closed before anything in it can throw, so it is skipped anyway.
+		}
+	}
+
+	bool process_video_guarded(const std::shared_ptr<av_session>& session, const int max_packets) const
+	{
+		try
+		{
+			return session->process_video(_read_event, max_packets);
+		}
+		catch (const std::exception& e)
+		{
+			close_faulted(session, e.what());
+		}
+		catch (...)
+		{
+			close_faulted(session, "unknown exception");
+		}
+
+		return false;
+	}
+
+	void process_io_guarded(const std::shared_ptr<av_session>& session)
+	{
+		try
+		{
+			session->process_pending_forced_seek();
+			session->process_io(*_video_event, _audio_event);
+		}
+		catch (const std::exception& e)
+		{
+			close_faulted(session, e.what());
+		}
+		catch (...)
+		{
+			close_faulted(session, "unknown exception");
+		}
+	}
+
 	bool dequeue(std::function<void(std::shared_ptr<av_player>)>& f)
 	{
 		core::exclusive_lock lock(_queue_mutex);

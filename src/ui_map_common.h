@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Common map tile types, coordinate math, and rendering engine shared
 // by map_view (full view) and map_control (dialog widget). Handles tile
@@ -40,17 +39,13 @@ struct map_tile_id
 		return y < other.y;
 	}
 
-	bool operator==(const map_tile_id& other) const
-	{
-		return x == other.x && y == other.y && z == other.z;
-	}
+	bool operator==(const map_tile_id& other) const { return x == other.x && y == other.y && z == other.z; }
 };
 
 // Hash specialization for map_tile_id to enable use with std::unordered_set
 namespace std
 {
-	template <>
-	struct hash<map_tile_id>
+	template <> struct hash<map_tile_id>
 	{
 		std::size_t operator()(const map_tile_id& id) const noexcept
 		{
@@ -86,15 +81,12 @@ static double lat_to_tile_y(const double lat, const int zoom)
 
 inline pointi map_marker_world_cell(const gps_coordinate coordinate, const int zoom, const int cell_size = 44)
 {
-	return {
-		static_cast<int>(std::floor(lon_to_tile_x(coordinate.longitude(), zoom) * TILE_SIZE / cell_size)),
-		static_cast<int>(std::floor(lat_to_tile_y(coordinate.latitude(), zoom) * TILE_SIZE / cell_size))
-	};
+	return {static_cast<int>(std::floor(lon_to_tile_x(coordinate.longitude(), zoom) * TILE_SIZE / cell_size)),
+	        static_cast<int>(std::floor(lat_to_tile_y(coordinate.latitude(), zoom) * TILE_SIZE / cell_size))};
 }
 
 inline std::vector<map_tile> get_tiles_for_view(const recti& bounds, const pointi scroll_offset,
-                                                const gps_coordinate& center,
-                                                const int zoom)
+                                                const gps_coordinate& center, const int zoom)
 {
 	std::vector<map_tile> tiles_to_draw;
 
@@ -108,9 +100,9 @@ inline std::vector<map_tile> get_tiles_for_view(const recti& bounds, const point
 	const double offset_y = center_tile_y_f - center_tile_y;
 
 	const int center_tile_screen_x = bounds.left + bounds.width() / 2 - static_cast<int>(offset_x * TILE_SIZE) +
-		scroll_offset.x;
+	                                 scroll_offset.x;
 	const int center_tile_screen_y = bounds.top + bounds.height() / 2 - static_cast<int>(offset_y * TILE_SIZE) +
-		scroll_offset.y;
+	                                 scroll_offset.y;
 
 	int start_tile_x = center_tile_x;
 	int start_screen_x = center_tile_screen_x;
@@ -200,9 +192,8 @@ struct map_box
 
 	gps_coordinate centre() const
 	{
-		return valid
-			       ? gps_coordinate((min_latitude + max_latitude) / 2.0, (min_longitude + max_longitude) / 2.0)
-			       : gps_coordinate{};
+		return valid ? gps_coordinate((min_latitude + max_latitude) / 2.0, (min_longitude + max_longitude) / 2.0)
+		             : gps_coordinate{};
 	}
 };
 
@@ -308,8 +299,8 @@ private:
 	bool _show_crosshair = true;
 
 public:
-	map_engine(async_strategy& async, std::function<void()> invalidate)
-		: _async(async), _invalidate(std::move(invalidate))
+	map_engine(async_strategy& async, std::function<void()> invalidate) :
+		_async(async), _invalidate(std::move(invalidate))
 	{
 	}
 
@@ -352,12 +343,10 @@ public:
 		const double new_center_tile_x = center_tile_x_f + tile_offset_x;
 		const double new_center_tile_y = center_tile_y_f + tile_offset_y;
 
-		const double new_longitude = std::clamp(
-			new_center_tile_x / pow(2.0, _zoom) * 360.0 - 180.0, -180.0, 180.0);
+		const double new_longitude = std::clamp(new_center_tile_x / pow(2.0, _zoom) * 360.0 - 180.0, -180.0, 180.0);
 
 		const double n = M_PI - 2.0 * M_PI * new_center_tile_y / pow(2.0, _zoom);
-		const double new_latitude = std::clamp(
-			180.0 / M_PI * atan(0.5 * (exp(n) - exp(-n))), -85.0, 85.0);
+		const double new_latitude = std::clamp(180.0 / M_PI * atan(0.5 * (exp(n) - exp(-n))), -85.0, 85.0);
 
 		return gps_coordinate(new_latitude, new_longitude);
 	}
@@ -459,10 +448,7 @@ public:
 		return true;
 	}
 
-	void pan_start()
-	{
-		_temp_drag_offset = {0, 0};
-	}
+	void pan_start() { _temp_drag_offset = {0, 0}; }
 
 	gps_coordinate pan(const pointi start_loc, const pointi current_loc, const recti& bounds)
 	{
@@ -473,7 +459,7 @@ public:
 		return calc_center_gps();
 	}
 
-	gps_coordinate pan_end(const pointi start_loc, const pointi final_loc, const recti& bounds)
+	gps_coordinate pan_end(const pointi /*start_loc*/, const pointi /*final_loc*/, const recti& bounds)
 	{
 		_scroll_offset = _scroll_offset + _temp_drag_offset;
 		_temp_drag_offset = {0, 0};
@@ -497,10 +483,7 @@ public:
 	// The tile textures belong to the lost device. Keeping the decoded tiles means the map redraws
 	// from what is already in memory; keeping the textures would draw nothing at all, because the
 	// cache hit returns before the placeholder the miss path draws.
-	void free_graphics_resources() const
-	{
-		_texture_cache.clear();
-	}
+	void free_graphics_resources() const { _texture_cache.clear(); }
 
 	// Provide the item-location markers to aggregate on the map. `markers` is indexed
 	// by the caller; hit_test_marker returns the representative coordinate's index so
@@ -537,10 +520,8 @@ public:
 
 		for (const auto& [key, cell] : cells)
 		{
-			result.cells.push_back({
-				gps_coordinate(cell.latitude / cell.count, cell.longitude / cell.count),
-				cell.count, cell.rep
-			});
+			result.cells.push_back(
+				{gps_coordinate(cell.latitude / cell.count, cell.longitude / cell.count), cell.count, cell.rep});
 		}
 
 		result.has_markers = !result.cells.empty();
@@ -550,8 +531,7 @@ public:
 		{
 			const auto& cell = result.cells[i];
 			result.coords.emplace_back(static_cast<float>(cell.coordinate.longitude()),
-			                           static_cast<float>(cell.coordinate.latitude()),
-			                           i, 0, 0, 0.0f);
+			                           static_cast<float>(cell.coordinate.latitude()), i, 0, 0, 0.0f);
 		}
 
 		if (result.has_markers)
@@ -562,15 +542,9 @@ public:
 		return result;
 	}
 
-	static size_t prepared_marker_count(const marker_snapshot& markers)
-	{
-		return markers.cells.size();
-	}
+	static size_t prepared_marker_count(const marker_snapshot& markers) { return markers.cells.size(); }
 
-	size_t last_cluster_work() const
-	{
-		return _last_cluster_work;
-	}
+	size_t last_cluster_work() const { return _last_cluster_work; }
 
 	void set_marker_snapshot(marker_snapshot markers)
 	{
@@ -626,8 +600,8 @@ public:
 
 		for (const auto& cluster : _clusters)
 		{
-			if (cluster.screen_pos.x >= 0 && cluster.screen_pos.y >= 0 &&
-				cluster.screen_pos.x < extent.cx && cluster.screen_pos.y < extent.cy)
+			if (cluster.screen_pos.x >= 0 && cluster.screen_pos.y >= 0 && cluster.screen_pos.x < extent.cx &&
+			    cluster.screen_pos.y < extent.cy)
 			{
 				result.emplace_back(gps_from_screen(cluster.screen_pos, extent));
 			}
@@ -637,14 +611,11 @@ public:
 	}
 
 	// The GPS coordinate at a screen point, so callers can recentre on a hit-tested cluster.
-	gps_coordinate gps_at_screen(const pointi p, const sizei& extent) const
-	{
-		return gps_from_screen(p, extent);
-	}
+	gps_coordinate gps_at_screen(const pointi p, const sizei& extent) const { return gps_from_screen(p, extent); }
 
 	// Returns the representative marker index of the cluster under `loc`, or -1 if
 	// none. Fills the on-screen anchor and aggregated photo count.
-	int hit_test_marker(const pointi loc, const sizei& extent, pointi& anchor_out, int& count_out) const
+	int hit_test_marker(const pointi loc, const sizei& /*extent*/, pointi& anchor_out, int& count_out) const
 	{
 		// Reverse order: render_markers draws them forwards, so the last one is on top and is the
 		// one the user sees where two bubbles overlap.
@@ -666,10 +637,7 @@ public:
 		return -1;
 	}
 
-	void fetch_tiles_for_bounds(const recti& bounds)
-	{
-		fetch_tiles(bounds, _scroll_offset);
-	}
+	void fetch_tiles_for_bounds(const recti& bounds) { fetch_tiles(bounds, _scroll_offset); }
 
 private:
 	// World-pixel size of the cell markers are aggregated into, and so the ground one bubble
@@ -688,13 +656,11 @@ private:
 	{
 		const auto total_offset = _scroll_offset + _temp_drag_offset;
 		const double dx = (lon_to_tile_x(g.longitude(), _zoom) - lon_to_tile_x(_location.longitude(), _zoom)) *
-			TILE_SIZE;
-		const double dy = (lat_to_tile_y(g.latitude(), _zoom) - lat_to_tile_y(_location.latitude(), _zoom)) *
-			TILE_SIZE;
+		                  TILE_SIZE;
+		const double dy = (lat_to_tile_y(g.latitude(), _zoom) - lat_to_tile_y(_location.latitude(), _zoom)) * TILE_SIZE;
 
-		return pointi(
-			static_cast<int>(std::lround(extent.cx / 2.0 + dx + total_offset.x)),
-			static_cast<int>(std::lround(extent.cy / 2.0 + dy + total_offset.y)));
+		return pointi(static_cast<int>(std::lround(extent.cx / 2.0 + dx + total_offset.x)),
+		              static_cast<int>(std::lround(extent.cy / 2.0 + dy + total_offset.y)));
 	}
 
 	// Inverse of screen_from_gps: the GPS coordinate at a screen point.
@@ -702,9 +668,9 @@ private:
 	{
 		const auto total_offset = _scroll_offset + _temp_drag_offset;
 		const double tile_x = lon_to_tile_x(_location.longitude(), _zoom) +
-			(p.x - extent.cx / 2.0 - total_offset.x) / TILE_SIZE;
+		                      (p.x - extent.cx / 2.0 - total_offset.x) / TILE_SIZE;
 		const double tile_y = lat_to_tile_y(_location.latitude(), _zoom) +
-			(p.y - extent.cy / 2.0 - total_offset.y) / TILE_SIZE;
+		                      (p.y - extent.cy / 2.0 - total_offset.y) / TILE_SIZE;
 
 		const double lon = tile_x / pow(2.0, _zoom) * 360.0 - 180.0;
 		const double n = M_PI - 2.0 * M_PI * tile_y / pow(2.0, _zoom);
@@ -754,8 +720,8 @@ private:
 		{
 			const auto& marker_cell = _markers.cells[found_cell.offset];
 			const auto screen_pos = screen_from_gps(marker_cell.coordinate, extent);
-			if (screen_pos.x < -cell || screen_pos.y < -cell ||
-				screen_pos.x > extent.cx + cell || screen_pos.y > extent.cy + cell)
+			if (screen_pos.x < -cell || screen_pos.y < -cell || screen_pos.x > extent.cx + cell ||
+			    screen_pos.y > extent.cy + cell)
 			{
 				continue;
 			}
@@ -783,7 +749,7 @@ private:
 		dc.draw_rounded_rect(glow, core::color(1.0f, 1.0f, 1.0f, 0.8f), r);
 	}
 
-	void render_markers(render::draw_context& dc, const sizei& extent) const
+	void render_markers(render::draw_context& dc, const sizei& /*extent*/) const
 	{
 		for (const auto& c : _clusters)
 		{
@@ -853,8 +819,7 @@ private:
 
 	// Decodes and hands the result to the UI, then releases the request claim. Every path through
 	// the fetch below ends here exactly once, so a tile can always be asked for again.
-	static void publish_tile(async_strategy& async, const cache_entry_ptr& e,
-	                         const std::function<void()>& invalidate,
+	static void publish_tile(async_strategy& async, const cache_entry_ptr& e, const std::function<void()>& invalidate,
 	                         const std::shared_ptr<std::atomic_bool>& alive, const core::blob& data)
 	{
 		core::surface_ptr surface;
@@ -879,19 +844,17 @@ private:
 
 		if (publish)
 		{
-			async.queue_ui(
-				[invalidate, alive]
+			async.queue_ui([invalidate, alive]
+			{
+				if (alive->load())
 				{
-					if (alive->load())
-					{
-						invalidate();
-					}
-				});
+					invalidate();
+				}
+			});
 		}
 	}
 
-	static void download_tile(async_strategy& async, const cache_entry_ptr& e,
-	                          const std::function<void()>& invalidate,
+	static void download_tile(async_strategy& async, const cache_entry_ptr& e, const std::function<void()>& invalidate,
 	                          const std::shared_ptr<std::atomic_bool>& alive, const map_tile_id& coord,
 	                          const int64_t key)
 	{
@@ -914,9 +877,7 @@ private:
 			data->assign(response.body.begin(), response.body.end());
 
 			async.queue_tile_db([key, data](tile_cache_db& db)
-			{
-				db.store(key, core::cspan(data->data(), data->size()));
-			});
+			{ db.store(key, core::cspan(data->data(), data->size())); });
 		}
 		else
 		{
@@ -936,36 +897,30 @@ private:
 
 		_async.queue_tile_db(
 			[&async = _async, coord, key, e, invalidate = _invalidate, alive = _alive](tile_cache_db& db)
+		{
 			{
+				core::exclusive_lock lock(e->mutex);
+				if (!e->in_view || e->surface)
 				{
-					core::exclusive_lock lock(e->mutex);
-					if (!e->in_view || e->surface)
-					{
-						e->requested = false;
-						return;
-					}
-				}
-
-				// Decoding a PNG on this thread would stall every following lookup, and downloading on
-				// it would stall them for a network round trip, so both hand back to the map workers.
-				auto data = std::make_shared<core::blob>(db.load(key));
-
-				if (!data->empty())
-				{
-					async.queue_async(async_queue::map_tile,
-					                  [&async, e, invalidate, alive, data]
-					                  {
-						                  publish_tile(async, e, invalidate, alive, *data);
-					                  });
+					e->requested = false;
 					return;
 				}
+			}
 
-				async.queue_async(async_queue::map_tile,
-				                  [&async, coord, key, e, invalidate, alive]
-				                  {
-					                  download_tile(async, e, invalidate, alive, coord, key);
-				                  });
-			});
+			// Decoding a PNG on this thread would stall every following lookup, and downloading on
+			// it would stall them for a network round trip, so both hand back to the map workers.
+			auto data = std::make_shared<core::blob>(db.load(key));
+
+			if (!data->empty())
+			{
+				async.queue_async(async_queue::map_tile, [&async, e, invalidate, alive, data]
+				{ publish_tile(async, e, invalidate, alive, *data); });
+				return;
+			}
+
+			async.queue_async(async_queue::map_tile, [&async, coord, key, e, invalidate, alive]
+			{ download_tile(async, e, invalidate, alive, coord, key); });
+		});
 	}
 
 	void fetch_tiles(const recti& bounds, const pointi scroll_offset)

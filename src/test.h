@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Assertion helpers and the failure type every test file asserts through.
 // Holds no test itself; the taxonomy is documented in docs/testing.md.
@@ -23,9 +22,7 @@ class test_assert_exception final : public std::exception
 public:
 	std::string message;
 
-	explicit test_assert_exception(std::string m) : message(std::move(m))
-	{
-	}
+	explicit test_assert_exception(std::string m) : message(std::move(m)) {}
 };
 
 struct test_registry
@@ -45,7 +42,7 @@ inline std::string test_assert_where(const std::source_location& loc)
 	return std::format("{}:{}", slash == std::string_view::npos ? path : path.substr(slash + 1), loc.line());
 }
 
-static void assert_equal(const std::string_view expected, const std::string_view actual,
+inline void assert_equal(const std::string_view expected, const std::string_view actual,
                          const std::string_view name = {}, const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
@@ -53,13 +50,12 @@ static void assert_equal(const std::string_view expected, const std::string_view
 
 	if (core::icmp(actual, expected) != 0)
 	{
-		throw test_assert_exception(
-			std::format("{} - {}: expected '{}', got '{}' at {}", message, name, expected, actual,
-			            test_assert_where(loc)));
+		throw test_assert_exception(std::format("{} - {}: expected '{}', got '{}' at {}", message, name, expected,
+		                                        actual, test_assert_where(loc)));
 	}
 }
 
-static void assert_not_equal(const std::string_view expected, const std::string_view actual,
+inline void assert_not_equal(const std::string_view expected, const std::string_view actual,
                              const std::string_view name = {}, const std::string_view message = {},
                              const std::source_location& loc = std::source_location::current())
 {
@@ -72,7 +68,7 @@ static void assert_not_equal(const std::string_view expected, const std::string_
 	}
 }
 
-static void assert_equal_strict(const std::string_view expected, const std::string_view actual,
+inline void assert_equal_strict(const std::string_view expected, const std::string_view actual,
                                 const std::string_view name = {}, const std::string_view message = {},
                                 const std::source_location& loc = std::source_location::current())
 {
@@ -80,41 +76,40 @@ static void assert_equal_strict(const std::string_view expected, const std::stri
 
 	if (actual != expected)
 	{
-		throw test_assert_exception(
-			std::format("{} - {}: expected '{}', got '{}' at {}", message, name, expected, actual,
-			            test_assert_where(loc)));
+		throw test_assert_exception(std::format("{} - {}: expected '{}', got '{}' at {}", message, name, expected,
+		                                        actual, test_assert_where(loc)));
 	}
 }
 
-static void assert_equal(const std::wstring_view expected, const std::wstring_view actual,
+inline void assert_equal(const std::wstring_view expected, const std::wstring_view actual,
                          const std::string_view name = {}, const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
 	assert_equal(core::utf16_to_utf8(expected), core::utf16_to_utf8(actual), name, message, loc);
 }
 
-static void assert_equal(const int expected, const int actual, const std::string_view name = {},
+inline void assert_equal(const int expected, const int actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
 	assert_equal(core::to_string(expected), core::to_string(actual), name, message, loc);
 }
 
-static void assert_equal(const uint32_t expected, const uint32_t actual, const std::string_view name = {},
+inline void assert_equal(const uint32_t expected, const uint32_t actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
 	assert_equal(core::to_string(expected), core::to_string(actual), name, message, loc);
 }
 
-static void assert_equal(const uint64_t expected, const uint64_t actual, const std::string_view name = {},
+inline void assert_equal(const uint64_t expected, const uint64_t actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
 	assert_equal(core::to_string(expected), core::to_string(actual), name, message, loc);
 }
 
-static void assert_equal(const core::const_image_ptr& expected, const core::const_image_ptr& actual,
+inline void assert_equal(const core::const_image_ptr& expected, const core::const_image_ptr& actual,
                          const std::string_view name = {}, const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
@@ -126,7 +121,7 @@ static void assert_equal(const core::const_image_ptr& expected, const core::cons
 	assert_equal(true, diff == core::pixel_difference_result::equal, name, message, loc);
 }
 
-static void assert_equal(const bool expected, const bool actual, const std::string_view name = {},
+inline void assert_equal(const bool expected, const bool actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
@@ -136,29 +131,28 @@ static void assert_equal(const bool expected, const bool actual, const std::stri
 // Note: assert_true/assert_false are reserved: util.h already defines assert_true as a runtime
 // invariant macro. Use assert_equal(true, ...) in tests.
 
-static void assert_equal(const double expected, const double actual, const std::string_view name = {},
+inline void assert_equal(const double expected, const double actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
 	assert_equal(core::to_string(expected, 5), core::to_string(actual, 5), name, message, loc);
 }
 
-static void assert_near(const double expected, const double actual, const double tolerance,
+inline void assert_near(const double expected, const double actual, const double tolerance,
                         const std::string_view name = {}, const std::string_view message = {},
                         const std::source_location& loc = std::source_location::current())
 {
 	++test_assert_count;
 
 	if (!std::isfinite(expected) || !std::isfinite(actual) || !std::isfinite(tolerance) || tolerance < 0.0 ||
-		std::abs(expected - actual) > tolerance)
+	    std::abs(expected - actual) > tolerance)
 	{
-		throw test_assert_exception(
-			std::format("{} - {}: expected '{}' within '{}', got '{}' at {}", message, name, expected, tolerance,
-			            actual, test_assert_where(loc)));
+		throw test_assert_exception(std::format("{} - {}: expected '{}' within '{}', got '{}' at {}", message, name,
+		                                        expected, tolerance, actual, test_assert_where(loc)));
 	}
 }
 
-static void assert_equal(const core::date_t expected, const core::date_t actual, const std::string_view name = {},
+inline void assert_equal(const core::date_t expected, const core::date_t actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
@@ -166,14 +160,14 @@ static void assert_equal(const core::date_t expected, const core::date_t actual,
 
 	if (expected.to_int64() != actual.to_int64())
 	{
-		throw test_assert_exception(
-			std::format("{} - {}: expected '{}' ({}), got '{}' ({}) at {}", message, name,
-			            platform::format_date_time(expected), expected.to_int64(),
-			            platform::format_date_time(actual), actual.to_int64(), test_assert_where(loc)));
+		throw test_assert_exception(std::format("{} - {}: expected '{}' ({}), got '{}' ({}) at {}", message, name,
+		                                        platform::format_date_time(expected), expected.to_int64(),
+		                                        platform::format_date_time(actual), actual.to_int64(),
+		                                        test_assert_where(loc)));
 	}
 }
 
-static void assert_equal(const gps_coordinate expected, const gps_coordinate actual, const std::string_view name = {},
+inline void assert_equal(const gps_coordinate expected, const gps_coordinate actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {
@@ -183,7 +177,7 @@ static void assert_equal(const gps_coordinate expected, const gps_coordinate act
 	             gps_coordinate::decimal_to_dms_str(actual.longitude(), false), name, message, loc);
 }
 
-static void assert_equal(const core::xy8 expected, const core::xy8 actual, const std::string_view name = {},
+inline void assert_equal(const core::xy8 expected, const core::xy8 actual, const std::string_view name = {},
                          const std::string_view message = {},
                          const std::source_location& loc = std::source_location::current())
 {

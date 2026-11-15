@@ -1,11 +1,11 @@
 # Diffractor Codebase
 
-Diffractor is a C++20 Windows media organizer with a custom Direct2D/Direct3D UI, SQLite index, and local file/metadata processing.
+Diffractor is a C++20 photo, video and audio organizer for Windows, with a Linux build that runs but does not yet ship. Its interface is libdesktop's, drawn with Direct3D 11 or the software renderer; SQLite holds a rebuildable index; libfiles reads and writes media files and their metadata, and FFmpeg decodes audio and video.
 
 ## Primary design drivers
 
 1. **Fast, lightweight performance:** start and respond quickly, scale to large collections, bound resource use, and keep expensive work off the UI thread.
-2. **A clear user mental model:** make scope, contents, target, effect, and recovery predictable; avoid hidden state and context-dependent surprises.
+2. **A clear [user mental model](docs/design.md#user-mental-model):** make scope, contents, target, effect, and recovery predictable; avoid hidden state and context-dependent surprises.
 
 Both are product requirements. Make tradeoffs explicit and validate behavior and performance where affected.
 
@@ -23,18 +23,20 @@ open the listed source, and run the listed check. Do not read unrelated document
 | Places, distance, map, visits, tiles | [locations](docs/locations.md) | [model_locations.cpp](src/model_locations.cpp), [model_visits.cpp](src/model_visits.cpp), [ui_map_common.h](src/ui_map_common.h), [ui_globe.h](src/ui_globe.h), [model_tile_cache.cpp](src/model_tile_cache.cpp) | `/test:*location*`, `/test:*visit*`, `/test:*globe*` |
 | Reading or writing a media file, staging, sidecars, rollback | [file I/O](docs/file-io.md) | [files.cpp](src/files.cpp), [app_util.cpp](src/app_util.cpp) | `/test:*sidecar*`, `/test:*collision*` |
 | Which tag a property is read from or written to | [metadata](docs/metadata.md) | [files.cpp](src/files.cpp)'s `apply_properties`, [metadata.cpp](src/metadata.cpp), [model_property.cpp](src/model_property.cpp) | `/test:*metadata*`, `/test:*tag*` |
-| Drawing, backends, device loss, colour, the video pipeline | [rendering](docs/rendering.md) | libdesktop's [d3d11.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/win/d3d11.cpp), [software_context.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/software_context.cpp), libdesktop's [surface.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/core/surface.cpp), [av_format.cpp](src/av_format.cpp) | `/test:*surface*`, `/test:*colour*`, `/test:*video*`, `/test:*audio*` |
+| Image budgets, colour, the video pipeline and HDR, subtitles, device loss and graphics fallbacks | [rendering](docs/rendering.md); the draw backends are libdesktop's [render.md](https://github.com/ZacWalk/libdesktop/blob/main/docs/render.md) | [av_format.cpp](src/av_format.cpp), [platform_win_av.cpp](src/platform_win_av.cpp), [av_subtitle.cpp](src/av_subtitle.cpp), [model.cpp](src/model.cpp)'s `texture_state`; libdesktop's [d3d11.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/win/d3d11.cpp), [software_context.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/render/software_context.cpp) and [surface.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/core/surface.cpp) | `/test:*surface*`, `/test:*colour*`, `/test:*video*`, `/test:*audio*` |
 | The selection panel: form, content, order, density | [selection controls](docs/selection-controls.md) | [view_items.cpp](src/view_items.cpp), [ui_controls.h](src/ui_controls.h), libdesktop's [ui/elements.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui/elements.h) and [flex.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/ui/flex.cpp) | `/test:*selection*`, `/test:*layout*` |
 | Tile geometry, scrolling, list layout | [design](docs/design.md#application-structure) | [view_items.h](src/view_items.h), [view_list.h](src/view_list.h), libdesktop's [flex.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/ui/flex.cpp) | `/test:*layout*`, `/test:*scroll*` |
 | Command availability, targeting, keyboard | [design](docs/design.md#command-availability) | [app_commands.cpp](src/app_commands.cpp), [app_commands.h](src/app_commands.h) | `/test:*command*`, `/test:*selection*` |
 | A guided operation: Rename, Import, Sync, Convert, Metadata, Date | [design](docs/design.md#guided-operations) | [view_rename.cpp](src/view_rename.cpp), [view_import.cpp](src/view_import.cpp), [view_sync.cpp](src/view_sync.cpp), [view_batch.cpp](src/view_batch.cpp) | `/test:*rename*`, `/test:*import*`, `/test:*sync*` |
-| A crash report, dump, or symbolization | [crash investigation](docs/crash.md) | [app_toolbar.cpp](src/app_toolbar.cpp), [util_crash_files_db.h](src/util_crash_files_db.h) | see [crash](docs/crash.md) |
+| Movie mixer: the timeline, project files, rendering, the command line | [movie](docs/movie.md) | [model_movie.cpp](src/model_movie.cpp), [view_movie.cpp](src/view_movie.cpp), [view_movie_audio.cpp](src/view_movie_audio.cpp), [app_movie_batch.cpp](src/app_movie_batch.cpp) | `/test:*movie*` |
+| Face detection: the detector, the plane it reads, upright faces and their order | [faces](docs/faces.md) | [model_faces.cpp](src/model_faces.cpp), [model_faces_detect.cpp](src/model_faces_detect.cpp), [facedetection.cmake](cmake/vendored/facedetection.cmake) | `/test:*detect*face*` |
+| A crash report, dump, or symbolization | [crash investigation](docs/crash.md) | [app.cpp](src/app.cpp)'s `app_frame::crash`, libdesktop's [process.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/process.cpp), [util_crash_files_db.h](src/util_crash_files_db.h) | see [crash](docs/crash.md) |
 | Where a test belongs, or why the suite is arranged this way | [testing](docs/testing.md) | `src/test_*.cpp` | `.\dd.ps1 test` |
-| Translated text, catalogs, plural forms | [testing](docs/testing.md) | [app_text.cpp](src/app_text.cpp), `exe/languages` | `.\dd.ps1 test` |
-| Upgrading or patching a vendored dependency | [third-party](docs/third-party.md) | `third-party/`, `cmake/vendored` | `.\dd.ps1 test` |
-| Portability, platform-boundary debt, the Linux build | [Linux port](docs/linux.md) | libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h), [render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render.h), libdesktop's [Linux backend](https://github.com/ZacWalk/libdesktop/tree/main/src/platform/linux), [platform_linux_app.cpp](src/platform_linux_app.cpp) | `.github/workflows/linux.yml` |
+| Translated text, catalogs, plural forms | [testing](docs/testing.md) | [app_text.cpp](src/app_text.cpp), [app_validate_po.cpp](src/app_validate_po.cpp), `exe/languages` | `/test:*plural*`, `/validate-po`, `python tools/check_translations.py` |
+| Upgrading a fetched dependency or moving a pin | [third-party](docs/third-party.md) | [dd-dependencies.json](cmake/dd-dependencies.json), `cmake/vendored`, `cmake/Diffractor*.cmake` | `.\dd.ps1 test` |
+| Portability, the platform boundary, the Linux build | [Linux port](docs/linux.md) | libdesktop's [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h), [render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render.h), libdesktop's [Linux backend](https://github.com/ZacWalk/libdesktop/tree/main/src/platform/linux), [platform_linux_app.cpp](src/platform_linux_app.cpp) | `./dd build`, then `./dd test`, on Linux or in WSL, as `.github/workflows/linux.yml` runs them |
 
-`/test:` filters match the test **name**, case-insensitively, not the file. Every filter above is verified to match; a filter matching nothing is a failure, not a silent pass. Run them as `.\exe\diffractor64-d.exe /test:*zoom* | Out-Host`.
+`/test:` filters match the test **name**, case-insensitively, not the file. Every filter above is verified to match; a filter matching nothing is a failure, not a silent pass. Build the Debug binary with `python tools\dd.py build`, then run a filter as `.\exe\diffractor64-d.exe /test:*zoom* | Out-Host`; the pipe is what makes PowerShell wait for the exit code.
 
 ## Information ownership
 
@@ -42,21 +44,23 @@ GitHub issues and releases own work, status, discussion, follow-up, and release 
 
 | Document | Owns |
 |---|---|
-| [design](docs/design.md) | Durable user concepts and behavior; the scope/contents/target/effect ontology; view, mode, and presentation naming |
-| [implementation](docs/implementation.md) | Architecture, data flow, threading, ownership, invalidation, index/search internals |
+| [design](docs/design.md) | Durable user concepts and behavior: the user mental model, targeting and command availability, and view, mode, and presentation naming |
+| [implementation](docs/implementation.md) | Architecture and source organization, data flow, threading, ownership, invalidation, index/search internals |
 | [crash investigation](docs/crash.md) | Crash report contents, symbol store and debugger setup, dump symbolization, attributing a fault to a cause |
 | [testing](docs/testing.md) | The test taxonomy: which subject file owns which test, what the runner enforces, fixtures, and headless test boundaries |
 | [collections](docs/collections.md) | The collection: membership, what it earns, and its edge |
 | [locations](docs/locations.md) | Places, location search, distance, map-driven queries, visits |
 | [metadata](docs/metadata.md) | Property-to-tag mapping across XMP, EXIF, IPTC, and container tags |
 | [file I/O](docs/file-io.md) | Read and write paths: decode ladder, staging, patching, sidecars, backups, rollback, failure contract |
-| [rendering](docs/rendering.md) | Backends and parity, device/swap-chain, frame and resize lifecycle, batching, text, video pipeline |
+| [rendering](docs/rendering.md) | What Diffractor draws through libdesktop's renderer: image budgets, presentation, video decode and hardware decode, HDR, subtitles, its own software rasterisers, and graphics fallbacks |
 | [zoom](docs/zoom.md) | The zoom model, laws, rendering tiers, input, and navigator |
 | [selection controls](docs/selection-controls.md) | The selection panel: form classification, content, ordering, density, responsive behavior |
-| [movie](docs/movie.md) | Assembling photos and videos into one video: the timeline document, trims and transitions, the project file, and video encoding |
-| [third-party](docs/third-party.md) | Vendored dependencies, the outbound licence they constrain, upgrade procedure, integration patches |
+| [movie](docs/movie.md) | Assembling photos, videos, audio files and screens of text into one video: the timeline document, trims, captions and crossfades, the `.dfv` project file, video encoding and the command line |
+| [faces](docs/faces.md) | Face detection: what the detector finds in a picture, the input it reads, and the upright space and stable order it reports faces in |
+| [third-party](docs/third-party.md) | Fetched dependencies and their pins, the outbound licence they constrain, the upgrade procedure, and the integration constraints an upgrade must keep |
 | [Linux port](docs/linux.md) | Current Linux support, the platform boundary, unsupported surfaces, and build behavior |
 | [README](README.md) | Product overview, build prerequisites, command line, and the licence Diffractor is released under |
+
 Move information to its owner; link rather than duplicate volatile detail. `tools/lint_repo.ps1` fails when a document has no owner row, when a link does not resolve, or when a `src/` path a document names no longer exists.
 
 Each document carries a **Where this lives** section naming the source that implements it. Those anchors are routing, not API documentation: they name files and stable symbols, never signatures or enumerations, which remain owned by the source.
@@ -66,61 +70,34 @@ Each document carries a **Where this lives** section naming the source that impl
 Start from the concrete failing behavior, symbol, test, or file, then route to the owning prefix in `src/`. Do not scan unrelated modules to build general context. Every file states its own scope in a `// Purpose:` comment on its first lines; read that before reading the file.
 
 - `app*`: application coordination; `view*`/`ui*`: views, controls, layout, drawing.
-- `model*`: state, index, search, SQLite, properties; `files*`/`metadata*`: I/O, codecs, EXIF/IPTC/XMP/ICC.
+- `model*`: state, index, search, SQLite, properties, face detection; `files*`/`metadata*`: I/O, codecs, EXIF/IPTC/XMP/ICC; `media_edit.cpp`: a photo's edits applied to its pixels.
 - `av*`: audio/video; `render*`: software rasterisers for the sidebar's charts and globe and for panoramas. The draw backends and surfaces are libdesktop's render module.
-- `platform*`: the app's own Windows and Linux glue - its side of FFmpeg's hardware decoding, its resource script and its Linux hooks; `util*`: the app's own helpers; `test*`: tests. Diffractor's `df::` and `str::` remain its own types; libdesktop's `core::` vocabulary is in `libdesktop/core.h`, its OS services and application loop in `platform::`/`libdesktop/platform.h`, its drawing backends and counters in `render::`/`libdesktop/render.h`, and its frames, controls, menus and text views in `ui::`/`libdesktop/ui.h`, with headless fakes in `libdesktop/ui/test_support.h`; its syntax highlighters are in `libdesktop/ui/syntax.h` - see [cmake/DiffractorLibdesktop.cmake](cmake/DiffractorLibdesktop.cmake).
+- `platform*`: the app's own Windows and Linux glue - its side of FFmpeg's hardware decoding, its resource script and its Linux hooks; `crypto*`: hashes and checksums, including the perceptual image hash; `util*`: the app's own helpers; `test*`: tests.
 
-Editing a file under `src/` also loads the matching rules in `.github/instructions/`, which carry the threading, rendering, view, test, and platform detail for that area at the point it applies.
+Diffractor's `df::` and `str::` are its own types. Three sibling libraries supply the rest, each pinned in its own `cmake/` module:
+
+- **libdesktop** ([DiffractorLibdesktop.cmake](cmake/DiffractorLibdesktop.cmake)): the `core::` vocabulary in `libdesktop/core.h`; OS services and the application loop in `platform::`/`libdesktop/platform.h`; drawing backends and counters in `render::`/`libdesktop/render.h`; frames, controls, menus and text views in `ui::`/`libdesktop/ui.h`, with headless fakes in `libdesktop/ui/test_support.h` and syntax highlighters in `libdesktop/ui/syntax.h`.
+- **libfiles** ([DiffractorLibfiles.cmake](cmake/DiffractorLibfiles.cmake)): scanning, decoding and encoding stills, scanning audio and video containers, and reading and writing EXIF, IPTC and XMP. `files.cpp` and `metadata.cpp` are Diffractor's side of it.
+- **lib64** ([DiffractorLib64.cmake](cmake/DiffractorLib64.cmake)): the Commodore 64 emulator. It plays SID tunes, through `av_sid.cpp`, and runs a disk's, tape's, cartridge's or program file's program in the media pane, through `av_c64.cpp`.
+
+A sibling checkout at `..\libdesktop`, `..\libfiles` or `..\lib64` is built instead of the pin whenever it exists, so a local edit there reaches this build at once while CI builds the pin. A change to one of them is made in that repository, under its own AGENTS.md.
+
+Editing a file under `src/` also loads the matching rules in [.github/instructions](.github/instructions), which carry the threading, rendering, view, test, and platform detail for that area at the point it applies; editing a document loads the documentation rules.
 
 Four recurring workflows are `.github/prompts/` slash commands rather than procedures to reconstruct: `/change-behavior`, `/add-test`, `/triage-crash`, and `/upgrade-dependency`.
 
 ## Working rules
 
-- Build and validate with `.\dd.ps1 test`, which runs `tools/lint_repo.ps1`, the unit tests, and the translation checks. CMake is the only description of the build on both platforms; `tools/dd.py` drives it. App source belongs in `src/`; temporary output belongs in `tmp/`.
-- System, OS, Windows API, and other platform-specific implementation code MUST exist only in `platform*.*` files or in libdesktop. Other modules use platform abstractions.
+- Build and validate with `.\dd.ps1 test`: it runs `tools/lint_repo.ps1` and the release-tool checks, rebuilds `exe\diffractor64.exe` (Release) when a source file under `src/` is newer than it, then runs the unit tests and the translation checks. It does not look at the sibling libraries, so after editing one, build first with `python tools\dd.py build --config Release`.
+- Build with `tools/dd.py`: `python tools\dd.py build` for Debug (`exe\diffractor64-d.exe`), `--config Release` for Release. `.\dd.ps1 build` also bumps the build number in `src/app.cpp`, `installer/diff.nsi` and `exe/AppxManifest.xml`; use it only to cut a build. CMake is the only description of the build on both platforms. App source belongs in `src/`; temporary output belongs in `tmp/`.
+- Style: C and C++ follow the repository's `.clang-format` (tabs, Allman braces, 120 columns); `.\dd.ps1` has no format command, so run the `clang-format` Visual Studio installs in `VC\Tools\Llvm\x64\bin`. `.clang-format-ignore` lists the generated files it skips, and hand-aligned tables sit between `// clang-format off` and `// clang-format on`. Diffractor's own code builds without a warning at `/W4` and at GCC's `-Wall`, in Debug and Release - fix a warning rather than suppress it - while vendored targets build at `/W0` (`-w`). `.clang-tidy` holds the static-analysis checks; where a finding is wrong, a `// NOLINTNEXTLINE(check)` says why.
+- System, OS, Windows API, and other platform-specific implementation code MUST exist only in `platform*.*` files or in libdesktop; the one exception is the entry points, `wWinMain` and `main`, in `app.cpp`. Other modules use platform abstractions.
 - Keep `// Purpose:` comments accurate in modified `src/*.h` and `src/*.cpp` files.
 - Preserve [product design](docs/design.md), especially targeting, recovery, navigation restoration, and preview-before-run.
 
-## Mandatory pre-flight validation
+## Behavior changes
 
-Before generating or modifying C++ code, an AI agent MUST declare a change class and output exactly the fields that class requires. Placeholders are invalid. Do not output both schemas.
-
-**Change class `User-visible behavior`** — the change alters what a user can observe: scope, contents, target, effect, presentation, or recovery. Populate from the closed [design ontology](docs/design.md#user-mental-model).
-
-```json
-{
-	"Change class": "User-visible behavior",
-	"Scope": "Indexed collection | Folder | Recursive folder | External folder | Search | All scopes",
-	"Contents": "What visible or derived contents the change reads or changes",
-	"Target": "Focused item | Singular displayed item | Complete visibly selected set | Visible items",
-	"Effect": "The exact behavior, affected count or class, destinations/collisions when applicable, retained originals, and recovery"
-}
-```
-
-`All scopes` is earned, not default: use it only when the behavior is provably identical in every concrete scope, and say why in the `Contents` field. If the change belongs to one concrete scope, name that scope.
-
-**Change class `Internal`** — the change alters no observable behavior: rendering backends, threading and ownership, indexing internals, codecs, build configuration, tests, or refactors. Naming a user scope or target here is a gate violation.
-
-```json
-{
-	"Change class": "Internal",
-	"Component": "The owning src/ prefix and the specific files or subsystem",
-	"Invariant": "The correctness, ownership, or performance property the change must preserve or restore",
-	"Effect": "The exact implementation change and its blast radius",
-	"Observable behavior": "Unchanged, plus the check that proves it"
-}
-```
-
-If an `Internal` change turns out to shift observable behavior, stop and restate it as `User-visible behavior` before continuing.
-
-The most common misclassification is calling a rendering or performance change `Internal` when it alters what the user sees. If the pixels, the timing, or a command's availability differ, it is `User-visible behavior` regardless of which layer changed.
-
-Before editing, explicitly confirm both [implementation boundaries](docs/implementation.md):
-
-1. UI-thread execution remains disjoint from I/O, decoding, database access, and network use.
-2. Paint invalidation remains disjoint from Source work; no Paint-layer function contains or calls SQLite access or file scanning.
-
-This is a gate. If a `User-visible behavior` change cannot map unambiguously to the schema and enums, HALT and ask the user; never invent, alias, or infer a state, and never reclassify it as `Internal` to avoid the question.
+A change is a behavior change when anything a user can observe differs: what a view shows, a command's target, availability or effect, recovery, timing, or the pixels. A rendering or performance change is one whenever it does that, whichever layer it is made in. Before editing one, read the owning document from the routing table and keep [design](docs/design.md)'s rules for targets, preview-before-run, collisions and recovery; update the owning document in the same change. Where design.md does not decide a behavior, ask the owner rather than inventing a state, an alias or a target. `/change-behavior` walks through it.
 
 ## Iteration and loop protocol
 
@@ -131,29 +108,23 @@ This is a gate. If a `User-visible behavior` change cannot map unambiguously to 
 
 ## Strict code anti-patterns
 
-Rules marked **[lint]** are enforced by `tools/lint_repo.ps1` and fail `.\dd.ps1 test`. The rest need judgement and are review rules; a lint that guessed at them would produce false positives and be turned off.
+Rules marked **[lint]** are enforced by `tools/lint_repo.ps1` and fail `.\dd.ps1 test`; the rest are review rules.
 
 - **Threads: [lint]** no application `std::thread`; use `async_strategy` or an existing queue. Direct threads are limited to platform queue/thread implementation and focused concurrency tests.
+- **Thread ownership: [lint]** a worker's result is published whole - clone it, finish every field, then replace the pointer; never `const_pointer_cast` to write through a shared one.
 - **Locks:** no I/O, SQLite, decoding, callbacks, sorting, or large/unbounded allocations under an index lock.
 - **UI thread:** no filesystem, database, decoding, indexing, hashing, querying, thumbnail, map, or network work.
 - **Invalidation:** Paint functions never access SQLite or scan files, directly or indirectly; request Source work.
-- **Platform: [lint]** system headers and Windows handle types appear only in `platform*` files.
-- **Database: [lint]** `sqlite3_*` appears only in `model_db*` and `model_tile_cache*`.
-- **Dependencies:** fetched at the pins in `cmake/dd-dependencies.json` and never patched; change
-  behavior in owned wrappers or build configuration, and a version by moving its pin.
-- **Cache keys:** a key must carry every input the cached value depends on. Invalidation is only as good as the identity it is keyed on, and a key that omits an input silently serves one caller's value to another.
-- **Argument order: [lint]** one call must not both capture a variable by copy, for a lambda, and `std::move` that same variable into another argument. Function arguments are indeterminately sequenced and MSVC evaluates them right to left, so the move empties the variable before the capture copies it and the lambda is left holding an emptied value. Give the lambda its own statement, so the capture is sequenced before the move. The fault surfaces wherever the callback is finally invoked, not at the call that built it, which is why this is linted rather than left to review. Moving the captured copy inside the lambda's own body, and an init-capture such as `[f = std::move(f)]`, are the correct forms and are not reported.
-- **Absent handles: [lint]** a `ui::frame_ptr` member that can be unset is reached only through an accessor that never returns null, and callers do not test it. `view_host::frame()`, and the `frame()` accessor on any `ui::frame_host`, answer `ui::no_frame()` when there is no window; a raw `_frame->` on such a member outside that accessor is the defect. A dialog's frame is never unset - the dialog stands `ui::no_frame()` in when its window could not be made - so it is used directly; `ui_dialog.h` holds both kinds of member under the name `_frame`, and text alone cannot tell them apart, so it is reviewed rather than linted. Either way, a member guarded at some call sites and dereferenced at others is this bug already, whether or not it has crashed yet.
-- **One definition: [lint]** a class is defined in one source file. Two files that each define a class of the same name, outside an anonymous namespace, define one class to the linker, which keeps one vtable and one copy of each inline member for both, so objects of one run the other's code. Nothing reports it at compile or link time: the Items view's splitter controller, then named `splitter_controller` like the one beside a task's panel in `app.cpp`, ran that one's destructor and crashed on hover. A class used only in its own file goes in an anonymous namespace.
+- **Platform: [lint]** Windows headers and handle types appear only in `platform*` files and `test_platform_win.cpp`, apart from the entry points in `app.cpp`. The lint catches the common ones, not every one.
+- **Database: [lint]** `sqlite3_*` appears only in `model_db*`, `model_tile_cache*` and tests.
+- **Dependencies:** third-party archives are fetched at the pins in `cmake/dd-dependencies.json`, and libdesktop, libfiles and lib64 at the revisions in their `cmake/Diffractor*.cmake` modules; none is patched. Change behavior in owned wrappers or build configuration, and a version by moving its pin.
+- **Cache keys:** a key carries every input the cached value depends on; one that omits an input silently serves one caller's value to another.
+- **Argument order: [lint]** one call must not both capture a variable by copy, for a lambda, and `std::move` that same variable into another argument. Argument evaluation order is unspecified - MSVC goes right to left - so the lambda can capture an emptied value, and the fault surfaces only when the callback runs. Give the lambda its own statement. Moving inside the lambda's body, or an init-capture such as `[f = std::move(f)]`, is correct and not reported.
+- **Absent handles: [lint]** a `ui::frame_ptr` member that can be unset is reached only through its `frame()` accessor, which answers `ui::no_frame()` when there is no window - `view_host::frame()` and every `ui::frame_host` do - and callers do not test it; a raw `_frame->` on such a member is the defect. A dialog's own frame is never unset and is used directly; `ui_dialog.h` holds both kinds under the name `_frame`, so it is reviewed rather than linted. A member guarded at some call sites and dereferenced at others is already this bug.
+- **One definition: [lint]** a class is defined in one source file. Two same-named classes outside anonymous namespaces are one class to the linker, which keeps one vtable for both, so objects of one silently run the other's code. A class used only in its own file goes in an anonymous namespace.
 - **Existence is not visibility:** never bind a handle's lifetime to whether the thing is on screen. A hidden panel still populates, counts, ticks and invalidates, so attach it unconditionally and gate only the repaint.
 - **Animation:** alpha fades are disabled in CPU software rendering mode (`render::animations_enabled`, which the renderer sets); never bypass the gate or animate alpha outside `ui::animate_alpha`.
 - **Exceptions:** every `catch` propagates, logs, returns a bounded error, or implements a documented bounded fallback; no unexplained swallowing.
-
-## Detailed rules
-
-Path-scoped rules live in [.github/instructions](.github/instructions): threading, views,
-rendering, platform boundaries, tests, and documentation. [Implementation](docs/implementation.md)
-owns architecture and synchronized types; source owns exact APIs and enums.
 
 ## Post-flight checklist
 
@@ -162,6 +133,6 @@ Before completion, verify every applicable item:
 - [ ] `pwsh -File tools/lint_repo.ps1` passes.
 - [ ] Narrowest relevant tests pass; run `.\dd.ps1 test` for shared behavior or release completion.
 - [ ] Modified source retains accurate `// Purpose:` comments.
-- [ ] A modified document's **Where this lives** anchors still name files that exist and implement what the section describes.
+- [ ] A behavior change is described in its owning document, and a modified document's **Where this lives** anchors still name files that exist and implement what the section describes.
 - [ ] The diff is task-only and preserves user work.
 - [ ] The final response lists checks, outcomes, and unavailable/skipped checks accurately.

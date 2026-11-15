@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
 //
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: JPEG XL decoding and encoding through libfiles: decoding into a surface judged against the
 // decode budget first, and encoding a surface with its metadata for a save. libfiles scans these files
@@ -14,7 +13,8 @@
 #include "files.h"
 #include "libfiles/encode.h"
 
-file_scan_result scan_jxl_libfiles(read_stream& s, libfiles::scan_intent, const bool want_thumbnail, files* const decoder)
+file_scan_result scan_jxl_libfiles(read_stream& s, libfiles::scan_intent, const bool want_thumbnail,
+                                   files* const decoder)
 {
 	still_scan_extras extras;
 
@@ -36,9 +36,7 @@ namespace
 	public:
 		core::surface_ptr surface;
 
-		explicit jxl_surface_sink(load_diagnostic* const diagnostic) : _diagnostic(diagnostic)
-		{
-		}
+		explicit jxl_surface_sink(load_diagnostic* const diagnostic) : _diagnostic(diagnostic) {}
 
 		libfiles::pixel_buffer allocate(const libfiles::frame_info& frame) override
 		{
@@ -50,9 +48,8 @@ namespace
 
 			auto s = std::make_shared<core::surface>();
 			auto* const pixels = s->alloc(static_cast<int>(frame.width), static_cast<int>(frame.height),
-			                              frame.format == libfiles::pixel_format::bgra8
-				                              ? core::texture_format::ARGB
-				                              : core::texture_format::RGB,
+			                              frame.format == libfiles::pixel_format::bgra8 ? core::texture_format::ARGB
+			                                                                            : core::texture_format::RGB,
 			                              static_cast<core::orientation>(frame.orientation));
 			if (!pixels) return {};
 			surface = std::move(s);
@@ -81,10 +78,10 @@ core::surface_ptr load_jxl(read_stream& s, load_diagnostic* const diagnostic)
 	return {};
 }
 
-// Packed pixels only: a planar surface - a video frame - is converted to packed by its caller first.
-// The orientation, when given, is which way the pixels stand in place of the surface's own.
+// Packed pixels, a byte a channel or sixteen: a planar surface - a video frame - is converted to packed by
+// its caller first. The orientation, when given, is which way the pixels stand in place of the surface's own.
 core::image_ptr save_jxl(const core::const_surface_ptr& surface_in, const libfiles::metadata_blocks& metadata,
-                       const file_encode_params& params, const std::optional<core::orientation> orientation)
+                         const file_encode_params& params, const std::optional<core::orientation> orientation)
 {
 	if (!is_valid(surface_in)) return {};
 
@@ -99,25 +96,21 @@ core::image_ptr save_jxl(const core::const_surface_ptr& surface_in, const libfil
 
 	switch (surface_in->format())
 	{
-	case core::texture_format::RGB:
-		view.format = libfiles::pixel_format::bgrx8;
-		break;
-	case core::texture_format::ARGB:
-		view.format = libfiles::pixel_format::bgra8;
-		break;
-	default:
-		return {};
+	case core::texture_format::RGB: view.format = libfiles::pixel_format::bgrx8; break;
+	case core::texture_format::ARGB: view.format = libfiles::pixel_format::bgra8; break;
+	case core::texture_format::RGBX16: view.format = libfiles::pixel_format::rgbx16; break;
+	case core::texture_format::RGBA16: view.format = libfiles::pixel_format::rgba16; break;
+	default: return {};
 	}
 
 	libfiles::jxl_options options;
 	options.lossless = params.jxl_lossless;
 	options.quality = params.jxl_quality;
 
-	auto encoded = libfiles::encode_jxl(view, static_cast<uint16_t>(turn), metadata,
-	                                          options);
+	auto encoded = libfiles::encode_jxl(view, static_cast<uint16_t>(turn), metadata, options);
 	for (const auto& note : encoded.notes) core::log(__FUNCTION__, note);
 	if (encoded.data.empty()) return {};
 
-	return std::make_shared<core::image>(core::blob(std::move(encoded.data)), dimensions,
-	                                   core::image_format::JXL, turn);
+	return std::make_shared<core::image>(core::blob(std::move(encoded.data)), dimensions, core::image_format::JXL,
+	                                     turn);
 }

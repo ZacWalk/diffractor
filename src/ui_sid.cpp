@@ -1,52 +1,27 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: The SID monitor, the presentation of a playing SID tune, laid out as turbo8bit's SID page lays it
-// out and drawn in Diffractor's colours: each voice's waveform, note, envelope and ADSR, the chip's output, its
-// filter and volume, and the registers the tune writes - with the file's other tunes, and per-voice mute and
-// solo, as controls. What moves with the music is drawn through a vertex buffer the display updates for every
+// Purpose: A flex-based SID monitor in Diffractor's colours, drawn as panels of the media stack: the file's other
+// tunes, each voice's waveform, note, envelope and ADSR, the chip's output, its filter and volume, and the
+// registers the tune writes - with the tune selector and per-voice mute and solo as controls, which one drawn for a
+// movie leaves out. What moves with the music is drawn through a vertex buffer the display updates for every
 // present, as the audio visualizer is.
 
 #include "pch.h"
 #include "app_text.h"
 #include "model.h"
 #include "ui_sid.h"
+#include "ui_music.h"
 #include "ui_view.h"
 
 namespace
 {
-	// A translucent surface colour: black sinks a panel into what is behind it and white raises a control off
-	// it, as Diffractor's own panels do, so the monitor sits on whatever the view draws behind it.
-	struct shade
-	{
-		core::color32 rgb;
-		float alpha;
-	};
-
-	// Diffractor's own palette: its panels' shades, its view text, its selection blue for what is lit, and its
-	// success, important and warning colours for the gate and the envelope, the solo and the mute.
-	namespace palette
-	{
-		constexpr shade panel{0x000000, 0.22f};
-		constexpr shade sunken{0x000000, 0.3f};
-		constexpr shade raised{0xFFFFFF, 0.12f};
-		constexpr shade line{0xFFFFFF, 0.1f};
-
-		core::color32 text() { return ui::style::colors.view_text; }
-		core::color32 text_muted() { return core::lerp(ui::style::colors.view_text, ui::style::colors.view_background, 0.35f); }
-		core::color32 text_faint() { return core::lerp(ui::style::colors.view_text, ui::style::colors.view_background, 0.6f); }
-		core::color32 accent() { return ui::style::colors.view_selected_background; }
-		core::color32 accent_light() { return core::lerp(ui::style::colors.view_selected_background, ui::style::colors.view_text, 0.4f); }
-		core::color32 information() { return ui::style::colors.info_background; }
-		core::color32 green() { return ui::style::colors.success_background; }
-		core::color32 orange() { return ui::style::colors.important_background; }
-		core::color32 red() { return ui::style::colors.warning_background; }
-	}
+	using monitor_palette::shade;
+	namespace palette = monitor_palette;
 
 	// A silenced voice is drawn faded, as the tune goes on playing it.
 	constexpr float silenced_alpha = 0.45f;
@@ -62,10 +37,12 @@ namespace
 
 	// As the data sheet names the registers $D400-$D418.
 	constexpr std::string_view register_names[sid_register_count] = {
+		// clang-format off
 		"FQ1L", "FQ1H", "PW1L", "PW1H", "CTL1", "AD1", "SR1",
 		"FQ2L", "FQ2H", "PW2L", "PW2H", "CTL2", "AD2", "SR2",
 		"FQ3L", "FQ3H", "PW3L", "PW3H", "CTL3", "AD3", "SR3",
 		"FCLO", "FCHI", "RESF", "MVOL",
+		// clang-format on
 	};
 
 	constexpr int register_columns = 7;
@@ -79,7 +56,8 @@ namespace
 	constexpr size_t scope_window = 2048;
 	constexpr size_t scope_visible = 1024;
 
-	// A press that runs one action on release, so a press the user drags away from is abandoned.
+	// A press that runs one action on release, so a press the user drags away from is abandoned. A release with no
+	// press of its own - the one after a press that closed a menu - does nothing.
 	class sid_click_controller final : public view_controller
 	{
 	public:
@@ -90,13 +68,19 @@ namespace
 
 		platform::cursor cursor() const override { return platform::cursor::link; }
 
-		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+		void on_mouse_left_button_down(const pointi /*loc*/, const platform::key_state /*keys*/) override
 		{
-			if (_bounds.contains(loc)) _invoke();
+			_pressed = true;
+		}
+
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
+		{
+			if (std::exchange(_pressed, false) && _bounds.contains(loc)) _invoke();
 		}
 
 	private:
 		std::function<void()> _invoke;
+		bool _pressed = false;
 	};
 
 	// Text the monitor draws after its moving parts, so a label reads over the lamp behind it.
@@ -152,8 +136,8 @@ namespace
 
 	// The vertex buffer draws rectangles, not lines, so a trace is narrow columns, each joined to the one
 	// before it. ys holds one height per column.
-	void add_trace(std::vector<render::vertex_rect>& out, const recti r, const std::vector<int>& ys, const int thickness,
-	               const core::color colour)
+	void add_trace(std::vector<render::vertex_rect>& out, const recti r, const std::vector<int>& ys,
+	               const int thickness, const core::color colour)
 	{
 		if (ys.empty()) return;
 
@@ -278,67 +262,89 @@ namespace
 	}
 }
 
-sid_monitor_layout layout_sid_monitor(const recti bounds, const double scale, const int songs, const int line_height,
-                                      const int detail, const int button_text)
+sid_monitor_layout layout_sid_monitor(const recti bounds, const double scale, const int songs,
+                                      render::measure_context& source, const int detail, const int button_text,
+                                      const bool controls)
 {
-	const auto px = [scale](const double v) { return std::max(1, core::round(v * scale)); };
+	music_measure_context mc(source, scale);
+	const auto line_height = source.text_line_height(render::font_face::code);
+	const auto px = [scale](const double v)
+	{
+		return std::max(1, core::round(v * scale));
+	};
 	const auto lh = std::max(line_height, px(10));
-	const auto pad = px(12);
-	const auto gap = px(10);
+	// The stack's own inset within a panel, and its gap between them, which stays the column's whatever scale
+	// the monitor is drawn at.
+	const auto pad = px(ui::panel_element::content_padding);
+	const auto gap = core::round(ui::panel_element::spacing * source.scale_factor);
+	const auto flex_gap = static_cast<int>(std::round(ui::panel_element::spacing * source.scale_factor / scale));
 
 	sid_monitor_layout l;
 	l.compact = detail <= 0;
-	const auto width = std::min(bounds.width(), px(980));
-	l.panel = recti(bounds.left + (bounds.width() - width) / 2, bounds.top,
-	                bounds.left + (bounds.width() - width) / 2 + width, bounds.top);
+	l.controls = controls;
 
-	const auto x0 = l.panel.left + pad;
-	const auto x1 = l.panel.right - pad;
-	auto y = l.panel.top + pad;
+	// The monitor's panels fill the column's width, as every panel of the stack does.
+	const auto width = bounds.width();
+	l.panel = recti(bounds.left, bounds.top, bounds.right, bounds.top);
 
-	// The monitor's name, then the tune's title, then its author and release. Compact leaves them to the
-	// panel the monitor sits in, which names the file anyway.
-	if (!l.compact)
+	const auto x0 = l.panel.left;
+	const auto x1 = l.panel.right;
+	const auto y = l.panel.top;
+	auto root = std::make_shared<view_elements>();
+	root->flex_container.direction = flex_direction::column;
+	root->flex_container.wrap = flex_wrap::no_wrap;
+	root->flex_container.align_items = flex_align::stretch;
+	root->flex_container.padding = {0, 0};
+	root->flex_container.gap = {flex_gap, flex_gap};
+	const auto add_panel = [&](const sizei extent)
 	{
-		l.heading = recti(x0, y, x1, y + lh * 3 + px(8));
-		y = l.heading.bottom + gap;
-	}
+		auto panel = std::make_shared<music_panel_element>(extent, true, flex_item::stretch);
+		root->add(panel);
+		return panel;
+	};
+	view_element_ptr tunes;
+	view_element_ptr output;
+	view_element_ptr filter;
+	view_element_ptr registers;
 
-	if (songs > 1)
+	// The file's other tunes, in a panel of their own above the voices. The panel the monitor sits on names
+	// the file and the tune, so the monitor carries no heading of its own.
+	if (songs > 1 && controls)
 	{
 		const auto chip_w = std::max(px(30), lh * 2);
 		const auto chip_h = lh + px(6);
 		const auto chip_gap = px(4);
 		const auto label_w = px(72);
-		const auto chips_left = x0 + label_w + chip_gap;
-		const auto per_row = std::max(1, (x1 - chips_left + chip_gap) / (chip_w + chip_gap));
+		const auto top = y + pad;
+		const auto chips_left = x0 + pad + label_w + chip_gap;
+		const auto per_row = std::max(1, (x1 - pad - chips_left + chip_gap) / (chip_w + chip_gap));
 		const auto rows = (songs + per_row - 1) / per_row;
 
-		l.tunes_label = recti(x0, y, x0 + label_w, y + chip_h);
+		l.tunes_label = recti(x0 + pad, top, x0 + pad + label_w, top + chip_h);
 
 		if (rows <= 3)
 		{
 			for (int i = 0; i < songs; ++i)
 			{
 				const auto left = chips_left + (i % per_row) * (chip_w + chip_gap);
-				const auto top = y + (i / per_row) * (chip_h + chip_gap);
-				l.tune_chips.emplace_back(left, top, left + chip_w, top + chip_h);
+				const auto chip_top = top + (i / per_row) * (chip_h + chip_gap);
+				l.tune_chips.emplace_back(left, chip_top, left + chip_w, chip_top + chip_h);
 			}
 
-			l.tunes = recti(x0, y, x1, y + rows * chip_h + (rows - 1) * chip_gap);
+			l.tunes = recti(x0, y, x1, top + rows * chip_h + (rows - 1) * chip_gap + pad);
 		}
 		else
 		{
 			// Too many to show at once: step through them instead.
-			l.previous_tune = recti(chips_left, y, chips_left + chip_w, y + chip_h);
-			l.tune_counter = recti(l.previous_tune.right + chip_gap, y,
-			                       l.previous_tune.right + chip_gap + px(96), y + chip_h);
-			l.next_tune = recti(l.tune_counter.right + chip_gap, y, l.tune_counter.right + chip_gap + chip_w,
-			                    y + chip_h);
-			l.tunes = recti(x0, y, x1, y + chip_h);
+			l.previous_tune = recti(chips_left, top, chips_left + chip_w, top + chip_h);
+			l.tune_counter = recti(l.previous_tune.right + chip_gap, top, l.previous_tune.right + chip_gap + px(96),
+			                       top + chip_h);
+			l.next_tune = recti(l.tune_counter.right + chip_gap, top, l.tune_counter.right + chip_gap + chip_w,
+			                    top + chip_h);
+			l.tunes = recti(x0, y, x1, top + chip_h + pad);
 		}
 
-		y = l.tunes.bottom + gap;
+		tunes = add_panel(l.tunes.extent());
 	}
 
 	// The voices sit side by side when there is room, as turbo8bit's grid does, and stack when not. Mute and
@@ -351,25 +357,114 @@ sid_monitor_layout layout_sid_monitor(const recti bounds, const double scale, co
 	const auto button_w = std::max(px(40), button_text + px(12));
 	// The gate badge and a note such as C#-1, in the code font: about four line heights.
 	const auto gate_and_note = lh * 4 + px(20);
-	l.buttons_wrap = gate_and_note + button_w * 2 + px(4) > voice_w - pad * 2;
+	l.buttons_wrap = controls && gate_and_note + button_w * 2 + px(4) > voice_w - pad * 2;
 	const auto meter_rows = l.compact ? 2 : 3;
 	const auto voice_h = pad * 2 + (lh + px(9)) + (px(36) + px(8)) + meter_rows * (lh + px(6)) + button_h +
-		(l.buttons_wrap ? button_h + px(6) : 0);
-
-	for (int v = 0; v < 3; ++v)
+	                     (l.buttons_wrap ? button_h + px(6) : 0);
+	auto voices = std::make_shared<view_elements>(flex_item::stretch);
+	voices->padding(0);
+	voices->margin(0);
+	voices->flex_container.gap = {flex_gap, flex_gap};
+	voices->flex_container.align_items = flex_align::stretch;
+	std::array<view_element_ptr, 3> voice_panels;
+	for (auto& voice : voice_panels)
 	{
-		const auto left = x0 + (v % columns) * (voice_w + gap);
-		const auto top = y + (v / columns) * (voice_h + gap);
-		const recti panel(left, top, left + voice_w, top + voice_h);
+		flex_item_layout item;
+		item.grow = 1;
+		item.basis = l.compact ? 150 : 190;
+		voice = std::make_shared<music_panel_element>(sizei{min_voice_w, voice_h}, true, item);
+		voices->add(voice);
+	}
+	root->add(voices);
+
+	// The output, the filter and the register grid follow, each as wide as the column. Where the column is wide
+	// enough for two of them side by side at full size, as a landscape frame is, the output stands over the filter
+	// beside the register grid, which takes their height - or, without the grid, the two share a row. Drawn smaller
+	// to fit a short space, the monitor keeps the arrangement it has at full size. The flex tree places them, so
+	// only their heights are set here.
+	const auto wide = inner >= core::round(560 * source.scale_factor) * 2 + gap;
+	const auto beside_registers = wide && detail >= 4;
+	const auto paired = wide && detail == 3;
+
+	flex_item_layout half;
+	half.grow = 1;
+	half.basis = 560;
+
+	const auto add_group = [&](view_elements& into, const flex_direction direction, const flex_item_layout& item)
+	{
+		auto group = std::make_shared<view_elements>(item);
+		group->padding(0);
+		group->margin(0);
+		group->flex_container.direction = direction;
+		group->flex_container.wrap = flex_wrap::no_wrap;
+		group->flex_container.gap = {flex_gap, flex_gap};
+		group->flex_container.align_items = flex_align::stretch;
+		into.add(group);
+		return group;
+	};
+
+	const auto row = beside_registers || paired ? add_group(*root, flex_direction::row, flex_item::stretch) : nullptr;
+	const auto stack = beside_registers ? add_group(*row, flex_direction::column, half) : nullptr;
+
+	// A part across the column, or half of the row, or the stack's width.
+	const auto add_part = [&](const int height, const std::shared_ptr<view_elements>& into)
+	{
+		if (!into) return add_panel({inner, height});
+		const auto is_half = into == row;
+		auto panel = std::make_shared<music_panel_element>(sizei{is_half ? px(560) : inner, height}, true,
+		                                                   is_half ? half : flex_item::stretch);
+		into->add(panel);
+		return panel;
+	};
+	const auto upper = stack ? stack : row;
+
+	if (detail >= 2) output = add_part(pad * 2 + lh + px(8) + px(90), upper);
+
+	// The cutoff and resonance meters share the row with the six mode and routing badges where they fit,
+	// as on turbo8bit; a narrow column puts the badges on a row of their own.
+	l.filter_wraps = inner < px(560);
+
+	if (detail >= 3)
+	{
+		const auto badge_row_h = l.filter_wraps ? lh + px(8) + px(10) : 0;
+		filter = add_part(pad * 2 + lh + px(8) + (lh * 2 + px(18)) + badge_row_h + px(12) + px(24), upper);
+	}
+
+	if (detail >= 4)
+	{
+		const auto cell_h = lh * 2 + px(8);
+		registers = add_part(pad * 2 + lh + px(8) + register_rows * cell_h + (register_rows - 1) * px(4),
+		                     beside_registers ? row : nullptr);
+	}
+
+	l.height = root->measure(mc, width).cy;
+	l.panel.bottom = l.panel.top + l.height;
+	root->layout(mc, l.panel);
+	l.panels = root;
+	if (tunes)
+	{
+		const auto delta = tunes->bounds.top_left() - l.tunes.top_left();
+		l.tunes = tunes->bounds;
+		l.tunes_label = l.tunes_label.offset(delta);
+		for (auto& chip : l.tune_chips) chip = chip.offset(delta);
+		l.previous_tune = l.previous_tune.is_empty() ? recti{} : l.previous_tune.offset(delta);
+		l.next_tune = l.next_tune.is_empty() ? recti{} : l.next_tune.offset(delta);
+		l.tune_counter = l.tune_counter.is_empty() ? recti{} : l.tune_counter.offset(delta);
+	}
+
+	for (auto v = 0; v < 3; ++v)
+	{
+		const auto panel = voice_panels[v]->bounds;
 		l.voices[v] = panel;
+		if (!controls) continue;
 
 		if (l.buttons_wrap)
 		{
 			// A row of their own, shared between the two.
-			const auto half = (voice_w - pad * 2 - px(4)) / 2;
-			l.mute[v] = recti(panel.left + pad, panel.bottom - pad - button_h, panel.left + pad + half,
+			const auto half_w = (panel.width() - pad * 2 - px(4)) / 2;
+			l.mute[v] = recti(panel.left + pad, panel.bottom - pad - button_h, panel.left + pad + half_w,
 			                  panel.bottom - pad);
-			l.solo[v] = recti(panel.right - pad - half, l.mute[v].top, panel.right - pad, l.mute[v].bottom);
+			l.solo[v] = recti(panel.right - pad - half_w, l.mute[v].top, panel.right - pad, l.mute[v].bottom);
 		}
 		else
 		{
@@ -379,51 +474,23 @@ sid_monitor_layout layout_sid_monitor(const recti bounds, const double scale, co
 		}
 	}
 
-	const auto voice_rows = (3 + columns - 1) / columns;
-	y += voice_rows * voice_h + (voice_rows - 1) * gap + gap;
-
-	if (detail >= 2)
-	{
-		l.output = recti(x0, y, x1, y + pad * 2 + lh + px(8) + px(90));
-		y = l.output.bottom + gap;
-	}
-
-	// The cutoff and resonance meters share the row with the six mode and routing badges where they fit,
-	// as on turbo8bit; a narrow column puts the badges on a row of their own.
-	l.filter_wraps = inner < px(560);
-
-	if (detail >= 3)
-	{
-		const auto badge_row_h = l.filter_wraps ? lh + px(8) + px(10) : 0;
-		l.filter = recti(x0, y, x1, y + pad * 2 + lh + px(8) + (lh * 2 + px(18)) + badge_row_h + px(12) + px(24));
-		y = l.filter.bottom + gap;
-	}
-
-	if (detail >= 4)
-	{
-		const auto cell_h = lh * 2 + px(8);
-		l.registers = recti(x0, y, x1,
-		                    y + pad * 2 + lh + px(8) + register_rows * cell_h + (register_rows - 1) * px(4));
-		y = l.registers.bottom + gap;
-	}
-
-	y += pad - gap;
-	l.panel.bottom = y;
-	l.height = y - l.panel.top;
+	l.output = output ? output->bounds : recti{};
+	l.filter = filter ? filter->bounds : recti{};
+	l.registers = registers ? registers->bounds : recti{};
 	return l;
 }
 
-sid_monitor_layout fit_sid_monitor(const recti bounds, const double scale, const int songs, const int line_height,
-                                   const int button_text, double& used_scale)
+sid_monitor_layout fit_sid_monitor(const recti bounds, const double scale, const int songs, render::measure_context& mc,
+                                   const int button_text, double& used_scale, const bool controls)
 {
 	const auto available = bounds.height();
 	const auto lay_out = [&](const recti at, const double s, const int detail)
 	{
-		return layout_sid_monitor(at, s, songs, line_height, detail, button_text);
+		return layout_sid_monitor(at, s, songs, mc, detail, button_text, controls);
 	};
 
 	// Smaller first, down to three quarters: text keeps its size, so the geometry cannot shrink much
-	// further before the labels crowd. Then fewer parts, the register grid first and the heading last.
+	// further before the labels crowd. Then fewer parts, the register grid first and the ADSR row last.
 	const auto smallest = scale * 0.75;
 	auto detail = 0;
 	used_scale = smallest;
@@ -457,11 +524,10 @@ sid_monitor_layout fit_sid_monitor(const recti bounds, const double scale, const
 		}
 	}
 
-	// Centred in the height it is given, which is more than it takes whenever a part or a step of scale did
-	// not fit. One still too tall starts at the top, and the clip cuts off its foot.
-	const auto l = lay_out(bounds, used_scale, detail);
-	const auto spare = available - l.height;
-	return spare >= 2 ? lay_out(bounds.offset(0, spare / 2), used_scale, detail) : l;
+	// At the top of the height it is given, which is more than it takes whenever a part or a step of scale did not
+	// fit: the monitor reports what it took, and the stack it stands in closes up behind it. One still too tall is
+	// cut off at its foot.
+	return lay_out(bounds, used_scale, detail);
 }
 
 std::array<float, sid_register_count> sid_register_activity(const sid_frame_state* frames, const size_t count)
@@ -487,10 +553,23 @@ std::array<float, sid_register_count> sid_register_activity(const sid_frame_stat
 	return result;
 }
 
-sid_monitor_control::sid_monitor_control(view_state& state, display_state_ptr display, view_host_ptr host) noexcept :
-	view_element(view_element_style::can_invoke | flex_item::media), _state(state), _display(std::move(display)),
-	_host(std::move(host))
+sid_monitor_control::sid_monitor_control(view_state& state, display_state_ptr display) :
+	sid_monitor_control(std::move(display))
 {
+	_state = &state;
+}
+
+sid_monitor_control::sid_monitor_control(display_state_ptr display) :
+	view_element(view_element_style::can_invoke | flex_item::media), _display(std::move(display))
+{
+	// Its panels meet the column's edges, as the selection panel below them does.
+	padding(0);
+	margin(0);
+}
+
+void sid_monitor_control::visit_children(const std::function<void(const view_element_ptr&)>& visit) const
+{
+	if (_panels) visit(_panels);
 }
 
 int sid_monitor_control::song_count() const
@@ -521,25 +600,66 @@ sizei sid_monitor_control::measure(render::measure_context& mc, const int width_
 	const auto button_text = std::max(
 		mc.measure_text(tt.command_volume0, render::font_face::code, render::text_style::single_line, 10000).cx,
 		mc.measure_text(tt.sid_solo, render::font_face::code, render::text_style::single_line, 10000).cx);
-	const auto l = layout_sid_monitor(recti(0, 0, width_limit, 0), mc.scale_factor, songs,
-	                                  mc.text_line_height(render::font_face::code), 4, button_text);
+	const auto l = layout_sid_monitor(recti(0, 0, width_limit, 0), mc.scale_factor, songs, mc, 4, button_text,
+	                                  _state != nullptr);
 	return {width_limit, l.height};
+}
+
+void sid_monitor_control::update_layout(render::measure_context& mc, const bool force) const
+{
+	const auto line_height = mc.text_line_height(render::font_face::code);
+	const auto button_text = std::max(
+		mc.measure_text(tt.command_volume0, render::font_face::code, render::text_style::single_line, 10000).cx,
+		mc.measure_text(tt.sid_solo, render::font_face::code, render::text_style::single_line, 10000).cx);
+	const auto songs = song_count();
+	if (!force && _panels && _layout_bounds == bounds && _layout_scale == mc.scale_factor &&
+	    _layout_line_height == line_height && _layout_button_width == button_text && _layout_songs == songs)
+		return;
+	_drawn = fit_sid_monitor(bounds, mc.scale_factor, songs, mc, button_text, _used_scale, _state != nullptr);
+	_panels = _drawn.panels;
+	_layout_bounds = bounds;
+	_layout_scale = mc.scale_factor;
+	_layout_line_height = line_height;
+	_layout_button_width = button_text;
+	_layout_songs = songs;
+}
+
+void sid_monitor_control::layout(render::measure_context& mc, const recti r)
+{
+	view_element::layout(mc, r);
+	update_layout(mc, true);
+
+	// The panels take what they need of the height given, and the stack closes up behind them rather than
+	// leaving the rest as a gap between them and the panel below.
+	if (_drawn.height > 0 && _drawn.height < bounds.height())
+	{
+		bounds.bottom = bounds.top + _drawn.height;
+		_layout_bounds = bounds;
+	}
 }
 
 void sid_monitor_control::dispatch_event(const view_element_event& event)
 {
-	if (event.type == view_element_event_type::invoke)
+	if (event.type == view_element_event_type::invoke && _state)
 	{
-		_state.play(event.host);
+		_state->play(event.host);
 	}
 }
 
 view_controller_ptr sid_monitor_control::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                                  const pointi element_offset,
-                                                                  hit_test_context& ctx)
+                                                                  const pointi element_offset, hit_test_context& ctx)
 {
+	if (!_state) return view_element::controller_from_location(host, loc, element_offset, ctx);
+
+	if (_panels)
+	{
+		if (auto controller = _panels->controller_from_location(host, loc, element_offset, ctx)) return controller;
+	}
 	const auto& l = _drawn;
-	const auto at = [&](const recti r) { return !r.is_empty() && r.offset(element_offset).contains(loc); };
+	const auto at = [&](const recti r)
+	{
+		return !r.is_empty() && r.offset(element_offset).contains(loc);
+	};
 	const auto click = [&](const recti r, std::function<void()> f)
 	{
 		return std::make_shared<sid_click_controller>(host, r.offset(element_offset), std::move(f));
@@ -549,10 +669,8 @@ view_controller_ptr sid_monitor_control::controller_from_location(const view_hos
 	{
 		if (at(l.tune_chips[i]))
 		{
-			return click(l.tune_chips[i], [&state = _state, song = static_cast<int>(i) + 1]
-			{
-				state.select_sid_song(song);
-			});
+			return click(l.tune_chips[i],
+			             [state = _state, song = static_cast<int>(i) + 1] { state->select_sid_song(song); });
 		}
 	}
 
@@ -561,10 +679,7 @@ view_controller_ptr sid_monitor_control::controller_from_location(const view_hos
 		const auto details = _display->_sid->details();
 		const auto forward = at(l.next_tune);
 		const auto song = std::clamp(details.song + (forward ? 1 : -1), 1, details.songs);
-		return click(forward ? l.next_tune : l.previous_tune, [&state = _state, song]
-		{
-			state.select_sid_song(song);
-		});
+		return click(forward ? l.next_tune : l.previous_tune, [state = _state, song] { state->select_sid_song(song); });
 	}
 
 	for (int v = 0; v < 3; ++v)
@@ -572,15 +687,15 @@ view_controller_ptr sid_monitor_control::controller_from_location(const view_hos
 		// Acted on at release, and the panel can be rebuilt while the button is held - the tune ends, the
 		// folder refreshes - destroying this monitor. So the action holds nothing of the monitor: only the
 		// state, and the display it shows, weakly.
-		const auto toggle = [&state = _state, weak_display = std::weak_ptr(_display), v, host](const bool solo)
+		const auto toggle = [state = _state, weak_display = std::weak_ptr(_display), v, host](const bool solo)
 		{
 			const auto display = weak_display.lock();
-			if (!display) return;
+			if (!display || state->display_state() != display) return;
 
 			auto mix = display->_sid_mix;
 			if (solo) mix.solo = mix.solo == v ? -1 : v;
 			else mix.muted[v] = !mix.muted[v];
-			state.mix_sid_voices(mix);
+			state->mix_sid_voices(mix);
 			host->frame()->invalidate();
 		};
 
@@ -591,47 +706,75 @@ view_controller_ptr sid_monitor_control::controller_from_location(const view_hos
 	return view_element::controller_from_location(host, loc, element_offset, ctx);
 }
 
+std::vector<recti> sid_monitor_control::keyboard_parts() const
+{
+	if (!_state) return {};
+
+	const auto& l = _drawn;
+	std::vector<recti> parts;
+	const auto add = [&parts](const recti r)
+	{
+		if (!r.is_empty()) parts.emplace_back(r);
+	};
+
+	for (const auto& chip : l.tune_chips) add(chip);
+
+	if (_display->_sid)
+	{
+		add(l.previous_tune);
+		add(l.next_tune);
+	}
+
+	for (int v = 0; v < 3; ++v)
+	{
+		add(l.mute[v]);
+		add(l.solo[v]);
+	}
+
+	return parts;
+}
+
 void sid_monitor_control::render(render::draw_context& dc, const pointi element_offset) const
 {
 	// Advances the session's clock, as the audio control does, so the monitor shows what is heard.
 	_display->update_for_present(dc.time_now);
 
 	const auto line_height = dc.text_line_height(render::font_face::code);
-	const auto button_text = std::max(
-		dc.measure_text(tt.command_volume0, render::font_face::code, render::text_style::single_line, 10000).cx,
-		dc.measure_text(tt.sid_solo, render::font_face::code, render::text_style::single_line, 10000).cx);
 	const auto logical = bounds.offset(element_offset);
-	auto scale = dc.scale_factor;
-	const auto l = fit_sid_monitor(logical, dc.scale_factor, song_count(), line_height, button_text, scale);
+	_display->_sid_monitor_bounds = logical;
+	update_layout(dc);
+	const auto scale = _used_scale;
+	auto l = _drawn;
 
 	// A file whose tune count arrived after the layout was measured needs room for the tune selector.
 	if (song_count() != _measured_songs)
 	{
 		_measured_songs = song_count();
-		_state.invalidate_view(view_invalid::view_layout);
+		if (_state) _state->invalidate_view(view_invalid::view_layout);
 	}
 
-	_drawn = l;
-	for (auto& r : _drawn.tune_chips) r = r.offset(-element_offset.x, -element_offset.y);
-	for (auto* r : {&_drawn.previous_tune, &_drawn.next_tune, &_drawn.tune_counter, &_drawn.tunes})
-		*r = r->offset(-element_offset.x, -element_offset.y);
+	for (auto* r : {&l.panel, &l.tunes, &l.tunes_label, &l.previous_tune, &l.next_tune, &l.tune_counter, &l.output,
+	                &l.filter, &l.registers})
+		*r = r->is_empty() ? recti{} : r->offset(element_offset);
+	for (auto& r : l.tune_chips) r = r.offset(element_offset);
 	for (int v = 0; v < 3; ++v)
 	{
-		_drawn.mute[v] = _drawn.mute[v].offset(-element_offset.x, -element_offset.y);
-		_drawn.solo[v] = _drawn.solo[v].offset(-element_offset.x, -element_offset.y);
+		l.voices[v] = l.voices[v].offset(element_offset);
+		l.mute[v] = l.mute[v].offset(element_offset);
+		l.solo[v] = l.solo[v].offset(element_offset);
 	}
 
 	std::vector<queued_text> texts;
 	const painter p{dc, dc.colors.alpha, scale, texts};
-	// The last resort when even the heading and voices do not fit: what is left over is cut off rather
-	// than drawn over the element below.
+	// The last resort when even the voices do not fit: what is left over is cut off rather than drawn over the
+	// panel below.
 	const render::scoped_clip clip(dc, logical);
 	const auto lh = std::max(line_height, p.px(10));
-	const auto pad = p.px(12);
+	const auto pad = p.px(ui::panel_element::content_padding);
 	const auto& sid = _display->_sid;
 	const auto details = sid ? sid->details() : sid_tune_details{};
 	const auto& mix = _display->_sid_mix;
-	const auto position = _display->_session ? _display->_session->pos(dc.time_now) : 0.0;
+	const auto position = _display->playback_position(dc.time_now);
 
 	sid_frame_state state;
 	if (sid) sid->frame_at(position, state);
@@ -643,21 +786,8 @@ void sid_monitor_control::render(render::draw_context& dc, const pointi element_
 	parts.column = p.px(1);
 	parts.inset = p.px(1);
 
-	p.fill(l.panel, p.c(palette::panel), p.px(6));
-
-	// The heading: the monitor's name, then what is playing.
-	if (!l.heading.is_empty())
-	{
-		const auto& h = l.heading;
-		p.text(tt.sid_monitor, recti(h.left, h.top, h.right, h.top + lh), palette::text_muted());
-		const auto title = details.title.empty() && _display->_item1 ? std::string(_display->_item1->name())
-		                                                             : details.title;
-		p.text(title, recti(h.left, h.top + lh + p.px(4), h.right, h.top + lh * 2 + p.px(4)), palette::text());
-
-		std::string byline = details.author;
-		if (!details.released.empty()) byline += byline.empty() ? details.released : "  " + details.released;
-		p.text(byline, recti(h.left, h.top + lh * 2 + p.px(8), h.right, h.bottom), palette::text_muted());
-	}
+	// Each part's panel is drawn by the flex tree; the moving parts and the text go over them.
+	render_children(dc, element_offset);
 
 	if (!l.tunes.is_empty())
 	{
@@ -689,8 +819,6 @@ void sid_monitor_control::render(render::draw_context& dc, const pointi element_
 		const auto x0 = r.left + pad;
 		const auto x1 = r.right - pad;
 		auto y = r.top + pad;
-
-		p.fill(r, p.c(palette::sunken, a), p.px(4));
 
 		const auto wave = sid_waveform_name(voice.control);
 		const auto wave_w = p.text_width(wave) + p.px(12);
@@ -726,9 +854,10 @@ void sid_monitor_control::render(render::draw_context& dc, const pointi element_
 		if (!l.compact)
 		{
 			auto x = x0;
-			const std::pair<std::string_view, int> adsr[] = {
-				{"A:", voice.attack}, {"D:", voice.decay}, {"S:", voice.sustain}, {"R:", voice.release}
-			};
+			const std::pair<std::string_view, int> adsr[] = {{"A:", voice.attack},
+			                                                 {"D:", voice.decay},
+			                                                 {"S:", voice.sustain},
+			                                                 {"R:", voice.release}};
 
 			for (const auto& [name, value] : adsr)
 			{
@@ -745,10 +874,10 @@ void sid_monitor_control::render(render::draw_context& dc, const pointi element_
 
 		// The gate, the note it plays, and the listening controls - beside them, or on the row below.
 		{
-			const auto& mute = l.mute[v];
-			const auto row_top = l.buttons_wrap ? y : mute.top;
-			const auto row_bottom = row_top + mute.height();
-			const auto note_right = l.buttons_wrap ? x1 : mute.left;
+			const auto inline_buttons = l.controls && !l.buttons_wrap;
+			const auto row_top = inline_buttons ? l.mute[v].top : y;
+			const auto row_bottom = row_top + lh + p.px(4);
+			const auto note_right = inline_buttons ? l.mute[v].left : x1;
 			const auto gate_w = p.text_width("GATE") + p.px(10);
 
 			part.gate = recti(x0, row_top, x0 + gate_w, row_bottom);
@@ -758,10 +887,13 @@ void sid_monitor_control::render(render::draw_context& dc, const pointi element_
 			p.text(note.empty() ? std::string("-") : note,
 			       recti(part.gate.right + p.px(8), row_top, note_right, row_bottom), palette::text(), a);
 
-			p.badge(tt.command_volume0, mute, mix.muted[v] ? p.c(palette::red()) : p.c(palette::raised),
-			        mix.muted[v] ? palette::text() : palette::text_muted());
-			p.badge(tt.sid_solo, l.solo[v], mix.solo == v ? p.c(palette::orange()) : p.c(palette::raised),
-			        mix.solo == v ? palette::text() : palette::text_muted());
+			if (l.controls)
+			{
+				p.badge(tt.command_volume0, l.mute[v], mix.muted[v] ? p.c(palette::red()) : p.c(palette::raised),
+				        mix.muted[v] ? palette::text() : palette::text_muted());
+				p.badge(tt.sid_solo, l.solo[v], mix.solo == v ? p.c(palette::orange()) : p.c(palette::raised),
+				        mix.solo == v ? palette::text() : palette::text_muted());
+			}
 		}
 	}
 
@@ -769,7 +901,6 @@ void sid_monitor_control::render(render::draw_context& dc, const pointi element_
 	if (!l.output.is_empty())
 	{
 		const auto& r = l.output;
-		p.fill(r, p.c(palette::sunken), p.px(4));
 		p.text(tt.sid_output, recti(r.left, r.top + pad, r.right, r.top + pad + lh), palette::text_muted(), 1.0f,
 		       render::text_style::single_line_center);
 
@@ -786,7 +917,6 @@ void sid_monitor_control::render(render::draw_context& dc, const pointi element_
 		const auto cutoff = ((regs[0x16] << 3) | (regs[0x15] & 0x07)) & 0x7FF;
 		const auto resonance = regs[0x17] >> 4;
 
-		p.fill(r, p.c(palette::sunken), p.px(4));
 		auto y = r.top + pad;
 		p.text(tt.sid_filter, recti(r.left, y, r.right, y + lh), palette::text_muted(), 1.0f,
 		       render::text_style::single_line_center);
@@ -800,9 +930,8 @@ void sid_monitor_control::render(render::draw_context& dc, const pointi element_
 		const auto badge_gap = p.px(6);
 		const auto badge_w = std::max(p.px(30), p.text_width("V3") + p.px(14));
 		const auto badges_w = badge_w * 6 + badge_gap * 4 + column_gap;
-		const auto bars_w = l.filter_wraps
-			                    ? (x1 - x0 - column_gap) / 2
-			                    : std::max(p.px(60), (x1 - x0 - badges_w - column_gap * 2) / 2);
+		const auto bars_w = l.filter_wraps ? (x1 - x0 - column_gap) / 2
+		                                   : std::max(p.px(60), (x1 - x0 - badges_w - column_gap * 2) / 2);
 
 		const auto parameter = [&](const int left, const std::string_view label, const int value)
 		{
@@ -855,7 +984,6 @@ void sid_monitor_control::render(render::draw_context& dc, const pointi element_
 	if (!l.registers.is_empty())
 	{
 		const auto& r = l.registers;
-		p.fill(r, p.c(palette::sunken), p.px(4));
 		auto y = r.top + pad;
 		p.text(tt.sid_register_writes, recti(r.left, y, r.right, y + lh), palette::text_muted(), 1.0f,
 		       render::text_style::single_line_center);
@@ -865,7 +993,9 @@ void sid_monitor_control::render(render::draw_context& dc, const pointi element_
 		const auto x1 = r.right - pad;
 		const auto cell_gap = p.px(4);
 		const auto cell_w = (x1 - x0 - cell_gap * (register_columns - 1)) / register_columns;
-		const auto cell_h = lh * 2 + p.px(8);
+		// Taller than they need where the grid stands beside the output and the filter, and takes their height.
+		const auto cell_h = std::max(lh * 2 + p.px(8),
+		                             (r.bottom - pad - y - cell_gap * (register_rows - 1)) / register_rows);
 
 		for (int i = 0; i < sid_register_count; ++i)
 		{
@@ -949,7 +1079,10 @@ const std::vector<render::vertex_rect>& sid_monitor_motion::build(const double p
 	sid_frame_state frames[activity_frames + 1];
 	const auto frame_count = _sid->frames_before(position, frames, std::size(frames));
 	const auto state = frame_count ? frames[frame_count - 1] : sid_frame_state{};
-	const auto colour = [this](const core::color32 rgb, const float a = 1.0f) { return core::color(rgb, _alpha * a); };
+	const auto colour = [this](const core::color32 rgb, const float a = 1.0f)
+	{
+		return core::color(rgb, _alpha * a);
+	};
 
 	for (int v = 0; v < 3; ++v)
 	{
@@ -993,10 +1126,8 @@ const std::vector<render::vertex_rect>& sid_monitor_motion::build(const double p
 	add_meter(_rects, _parts.cutoff, cutoff / 2047.0, _parts.inset, colour(palette::accent()));
 	add_meter(_rects, _parts.resonance, resonance / 15.0, _parts.inset, colour(palette::accent()));
 
-	const bool lit[] = {
-		(mode & 0x10) != 0, (mode & 0x20) != 0, (mode & 0x40) != 0,
-		(routing & 0x01) != 0, (routing & 0x02) != 0, (routing & 0x04) != 0
-	};
+	const bool lit[] = {(mode & 0x10) != 0,    (mode & 0x20) != 0,    (mode & 0x40) != 0,
+	                    (routing & 0x01) != 0, (routing & 0x02) != 0, (routing & 0x04) != 0};
 
 	for (auto i = 0_z; i < std::size(lit); ++i)
 	{

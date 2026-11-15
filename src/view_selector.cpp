@@ -1,12 +1,12 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: Compact horizontal item selector used by edit and locate workflows.
+// Purpose: Compact horizontal item selector used by edit and locate workflows, picked from by the pointer or, once
+// Tab has brought the keyboard to it, by the arrows and Enter.
 
 #include "pch.h"
 #include "model.h"
@@ -90,12 +90,9 @@ public:
 	{
 	}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::left_right;
-	}
+	platform::cursor cursor() const override { return platform::cursor::left_right; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_tracking = true;
 		const auto thumb = _view.scrollbar_thumb_bounds();
@@ -108,7 +105,7 @@ public:
 		if (_tracking) _view.scrollbar_to(loc.x - _grab_offset);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		if (_tracking)
 		{
@@ -230,6 +227,8 @@ void selector_view::deactivate()
 	for (const auto& entry : _items) entry.item->is_visible(false);
 	_items.clear();
 	_selection_anchor.reset();
+	_key_item.reset();
+	_key_from.reset();
 	_scroll_x = 0;
 	_content_width = 0;
 	_scroll_to_focus = false;
@@ -251,6 +250,55 @@ void selector_view::display_changed()
 	_host->frame()->invalidate();
 }
 
+void selector_view::enable(const bool enabled)
+{
+	if (_enabled == enabled) return;
+	_enabled = enabled;
+	_host->frame()->invalidate();
+	_state.invalidate_view(view_invalid::controller);
+}
+
+const selector_view::selector_item* selector_view::key_entry() const
+{
+	const auto& focus = _state.focus_item();
+
+	for (const auto& candidate : {_key_from == focus ? _key_item : nullptr, focus})
+	{
+		const auto found = std::ranges::find(_items, candidate, &selector_item::item);
+		if (candidate && found != _items.end()) return &*found;
+	}
+
+	return _items.empty() ? nullptr : &_items.front();
+}
+
+bool selector_view::key_down(const char32_t key, const platform::key_state keys)
+{
+	const auto* const entry = key_entry();
+	if (!_enabled || !entry || keys.alt) return false;
+
+	if (key == platform::keys::RETURN || key == platform::keys::SPACE)
+	{
+		if (_select_item) _select_item(entry->item, keys);
+		return true;
+	}
+
+	const auto at = static_cast<int>(entry - _items.data());
+	const auto last = static_cast<int>(_items.size()) - 1;
+	int to;
+
+	if (key == platform::keys::LEFT) to = std::max(0, at - 1);
+	else if (key == platform::keys::RIGHT) to = std::min(last, at + 1);
+	else if (key == platform::keys::HOME) to = 0;
+	else if (key == platform::keys::END) to = last;
+	else return false;
+
+	_key_item = _items[to].item;
+	_key_from = _state.focus_item();
+	make_visible(_key_item);
+	_host->frame()->invalidate();
+	return true;
+}
+
 void selector_view::rebuild_items()
 {
 	// An inactive strip is not on screen: it holds no items, so it neither claims item visibility nor
@@ -269,7 +317,7 @@ void selector_view::rebuild_items()
 	}
 
 	const auto same_items = _items.size() == ordered.size() &&
-		std::ranges::equal(_items, ordered, {}, &selector_item::item, std::identity{});
+	                        std::ranges::equal(_items, ordered, {}, &selector_item::item, std::identity{});
 
 	if (!same_items)
 	{
@@ -302,7 +350,7 @@ void selector_view::update_visible_items()
 		if (is_visible) visible.emplace_back(entry.item);
 	}
 
-	if (!visible.empty()) _state.item_index.queue_load_visible_thumbnails(std::move(visible));
+	if (!visible.empty()) _state.item_index.queue_load_visible_thumbnails(visible);
 	retire_off_band_resources();
 }
 
@@ -390,8 +438,8 @@ void selector_view::layout(render::measure_context& mc, const sizei extent)
 
 		_content_width = std::max(0, x - _gap + outer_padding);
 		const auto required_height = _content_width > extent.cx
-			                             ? std::max(core::round(10 * mc.scale_factor), mc.padding1)
-			                             : 0;
+		                                 ? std::max(core::round(10 * mc.scale_factor), mc.padding1)
+		                                 : 0;
 		if (required_height == _scrollbar_height) break;
 		_scrollbar_height = required_height;
 	}
@@ -413,9 +461,7 @@ selector_view::selector_item* selector_view::item_from_location(const pointi loc
 {
 	const auto logical = loc + pointi(_scroll_x, 0);
 	const auto found = std::ranges::find_if(_items, [logical](const selector_item& entry)
-	{
-		return entry.bounds.contains(logical);
-	});
+	{ return entry.bounds.contains(logical); });
 	return found == _items.end() ? nullptr : &*found;
 }
 
@@ -429,6 +475,10 @@ void selector_view::render(render::draw_context& dc, const view_controller_ptr c
 	const auto client = recti(_extent);
 	const auto text_height = dc.text_line_height(render::font_face::dialog);
 	const auto focus = _state.focus_item();
+	const auto* const key = _view_has_focus ? key_entry() : nullptr;
+	const auto colors = dc.colors;
+	const core::scope_exit restore_colors([&dc, colors] { dc.colors = colors; });
+	if (!_enabled) dc.colors.alpha *= 0.5f;
 
 	for (auto& entry : _items)
 	{
@@ -475,25 +525,24 @@ void selector_view::render(render::draw_context& dc, const view_controller_ptr c
 			entry.decode_pending = true;
 			const auto request = ++entry.decode_request;
 
-			_state._async.queue_async(async_queue::load,
-			                          [weak = weak_from_this(), &async = _state._async, item = entry.item, image,
-				                          extent = image_bounds.extent(), can_use_yuv = render::yuv_textures_enabled,
-				                          request]
-			                          {
-				                          files ff;
-				                          auto surface = ff.image_to_surface(image, extent, can_use_yuv);
+			_state._async.queue_async(async_queue::load, [weak = weak_from_this(), &async = _state._async,
+			                                              item = entry.item, image, extent = image_bounds.extent(),
+			                                              can_use_yuv = render::yuv_textures_enabled, request]
+			{
+				files ff;
+				auto surface = ff.image_to_surface(image, extent, can_use_yuv);
 
-				                          async.queue_ui([weak, item, image, request, surface = std::move(surface)]() mutable
-				                          {
-					                          const auto view = weak.lock();
-					                          if (!view) return;
+				async.queue_ui([weak, item, image, request, surface = std::move(surface)]() mutable
+				{
+					const auto view = weak.lock();
+					if (!view) return;
 
-					                          if (view->publish_decoded_surface(item, image, request, std::move(surface)))
-					                          {
-						                          view->_host->frame()->invalidate();
-					                          }
-				                          });
-			                          });
+					if (view->publish_decoded_surface(item, image, request, std::move(surface)))
+					{
+						view->_host->frame()->invalidate();
+					}
+				});
+			});
 		}
 
 		if (entry.texture)
@@ -501,15 +550,14 @@ void selector_view::render(render::draw_context& dc, const view_controller_ptr c
 			const auto orientation = entry.item->layout_orientation();
 			const auto destination = thumbnail_destination(entry.texture->dimensions(), image_bounds, orientation,
 			                                               setting.show_rotated);
-			const auto sampler = calc_sampler(destination.bounding_rect().extent().round(),
-			                                  entry.texture->dimensions(), orientation);
+			const auto sampler = calc_sampler(destination.bounding_rect().extent().round(), entry.texture->dimensions(),
+			                                  orientation);
 			dc.draw_texture(entry.texture, destination, entry.texture->dimensions(), dc.colors.alpha, sampler);
 		}
 		else
 		{
 			const auto icon = entry.item->is_folder() ? icon_index::folder : entry.item->file_type()->icon;
-			xdraw_icon(dc, icon, image_bounds,
-			           core::color(dc.colors.foreground, dc.colors.alpha * 0.5f), {});
+			xdraw_icon(dc, icon, image_bounds, core::color(dc.colors.foreground, dc.colors.alpha * 0.5f), {});
 		}
 
 		auto text_bounds = bounds;
@@ -521,9 +569,10 @@ void selector_view::render(render::draw_context& dc, const view_controller_ptr c
 		{
 			const auto border = bounds.inflate(-core::round(2 * dc.scale_factor));
 			const auto border_clr = core::color(ui::style::colors.view_selected_background, dc.colors.alpha);
-			dc.draw_border(border, border.inflate(core::round(2 * dc.scale_factor)),
-			               border_clr, border_clr);
+			dc.draw_border(border, border.inflate(core::round(2 * dc.scale_factor)), border_clr, border_clr);
 		}
+
+		if (&entry == key) draw_keyboard_ring(dc, bounds, true);
 	}
 
 	if (can_scroll())
@@ -535,7 +584,7 @@ void selector_view::render(render::draw_context& dc, const view_controller_ptr c
 	}
 }
 
-bool selector_view::mouse_wheel(const pointi loc, const platform::wheel_notch notch)
+bool selector_view::mouse_wheel(const pointi /*loc*/, const platform::wheel_notch notch)
 {
 	// A strip has one axis, so both wheels drive it.
 	scroll_by(notch.is_vertical() ? -notch.delta : notch.delta);
@@ -543,14 +592,14 @@ bool selector_view::mouse_wheel(const pointi loc, const platform::wheel_notch no
 }
 
 view_controller_ptr selector_view::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                           hit_test_context& ctx)
+                                                            hit_test_context& ctx)
 {
 	if (can_scroll() && ctx.occluded(scrollbar_bounds()))
 	{
 		return std::make_shared<selector_scroll_controller>(host, *this, scrollbar_bounds());
 	}
 
-	if (const auto entry = item_from_location(loc))
+	if (const auto entry = item_from_location(loc); entry && _enabled)
 	{
 		return std::make_shared<selector_item_controller>(host, *this, entry->bounds.offset(-_scroll_x, 0),
 		                                                  _select_item, entry->item);
@@ -586,17 +635,13 @@ bool selector_view::can_scroll() const
 recti selector_view::scrollbar_bounds() const
 {
 	const auto padding = std::max(2, _scrollbar_height / 4);
-	return {
-		padding, _extent.cy - _scrollbar_height + padding,
-		_extent.cx - padding, _extent.cy - padding
-	};
+	return {padding, _extent.cy - _scrollbar_height + padding, _extent.cx - padding, _extent.cy - padding};
 }
 
 recti selector_view::scrollbar_thumb_bounds() const
 {
 	const auto track = scrollbar_bounds();
-	const auto thumb_width = std::max(_scrollbar_height * 3,
-	                                  core::mul_div(track.width(), _extent.cx, _content_width));
+	const auto thumb_width = std::max(_scrollbar_height * 3, core::mul_div(track.width(), _extent.cx, _content_width));
 	const auto travel = std::max(0, track.width() - thumb_width);
 	const auto max_scroll = std::max(1, _content_width - _extent.cx);
 	const auto left = track.left + core::mul_div(_scroll_x, travel, max_scroll);
@@ -628,7 +673,7 @@ void selector_view::scroll_by(const int delta_x)
 void selector_view::broadcast_event(const view_element_event& event) const
 {
 	if (event.type == view_element_event_type::free_graphics_resources ||
-		event.type == view_element_event_type::dpi_changed)
+	    event.type == view_element_event_type::dpi_changed)
 	{
 		// The decode latch is dropped with the textures: a decode that failed under memory pressure or
 		// at a previous scale deserves one more attempt once the view is rebuilt.
@@ -654,7 +699,7 @@ void selector_view::test_add_pending_decode_for_resource_event()
 bool selector_view::test_resource_event_cleared_pending_decode() const
 {
 	return !_items.empty() && !_items.front().decode_pending && !_items.front().decode_failed &&
-		_items.front().decode_request == 4;
+	       _items.front().decode_request == 4;
 }
 
 selector_view::rebuild_stats selector_view::test_rebuild_reuse(const size_t count)
@@ -699,7 +744,7 @@ selector_view::resource_stats selector_view::test_resource_retirement(const size
 	items.reserve(count);
 
 	const auto image = std::make_shared<core::image>(core::blob(16), sizei(16, 16), core::image_format::JPEG,
-	                                               core::orientation::top_left);
+	                                                 core::orientation::top_left);
 
 	for (size_t index = 0; index < count; ++index)
 	{
@@ -710,17 +755,20 @@ selector_view::resource_stats selector_view::test_resource_retirement(const size
 		                                               indexed);
 		auto surface = std::make_shared<core::surface>();
 		surface->alloc({8, 8}, core::texture_format::ARGB, core::orientation::top_left);
-		items.push_back({std::move(item), recti(static_cast<int>(index) * item_width, 0,
-		                                        static_cast<int>(index + 1) * item_width, extent.cy), image, {},
-		                 std::move(surface), index == 0, false, static_cast<uint64_t>(index + 1)});
+		items.push_back(
+			{std::move(item),
+		     recti(static_cast<int>(index) * item_width, 0, static_cast<int>(index + 1) * item_width, extent.cy),
+		     image,
+		     {},
+		     std::move(surface),
+		     index == 0,
+		     false,
+		     static_cast<uint64_t>(index + 1)});
 	}
 
 	const auto retained = [&items]
 	{
-		return std::ranges::count_if(items, [](const selector_item& entry)
-		{
-			return entry.has_retained_resource();
-		});
+		return std::ranges::count_if(items, [](const selector_item& entry) { return entry.has_retained_resource(); });
 	};
 
 	resource_stats stats;

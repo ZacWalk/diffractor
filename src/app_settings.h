@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Application settings and configuration. Defines all persistent user preferences
 // including display options, collection folders, import/sync settings, and feature flags.
@@ -144,7 +143,6 @@ void load_feature_use(uint64_t f);
 // was in flight survive to the next one.
 void clear_reported_feature_use(uint64_t reported);
 
-
 // Issue #227: the default sidebar (favorite) tags must be seeded only on the very first
 // run, never again. `favorite_tags` is persisted as a single string, so an empty saved
 // value is otherwise indistinguishable from "never configured" and the defaults get
@@ -186,7 +184,6 @@ constexpr startup_history decide_startup(const bool owns_startup_scope, const ui
 	if (!owns_startup_scope) return {false, false, unsettled_starts};
 	return {should_start_safe(unsettled_starts), true, unsettled_starts + 1};
 }
-
 
 class settings_t
 {
@@ -463,8 +460,16 @@ public:
 	bool locate_only_without_location = false;
 };
 
-
 extern settings_t setting;
+
+// Where settings are kept, and where the caches that can be rebuilt - the index and the map's tiles - are
+// written: the user's own, or in a Debug build started with -profile:<folder>, that folder, so a tutorial or
+// test run neither reads nor changes the user's collection, settings or index.
+platform::setting_file_ptr app_settings_store();
+core::folder_path app_cache_folder();
+#ifdef _DEBUG
+void use_profile_folder(core::folder_path folder);
+#endif
 
 // Hands the renderer its YUV latch from setting.use_yuv, and keeps it there when a driver fault
 // clears it: a backend reads render::yuv_textures_allowed when it starts and calls render::on_yuv_fault.

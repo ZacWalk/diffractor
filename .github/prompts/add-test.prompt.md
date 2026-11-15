@@ -17,12 +17,12 @@ Ask the user which behavior to constrain if it is not already clear from the con
    `null_state_strategy`, `null_async_strategy` and a null `view_host_base_ptr` — see
    `browsing_fixture` in [test_app.cpp](../../src/test_app.cpp). If the decision is trapped inside a
    method that also performs it, **extract the decision into a pure function** rather than building
-   a window. That is how zoom, playback advance, the address-box session and the accelerator table
-   became testable, and each extraction was worth more than the code it replaced.
+   a window. Zoom, playback advance, the address-box session and the accelerator table are tested
+   that way.
 
 3. **Write it.** Assert the property, not a bound a systematic error could still satisfy. Keep it
    free of ordering, wall-clock timing, machine fonts and DPI. Do not write to any real dictionary,
-   settings key or collection — use `_temps`. Do not add files to `exe/test`; its file count is
+   settings key or collection — use `test_temps`. Do not add files to `exe/test`; its file count is
    asserted by `expected_cached_item_count` and every search-count test, so fixtures loaded by path
    go in `exe/test/excluded1`.
 
@@ -33,6 +33,7 @@ Ask the user which behavior to constrain if it is not already clear from the con
 5. **Run the narrowest check**, then the lint:
 
    ```powershell
+   python tools\dd.py build
    .\exe\diffractor64-d.exe /test:*subject* | Out-Host
    pwsh -File tools/lint_repo.ps1
    ```

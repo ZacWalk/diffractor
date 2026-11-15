@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Batch rename workflow. Implements rename templates with
 // metadata substitution, preview, and sequential numbering.
@@ -16,9 +15,7 @@
 
 using view_controls_host_ptr = std::shared_ptr<view_controls_host>;
 
-class rename_view final :
-	public list_view,
-	public std::enable_shared_from_this<rename_view>
+class rename_view final : public list_view, public std::enable_shared_from_this<rename_view>
 {
 	std::vector<rename_item> _renames;
 	std::string _title;
@@ -26,20 +23,11 @@ class rename_view final :
 	bool _analysis_valid = false;
 
 public:
-	rename_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host))
-	{
-		col_count = 3;
-	}
+	rename_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host)) { col_count = 3; }
 
 	std::array<text_t, max_col_count> col_titles() override
 	{
-		return std::array<text_t, max_col_count>
-		{
-			tt.old_name,
-			text_t{},
-			tt.new_name,
-			text_t{}
-		};
+		return std::array<text_t, max_col_count>{tt.old_name, text_t{}, tt.new_name, text_t{}};
 	};
 
 	text_t empty_message() override { return tt.no_items_selected_message; }

@@ -1,16 +1,15 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: The SID monitor, the presentation of a playing SID tune, laid out as turbo8bit's SID page lays it
-// out and drawn in Diffractor's colours: each voice's waveform, note, envelope and ADSR, the chip's output, its
-// filter and volume, and the registers the tune writes - with the file's other tunes, and per-voice mute and
-// solo, as controls. What moves with the music is drawn through a vertex buffer the display updates for every
-// present, as the audio visualizer is.
+// Purpose: A flex-based SID monitor in Diffractor's colours, drawn as panels of the media stack: the file's other
+// tunes, each voice's waveform, note, envelope and ADSR, the chip's output, its filter and volume, and the
+// registers the tune writes - with the tune selector and per-voice mute and solo as controls, which the keyboard
+// reaches as the pointer does and one drawn for a movie leaves out. What moves with the music is drawn through a
+// vertex buffer the display updates for every present, as the audio visualizer is.
 
 #pragma once
 
@@ -21,37 +20,39 @@
 // cannot disagree.
 struct sid_monitor_layout
 {
-	recti panel; // the monitor's own panel, centred in the element
-	recti heading; // its name and the tune's title, author and release
-	recti tunes; // the tune selector row; empty for a file with one tune
+	view_elements_ptr panels;
+	recti panel; // all of the monitor's panels, as wide as the space it is given
+	recti tunes; // the tune selector's panel; empty for a file with one tune, or a monitor without controls
 	recti tunes_label;
 	std::vector<recti> tune_chips; // the first tune's first; empty when there are too many to show
-	recti previous_tune; // used instead of chips when there are too many
+	recti previous_tune;           // used instead of chips when there are too many
 	recti next_tune;
 	recti tune_counter;
 	std::array<recti, 3> voices = {};
-	std::array<recti, 3> mute = {};
+	std::array<recti, 3> mute = {}; // empty for a monitor without controls
 	std::array<recti, 3> solo = {};
-	bool compact = false; // no heading and no ADSR row: the panel beside the items keeps only the voices
+	bool controls = true;      // the tune selector and each voice's mute and solo, which a movie's frame has no use for
+	bool compact = false;      // no ADSR row: the voices keep only their waveform, meters and gate
 	bool buttons_wrap = false; // mute and solo take a row of their own below the gate and the note
 	recti output;
 	recti filter;
 	bool filter_wraps = false; // the mode and routing badges take a row of their own below the meters
 	recti registers;
-	int height = 0; // of the whole panel
+	int height = 0; // of all the panels and the gaps between them
 };
 
-// bounds is where the element sits; scale the display scale; line_height the code font's line height;
+// bounds is where the element sits; scale the display scale; mc supplies the user's font metrics;
 // button_text the width of the wider of the mute and solo labels. detail says how much to show when space is
-// short: 4 is everything, 3 drops the register grid, 2 the filter as well, 1 the output, and 0 is compact.
-sid_monitor_layout layout_sid_monitor(recti bounds, double scale, int songs, int line_height, int detail = 4,
-                                      int button_text = 0);
+// short: 4 is everything, 3 drops the register grid, 2 the filter as well, 1 the output, and 0 is compact. Without
+// controls there is no tune selector and no mute or solo.
+sid_monitor_layout layout_sid_monitor(recti bounds, double scale, int songs, render::measure_context& mc,
+                                      int detail = 4, int button_text = 0, bool controls = true);
 
-// The fullest layout that fits bounds, centred in its height: at full size if it can be, as large as fits down
-// to three quarters of it if that is enough, and with fewer parts, in detail's order, only when it is not.
-// used_scale is the scale it was laid out at. A compact monitor still too tall starts at the top.
-sid_monitor_layout fit_sid_monitor(recti bounds, double scale, int songs, int line_height, int button_text,
-                                   double& used_scale);
+// The fullest layout that fits bounds, at its top: at full size if it can be, as large as fits down to three
+// quarters of it if that is enough, and with fewer parts, in detail's order, only when it is not. used_scale is
+// the scale it was laid out at. Its height says what it took; a compact monitor still too tall is cut off.
+sid_monitor_layout fit_sid_monitor(recti bounds, double scale, int songs, render::measure_context& mc, int button_text,
+                                   double& used_scale, bool controls = true);
 
 // How far the register grid's highlight has faded for each register: 1 for one written with a new value in
 // the frame shown, falling to 0 over the frames before it. frames are oldest first, the shown frame last.
@@ -83,8 +84,8 @@ public:
 		std::array<recti, 15> volume = {};
 		std::array<recti, sid_register_count> registers = {};
 		int thickness = 2; // of the traces, in pixels
-		int column = 1; // the width of a trace's columns
-		int inset = 1; // between a lamp and the badge it lights
+		int column = 1;    // the width of a trace's columns
+		int inset = 1;     // between a lamp and the badge it lights
 	};
 
 	// Called by the monitor as it draws: where the parts are now, what they show, and the frame the text
@@ -115,23 +116,41 @@ private:
 	double _text_time = 0.0;
 };
 
-class sid_monitor_control final : public view_element, public std::enable_shared_from_this<sid_monitor_control>
+class sid_monitor_control final :
+	public view_element,
+	public std::enable_shared_from_this<sid_monitor_control>,
+	public keyboard_parts_source
 {
 public:
-	sid_monitor_control(view_state& state, display_state_ptr display, view_host_ptr host) noexcept;
+	sid_monitor_control(view_state& state, display_state_ptr display);
+	// Drawn apart from any view, as a frame of a movie is: it plays, picks and mixes nothing, so it shows no
+	// controls to do so.
+	explicit sid_monitor_control(display_state_ptr display);
 
 	sizei measure(render::measure_context& mc, int width_limit) const override;
+	void layout(render::measure_context& mc, recti bounds) override;
 	void render(render::draw_context& dc, pointi element_offset) const override;
 	void dispatch_event(const view_element_event& event) override;
+	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override;
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
 	                                             hit_test_context& ctx) override;
+	// The tune selector's chips or arrows, then each voice's mute and solo, as the layout last drawn placed them.
+	std::vector<recti> keyboard_parts() const override;
 
 private:
 	int song_count() const;
+	void update_layout(render::measure_context& mc, bool force = false) const;
 
-	view_state& _state;
+	// Null for a monitor drawn apart from any view.
+	view_state* _state = nullptr;
 	display_state_ptr _display;
-	view_host_ptr _host;
+	mutable view_elements_ptr _panels;
+	mutable recti _layout_bounds;
+	mutable double _layout_scale = 0;
+	mutable double _used_scale = 1;
+	mutable int _layout_line_height = 0;
+	mutable int _layout_button_width = 0;
+	mutable int _layout_songs = 0;
 
 	// The layout last drawn, for the clicks to find their targets in. UI thread only.
 	mutable sid_monitor_layout _drawn;

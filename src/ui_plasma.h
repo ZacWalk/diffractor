@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Animated plasma backdrop. Generates the cycling colour field drawn behind the
 // application mark, fading between colour and the sidebar tone as background work starts or stops,
@@ -67,11 +66,7 @@ struct plasma
 		step_plasma();
 	}
 
-	~plasma()
-	{
-		_pixels.reset();
-	}
-
+	~plasma() { _pixels.reset(); }
 
 	void step_plasma()
 	{
@@ -103,7 +98,6 @@ struct plasma
 			t2 += 1;
 		}
 	}
-
 
 	void init_plasma()
 	{
@@ -146,9 +140,8 @@ struct plasma
 			return false;
 		}
 
-		const auto elapsed = _last_step_time > 0.0
-			                     ? std::clamp(time_now - _last_step_time, 0.0, max_step_seconds)
-			                     : 0.0;
+		const auto elapsed = _last_step_time > 0.0 ? std::clamp(time_now - _last_step_time, 0.0, max_step_seconds)
+		                                           : 0.0;
 		_last_step_time = time_now;
 
 		const auto was_active = is_active();
@@ -167,7 +160,10 @@ struct plasma
 		if (!was_active && !is_active())
 		{
 			if (!drift) return false;
-			const auto index = [this] { return static_cast<int32_t>(_phase * t3_per_second); };
+			const auto index = [this]
+			{
+				return static_cast<int32_t>(_phase * t3_per_second);
+			};
 			const auto before = index();
 			_phase = fmod(_phase + elapsed * idle_speed, phase_period);
 			if (index() == before) return false;
@@ -181,7 +177,7 @@ struct plasma
 		return true;
 	}
 
-	void render(const render::texture_ptr& tex, const sizei dims) const
+	void render(const render::texture_ptr& tex, [[maybe_unused]] const sizei dims) const
 	{
 		core::assert_true(dims.cx <= _width);
 		core::assert_true(dims.cy <= _height);
@@ -190,10 +186,7 @@ struct plasma
 		            _height * _stride);
 	}
 
-	bool is_active() const
-	{
-		return _show_color || _fade < fade_max;
-	}
+	bool is_active() const { return _show_color || _fade < fade_max; }
 
 	static int calc_stride(const int width, const int bpp) noexcept
 	{

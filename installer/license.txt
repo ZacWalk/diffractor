@@ -8,13 +8,13 @@ Use of Diffractor software indicates acceptance of this license agreement and wa
 
 Diffractor is free software.
 
-Diffractor's own source code is licensed under the GNU Lesser General Public License, version 2.1 or later. This installed program is licensed under the GNU Lesser General Public License, version 3.0 or later, because it statically links libheif and libde265, which are LGPL-3.0-or-later.
+Diffractor's source code is licensed under the Mozilla Public License, version 2.0 (MPL-2.0), as are the libdesktop and libfiles libraries it is built on. License details are available at https://mozilla.org/MPL/2.0/ and in LICENSE.txt.
 
-License details are available at https://www.gnu.org/licenses/lgpl-3.0.html
+This program also includes libraries licensed under the GNU Lesser General Public License: libheif and libde265 (version 3.0 or later), FFmpeg (version 2.1 or later), and the code libfiles ports from libexif and libiptcdata (version 2.1 or later). Their license texts are installed beside the program as COPYING.LGPLv3.txt, COPYING.GPLv3.txt and COPYING.LGPLv2.1.txt. You may modify those libraries, rebuild this program with your modified versions, and reverse engineer it to debug those modifications.
 
 You may use, copy, modify and redistribute this program under those terms, including for commercial purposes. The complete source code is published at https://github.com/ZacWalk/diffractor, from which the program can be rebuilt and relinked.
 
-Diffractor includes third-party libraries, each under its own license. Their terms are recorded with the source code.
+Diffractor includes other third-party libraries, each under its own license. Their terms are recorded with the source code.
 
 The Diffractor project does not collect personal information about users.
 

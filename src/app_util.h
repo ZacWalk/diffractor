@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Utility functions for file operations. Includes rename templating, import/sync
 // analysis, collection management, preparation of files to share, and file operation helpers.
@@ -67,9 +66,7 @@ class result_scope
 	bool _completed = false;
 
 public:
-	explicit result_scope(df::results_ptr r) : _r(std::move(r))
-	{
-	}
+	explicit result_scope(df::results_ptr r) : _r(std::move(r)) {}
 
 	~result_scope()
 	{
@@ -147,8 +144,8 @@ std::string rename_path_key(core::file_path path, bool is_folder);
 std::vector<rename_item> calc_item_renames(const df::item_set& items, std::string_view template_name, int start,
                                            collision_policy policy);
 std::vector<rename_source> snapshot_rename_sources(const df::item_set& items);
-std::vector<rename_item> calc_item_renames(const std::vector<rename_source>& items,
-                                           std::string_view template_name, int start, collision_policy policy);
+std::vector<rename_item> calc_item_renames(const std::vector<rename_source>& items, std::string_view template_name,
+                                           int start, collision_policy policy);
 bool can_rename_items(const std::vector<rename_item>& renames);
 // Number of rows the policy had to resolve, for the Review statement.
 int count_rename_collisions(const std::vector<rename_item>& renames, collision_policy policy);
@@ -174,7 +171,6 @@ struct import_source
 	bool selected = false;
 	df::item_set items;
 };
-
 
 enum class import_action
 {
@@ -232,16 +228,15 @@ using import_analysis_result = std::map<core::folder_path, std::vector<import_an
 // a run must never overwrite or delete a file it could not look at.
 bool unchanged_since_analysis(core::file_path path, uint64_t modified, uint64_t size);
 
-import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_items,
-                                       const import_options& options, const item_import_set& previous_imported,
-                                       const core::cancel_token& token);
+import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_items, const import_options& options,
+                                       const item_import_set& previous_imported, const core::cancel_token& token);
 
-import_result import_copy(index_state& index, df::results_ptr results, const import_analysis_result& src_items,
+import_result import_copy(index_state& index, const df::results_ptr& results, const import_analysis_result& src_items,
                           const import_options& options, core::cancel_token token);
 
 extern std::function<void(core::file_path path)> test_before_import_rollback_cleanup;
 extern std::function<std::optional<platform::file_op_result>(core::file_path destination)>
-test_import_sidecar_write_override;
+	test_import_sidecar_write_override;
 
 std::optional<import_source> calc_import_selected_source(const view_state& s);
 std::vector<import_source> calc_import_sources(std::optional<import_source> selected_source);
@@ -270,10 +265,8 @@ enum class sync_action
 	delete_remote,
 };
 
-sync_action calc_sync_action(bool local_exists, bool remote_exists,
-                             uint64_t local_modified, uint64_t remote_modified,
-                             uint64_t local_size, uint64_t remote_size,
-                             bool sync_local_remote, bool sync_remote_local,
+sync_action calc_sync_action(bool local_exists, bool remote_exists, uint64_t local_modified, uint64_t remote_modified,
+                             uint64_t local_size, uint64_t remote_size, bool sync_local_remote, bool sync_remote_local,
                              bool sync_delete_local, bool sync_delete_remote);
 
 struct sync_analysis_item
@@ -328,9 +321,8 @@ uint32_t count_sync_actions(const sync_analysis_result& analysis);
 uint32_t count_sync_actions(const sync_analysis_result& analysis, sync_action action);
 
 sync_analysis_result sync_analysis(const core::index_roots& local_roots, core::folder_path remote_path,
-                                   bool sync_local_remote, bool sync_remote_local,
-                                   bool sync_delete_local, bool sync_delete_remote,
-                                   const core::cancel_token& token);
+                                   bool sync_local_remote, bool sync_remote_local, bool sync_delete_local,
+                                   bool sync_delete_remote, const core::cancel_token& token);
 
 // Performs the reviewed sync plan. Returns the local folders it changed so the index can be
 // brought back into agreement with what is now on disk.
@@ -345,7 +337,6 @@ sync_run_result sync_copy(const df::results_ptr& status, const sync_analysis_res
                           const core::cancel_token& token);
 
 void toggle_collection_entry(settings_t::index_t& collection_settings, core::folder_path folder, bool is_remove);
-
 
 std::vector<std::string> check_overwrite(core::folder_path write_folder, const df::item_set& items,
                                          std::string_view new_extension);

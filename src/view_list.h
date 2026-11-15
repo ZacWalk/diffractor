@@ -1,14 +1,14 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The row list the task views share (Rename, Import, Sync, Convert/Metadata/Date, Tags).
 // list_view lays out the column header and rows, whose columns fit their content and are resized by
-// dragging the divider after them, and tracks a run's progress and results; view_command_status is
+// dragging the divider after them, scrolls by the wheel and the keyboard, and tracks a run's progress
+// and then, in a Status column after the review's own, what it did to each row; view_command_status is
 // the status a run reports through; view_controls_host pairs the list with its controls panel; and
 // the CollisionPolicy control is defined once here for every operation that writes to a destination.
 
@@ -19,6 +19,7 @@
 #include "ui_controllers.h"
 #include "ui_elements.h"
 #include "ui_dialog.h"
+#include "libdesktop/ui/text/table_layout.h"
 
 class list_view;
 class view_controls_host;
@@ -86,9 +87,8 @@ inline view_element_ptr create_collision_policy_control(const ui::frame_ptr& fra
 
 	if (allow_auto_rename)
 	{
-		group->add(
-			std::make_shared<ui::check_control>(frame, tt.collision_rename, flags->auto_rename, true, false, apply,
-			                                    radio_group_collision));
+		group->add(std::make_shared<ui::check_control>(frame, tt.collision_rename, flags->auto_rename, true, false,
+		                                               apply, radio_group_collision));
 	}
 
 	group->add(std::make_shared<ui::check_control>(frame, tt.collision_replace, flags->replace, true, false, apply,
@@ -117,11 +117,12 @@ protected:
 	// the run did after.
 	std::string _status;
 
-	static constexpr int max_col_count = 4;
+	// The most columns a review shows, and the Status column a finished run adds after them.
+	static constexpr int max_col_count = 5;
+	// The review's columns; a finished run shows one more (column_count).
 	int col_count = 4;
 	int coll_offset = 0;
-	int col_widths[max_col_count] = {0, 0, 0, 0};
-
+	int col_widths[max_col_count] = {};
 
 	recti _col_header_bounds[max_col_count];
 	bool _header_active = false;
@@ -132,15 +133,14 @@ protected:
 	// to a width keeps it, in unscaled units so a change of DPI does too, until the view is opened
 	// again; zero is a column that sizes to its content. The last column has no divider after it: it
 	// takes whatever width the others leave.
-	double _user_col_widths[max_col_count] = {0, 0, 0, 0};
+	ui::table_layout::columns _table_columns;
 	// What each column's content asks for before any shrinking to fit, which is what a double-click
 	// on the divider after it fits the column to.
-	int _content_col_widths[max_col_count] = {0, 0, 0, 0};
+	int _content_col_widths[max_col_count] = {};
 	// Where the divider after each column but the last can be grabbed: across the header band.
 	recti _col_divider_bounds[max_col_count - 1];
 	int _min_col_width = 0;
 	int _cx_col_avail = 0;
-	double _scale_factor = 1.0;
 	int _divider_active = -1;
 
 	// The column headers are painted over the top of the scroller, so the rows they cover are inside
@@ -148,6 +148,8 @@ protected:
 	// height is held here for the scroll that has to clear it.
 	int _band_height = 0;
 	int _band_margin = 0;
+	// From one row's top to the next one's, which the arrow keys scroll by.
+	int _row_step = 0;
 
 	friend class ui::scroll_controller;
 	friend class ui::clickable_controller;
@@ -161,18 +163,18 @@ public:
 		std::string _text[max_col_count];
 		icon_index _icons[max_col_count] = {};
 		core::color _bg_row;
-		core::color32 _text_color[max_col_count] = {0, 0, 0, 0};
+		core::color32 _text_color[max_col_count] = {};
 		int _order = 0;
 		// This row's index into whatever vector the run reports against - the plan for the batch views,
 		// the dense work list for the others - or -1 when the run never reports this row at all. The
 		// header sort reorders _rows while the run stays in plan order, so display position is not an
 		// identity and nothing may index the run by it.
 		int _work_index = -1;
+		// Where the run's report of this row comes among the rest: every task builds its rows in the
+		// order its run reports them, so review_rows numbers them as they are built.
+		int _result_index = -1;
 
-		row_element(list_view& view) noexcept
-			: view_element(view_element_style::can_invoke), _view(view)
-		{
-		}
+		row_element(list_view& view) noexcept : view_element(view_element_style::can_invoke), _view(view) {}
 
 		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
@@ -186,19 +188,19 @@ public:
 
 				auto x = logical_bounds.left + _view.coll_offset;
 
-				for (int i = 0; i < _view.col_count; i++)
+				for (int i = 0; i < _view.column_count(); i++)
 				{
 					const auto text_color = core::color(_text_color[i] != 0 ? _text_color[i] : dc.colors.foreground,
-					                                  dc.colors.alpha);
+					                                    dc.colors.alpha);
 					const std::string_view text = _text[i];
-					const recti bounds(x, logical_bounds.top, x + _view.col_widths[i], logical_bounds.bottom);
+					const recti cell_bounds(x, logical_bounds.top, x + _view.col_widths[i], logical_bounds.bottom);
 					if (_icons[i] != icon_index::none)
 					{
-						xdraw_icon(dc, _icons[i], bounds, text_color, {});
+						xdraw_icon(dc, _icons[i], cell_bounds, text_color, {});
 					}
 					else
 					{
-						dc.draw_text(text, bounds, render::font_face::dialog, render::text_style::single_line,
+						dc.draw_text(text, cell_bounds, render::font_face::dialog, render::text_style::single_line,
 						             text_color, {});
 					}
 					x += _view.col_widths[i] + dc.padding2;
@@ -212,13 +214,10 @@ public:
 			return {width_limit, row_height};
 		}
 
-		void dispatch_event(const view_element_event& event) override
-		{
-		}
+		void dispatch_event(const view_element_event& /*event*/) override {}
 
 		view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-		                                             const pointi element_offset,
-		                                             hit_test_context& ctx) override
+		                                             const pointi element_offset, hit_test_context& ctx) override
 		{
 			return default_controller_from_location(*this, host, loc, element_offset, ctx);
 		}
@@ -232,33 +231,18 @@ public:
 	// and strand the highlight on the one it left behind.
 	row_element_ptr _active_row;
 
+	list_view(view_state& state, view_host_ptr host) : _state(state), _host(std::move(host)) {}
 
-	list_view(view_state& state, view_host_ptr host) : _state(state), _host(std::move(host))
-	{
-	}
+	~list_view() override { _rows.clear(); }
 
-	~list_view() override
-	{
-		_rows.clear();
-	}
+	progress_state progress() const override { return _progress; }
 
-	progress_state progress() const override
-	{
-		return _progress;
-	}
-
-	std::string_view status() override
-	{
-		return _status;
-	}
+	std::string_view status() override { return _status; }
 
 	// A completed run keeps its results through the file notifications its own writes raise. Refresh
 	// is the user asking to re-plan, so it is honoured even then; both arrive as the same invalidation,
 	// which is why the request is remembered here rather than read from the flag.
-	void reload() override
-	{
-		_refresh_requested = true;
-	}
+	void reload() override { _refresh_requested = true; }
 
 	void refresh_from_source() override
 	{
@@ -277,7 +261,7 @@ public:
 		_active_row.reset();
 		_showing_results = false;
 		_state.invalidate_view(view_invalid::view_redraw | view_invalid::status | view_invalid::command_state |
-			view_invalid::app_layout);
+		                       view_invalid::app_layout);
 	}
 
 	size_t processing_generation() const { return _processing_generation; }
@@ -373,10 +357,7 @@ public:
 		processing_item(static_cast<size_t>(row_index), work_position);
 	}
 
-	void processing_work_item(const size_t work_index)
-	{
-		processing_work_item(work_index, work_index + 1);
-	}
+	void processing_work_item(const size_t work_index) { processing_work_item(work_index, work_index + 1); }
 
 	void end_processing()
 	{
@@ -385,7 +366,7 @@ public:
 		_active_row.reset();
 		_progress = {};
 		_state.invalidate_view(view_invalid::view_redraw | view_invalid::status | view_invalid::command_state |
-			view_invalid::app_layout);
+		                       view_invalid::app_layout);
 	}
 
 	// One sentence for a finished run, whatever view drew the rows: counts first, then the classes
@@ -426,10 +407,10 @@ public:
 
 		const auto total = static_cast<int64_t>(results.size());
 		std::string summary;
-		const auto append = [&summary](std::string text)
+		const auto append = [&summary](const std::string& text)
 		{
 			if (!summary.empty()) summary += " ";
-			summary += std::move(text);
+			summary += text;
 		};
 		if (succeeded > 0) append(format_plural_text(tt.processed_fmt, first_succeeded, succeeded, {}, total));
 		if (failed > 0) append(format_plural_text(tt.failed_items_fmt, first_failed, failed, {}, total));
@@ -441,43 +422,75 @@ public:
 	// True while the rows describe a finished run rather than a plan waiting to be run.
 	bool showing_results() const { return _showing_results; }
 
-	std::string show_results(const std::vector<view_operation_result>& results)
+	// The reviewed rows, given in the order the run will report them - every task builds its rows in the
+	// order its run takes them - so what the run reports lands on the row it describes however the list is
+	// sorted meanwhile.
+	void review_rows(std::vector<row_element_ptr> rows)
 	{
-		std::vector<row_element_ptr> rows;
-		rows.reserve(results.size());
+		for (size_t i = 0; i < rows.size(); ++i) rows[i]->_result_index = static_cast<int>(i);
+		_rows = std::move(rows);
+	}
 
-		for (const auto& result : results)
+	// A finished run keeps every row and column of the review it ran, and adds a Status column saying what
+	// it did to each row: statuses[i] for the row reported i-th. A row the run never reached was not run,
+	// and a row that did nothing is dimmed, so what changed stands out.
+	void show_results(const std::vector<item_status>& statuses)
+	{
+		const auto success_color = core::lighten(ui::style::colors.success_background, 0.55f);
+		const auto fail_color = core::lighten(ui::style::colors.warning_background, 0.55f);
+		const auto muted_color = core::darken(ui::style::colors.view_text, 0.22f);
+		const auto status_col = col_count;
+
+		for (const auto& row : _rows)
 		{
-			auto row = std::make_shared<row_element>(*this);
-			row->_text[1] = result.name;
-			row->_order = static_cast<int>(rows.size());
+			const auto index = row->_result_index;
+			const auto status = index >= 0 && static_cast<size_t>(index) < statuses.size()
+			                        ? statuses[static_cast<size_t>(index)]
+			                        : item_status::cancel;
+			auto& text = row->_text[status_col];
+			auto& color = row->_text_color[status_col];
+			row->_icons[status_col] = icon_index::none;
 
-			switch (result.status)
+			switch (status)
 			{
 			case item_status::success:
-				row->_icons[0] = icon_index::check;
+				text = std::string(tt.result_success.sv());
+				color = success_color;
 				break;
 			case item_status::fail:
-				row->_icons[0] = icon_index::error;
+				text = std::string(tt.result_failed.sv());
+				color = fail_color;
 				break;
 			case item_status::ignore:
-				row->_icons[0] = icon_index::none;
+				text = std::string(tt.result_skipped.sv());
+				color = muted_color;
 				break;
 			case item_status::cancel:
-				row->_icons[0] = icon_index::cancel;
+				text = std::string(tt.result_not_run.sv());
+				color = muted_color;
 				break;
 			}
 
-			rows.emplace_back(std::move(row));
+			if (status == item_status::ignore || status == item_status::cancel)
+			{
+				for (int i = 0; i < col_count; ++i) row->_text_color[i] = muted_color;
+			}
 		}
 
-		auto summary = format_operation_summary(results);
-
-		_rows = std::move(rows);
 		_showing_results = true;
 		_state.invalidate_view(view_invalid::view_layout | view_invalid::controller | view_invalid::status |
-			view_invalid::command_state);
-		return summary;
+		                       view_invalid::command_state);
+	}
+
+	// The results a run reports through view_command_status, one per row in the order it built them. Answers
+	// the summary that concludes the run.
+	std::string show_results(const std::vector<view_operation_result>& results)
+	{
+		std::vector<item_status> statuses;
+		statuses.reserve(results.size());
+		for (const auto& result : results) statuses.emplace_back(result.status);
+		show_results(statuses);
+		return format_operation_summary(results);
 	}
 
 	bool cancel_processing()
@@ -499,10 +512,7 @@ public:
 		_active_row.reset();
 	}
 
-	void cancel_operation() override
-	{
-		cancel_processing();
-	}
+	void cancel_operation() override { cancel_processing(); }
 
 	// Close always exits. When a task is running, state what will stop and let the user choose.
 	// Returns true when the view should exit.
@@ -514,10 +524,10 @@ public:
 
 		const std::vector<view_element_ptr> controls = {
 			set_margin(std::make_shared<ui::title_control2>(dlg->_frame, icon_index::question,
-			                                                tt.cancel_operation_title,
-			                                                str_format(tt.cancel_operation_fmt.sv(), operation_title))),
+		                                                    tt.cancel_operation_title,
+		                                                    str_format(tt.cancel_operation_fmt.sv(), operation_title))),
 			std::make_shared<divider_element>(),
-			std::make_shared<ui::ok_cancel_control>(dlg->_frame, tt.button_cancel_operation, tt.button_keep_running)
+			std::make_shared<ui::ok_cancel_control>(dlg->_frame, tt.button_cancel_operation, tt.button_keep_running),
 		};
 
 		if (dlg->show_modal(controls, {44}, {33}) != ui::close_result::ok) return false;
@@ -526,15 +536,9 @@ public:
 		return true;
 	}
 
-	bool can_exit() override
-	{
-		return !_progress.active;
-	}
+	bool can_exit() override { return !_progress.active; }
 
-	bool confirm_exit() override
-	{
-		return confirm_exit_while_processing(operation_name());
-	}
+	bool confirm_exit() override { return confirm_exit_while_processing(operation_name()); }
 
 	void activate(const sizei extent) override
 	{
@@ -542,17 +546,17 @@ public:
 		_state.stop();
 
 		// Each use of the task starts from columns that fit what it lists.
-		std::ranges::fill(_user_col_widths, 0.0);
+		_table_columns.reset();
 	}
 
+	// The first heading puts the rows back in the order the review built them, and any other sorts by what its
+	// column says.
 	void sort(int col_num)
 	{
-		if (col_num == 1 || col_num == 2)
+		if (col_num > 0 && col_num < column_count())
 		{
-			std::ranges::sort(_rows, [col_num](const auto& left, const auto& right)
-			{
-				return core::icmp(left->_text[col_num], right->_text[col_num]) < 0;
-			});
+			std::ranges::stable_sort(_rows, [col_num](const auto& left, const auto& right)
+			{ return core::icmp(left->_text[col_num], right->_text[col_num]) < 0; });
 		}
 		else
 		{
@@ -566,7 +570,8 @@ public:
 	{
 		_extent = extent;
 
-		const auto titles = col_titles();
+		const auto columns = column_count();
+		const auto titles = column_titles();
 		const recti scroll_bounds{_extent.cx - mc.scroll_width, 0, _extent.cx, _extent.cy};
 		const recti client_bounds{0, 0, std::max(0, _extent.cx - mc.scroll_width), _extent.cy};
 
@@ -580,7 +585,7 @@ public:
 
 		bool odd_row = false;
 
-		for (int i = 0; i < col_count; i++)
+		for (int i = 0; i < columns; i++)
 		{
 			longest_text[i] = titles[i].sv();
 		}
@@ -589,13 +594,14 @@ public:
 		{
 			const auto row_height = mc.text_line_height(render::font_face::dialog) + mc.padding2;
 			auto y = row_height + mc.padding2 * 2;
+			_row_step = row_height + mc.padding1;
 
 			for (const auto& r : _rows)
 			{
 				r->bounds.set(client_bounds.left, y, client_bounds.right, y + row_height);
-				y += row_height + mc.padding1;
+				y += _row_step;
 
-				for (int i = 0; i < col_count; i++)
+				for (int i = 0; i < columns; i++)
 				{
 					const std::string_view text = r->_text[i];
 					if (text.size() > longest_text[i].size()) longest_text[i] = text;
@@ -609,68 +615,27 @@ public:
 			y_max = y + mc.padding2;
 		}
 
-		auto total = 0;
-		auto shrink_col_total = 0;
-		_scale_factor = mc.scale_factor;
 		_min_col_width = std::max(mc.icon_cxy + mc.padding2, core::round(32 * mc.scale_factor));
 		// The table starts a margin in from the view's left edge however little it holds - never centred in
 		// the view - so its text does not run up against the window's frame, and runs to the right edge half a
 		// gap in, with a gap between each column and the next.
 		coll_offset = mc.padding2 * 2;
-		_cx_col_avail = std::max(0, client_bounds.width() - coll_offset - (col_count - 1) * mc.padding2 -
-		                         mc.padding2 / 2);
+		_cx_col_avail = std::max(0,
+		                         client_bounds.width() - coll_offset - (columns - 1) * mc.padding2 - mc.padding2 / 2);
 
-		for (int i = 0; i < col_count; i++)
+		for (int i = 0; i < columns; i++)
 		{
 			auto content_width = mc.measure_text(longest_text[i], render::font_face::dialog,
-			                                     render::text_style::single_line, client_bounds.width()).cx +
-				mc.padding2;
+			                                     render::text_style::single_line, client_bounds.width())
+			                         .cx +
+			                     mc.padding2;
 			if (has_icon[i]) content_width = std::max(content_width, mc.icon_cxy + mc.padding2);
 			_content_col_widths[i] = content_width;
-			col_widths[i] = is_user_sized(i) ? core::round(_user_col_widths[i] * mc.scale_factor) : content_width;
-			total += col_widths[i];
-			if (i > 0 && !is_user_sized(i)) shrink_col_total += col_widths[i];
 		}
-
-		// Shrink if too large. The columns that size to their content give way, all but the first, which
-		// keeps its width. A column the user sized keeps its width while they can, and only when they
-		// cannot does every column give way in proportion.
-		if (total > _cx_col_avail)
-		{
-			const auto cx_avail = _cx_col_avail;
-			auto fixed_width = 0;
-
-			for (int i = 0; i < col_count; i++)
-			{
-				if (i == 0 || is_user_sized(i)) fixed_width += col_widths[i];
-			}
-
-			if (fixed_width < cx_avail && shrink_col_total > 0)
-			{
-				const auto shrink_avail = cx_avail - fixed_width;
-				for (int i = 1; i < col_count; i++)
-				{
-					if (!is_user_sized(i)) col_widths[i] = core::mul_div(shrink_avail, col_widths[i], shrink_col_total);
-				}
-			}
-			else
-			{
-				const auto unshrunk = total;
-				for (int i = 0; i < col_count; i++)
-				{
-					col_widths[i] = core::mul_div(cx_avail, col_widths[i], unshrunk);
-				}
-			}
-		}
-
-		// The last column takes whatever the others leave, so the table always reaches the view's right
-		// edge: a narrower column gives its room to the last, and a wider one takes it from there.
-		if (col_count > 0)
-		{
-			auto others = 0;
-			for (int i = 0; i < col_count - 1; i++) others += col_widths[i];
-			col_widths[col_count - 1] = std::max(0, _cx_col_avail - others);
-		}
+		const std::array<uint8_t, max_col_count> fixed{1};
+		_table_columns.layout(std::span(_content_col_widths, columns), _cx_col_avail, _min_col_width, mc.scale_factor,
+		                      true, std::span(fixed).first(columns));
+		std::ranges::copy(_table_columns.widths(), col_widths);
 
 		// Each divider sits in the middle of the gap between two columns, a grip either side of it.
 		const auto grip = std::max(mc.padding2 / 2, core::round(4 * mc.scale_factor));
@@ -679,7 +644,7 @@ public:
 		for (int i = 0; i < max_col_count - 1; i++)
 		{
 			_col_divider_bounds[i] = {};
-			if (i >= col_count - 1) continue;
+			if (i >= columns - 1) continue;
 
 			column_x += col_widths[i] + mc.padding2;
 			const auto divider_x = column_x - mc.padding2 / 2;
@@ -690,50 +655,37 @@ public:
 		_host->frame()->invalidate();
 	}
 
-	bool is_user_sized(const int col) const
-	{
-		return _user_col_widths[col] > 0.0;
-	}
+	bool is_user_sized(const int col) const { return _table_columns.user_sized(col); }
 
-	// How many of the titled columns the list lays out and draws.
-	int column_count() const
+	// How many of the titled columns the list lays out and draws: the review's, and the Status a finished
+	// run adds after them.
+	int column_count() const { return col_count + (_showing_results ? 1 : 0); }
+
+	// The headings over the columns column_count counts.
+	std::array<text_t, max_col_count> column_titles()
 	{
-		return col_count;
+		auto titles = col_titles();
+		if (_showing_results) titles[col_count] = tt.status;
+		return titles;
 	}
 
 	// What a resize can be taken back to: every column's width.
 	struct column_sizes
 	{
-		std::array<double, max_col_count> widths{};
+		ui::table_layout::columns::sizes widths;
 	};
 
-	column_sizes current_column_sizes() const
-	{
-		column_sizes result;
-		std::ranges::copy(_user_col_widths, result.widths.begin());
-		return result;
-	}
+	column_sizes current_column_sizes() const { return {_table_columns.user_sizes()}; }
 
 	void restore_column_sizes(const column_sizes& sizes)
 	{
-		std::ranges::copy(sizes.widths, _user_col_widths);
+		_table_columns.restore(sizes.widths);
 		_state.invalidate_view(view_invalid::view_layout);
 	}
 
 	// The widest a column can be: the room the columns have, less the columns before it and those
 	// after it the user sized, less the narrowest the others after it shrink to.
-	int max_col_width(const int col) const
-	{
-		auto taken = 0;
-
-		for (int i = 0; i < col_count; i++)
-		{
-			if (i == col) continue;
-			taken += i < col || is_user_sized(i) ? col_widths[i] : std::min(col_widths[i], _min_col_width);
-		}
-
-		return std::max(_min_col_width, _cx_col_avail - taken);
-	}
+	int max_col_width(const int col) const { return _table_columns.maximum(col); }
 
 	// Sizes one column, as a drag on the divider after it asks. Every column before this one is held as
 	// it is on screen, shrunk to fit or not, so the divider stays under the pointer, and this one goes no
@@ -741,26 +693,16 @@ public:
 	// takes up what it gives back, and makes the room it takes.
 	void resize_column(const int col, const int width)
 	{
-		if (col < 0 || col >= col_count - 1) return;
-
-		for (int i = 0; i < col; i++)
-		{
-			if (!is_user_sized(i)) _user_col_widths[i] = col_widths[i] / _scale_factor;
-		}
-
-		_user_col_widths[col] = std::clamp(width, _min_col_width, max_col_width(col)) / _scale_factor;
-		_state.invalidate_view(view_invalid::view_layout);
+		if (_table_columns.resize(col, width)) _state.invalidate_view(view_invalid::view_layout);
 	}
 
 	// Fits a column to its content, as far as the columns after it can make room.
 	void fit_column(const int col)
 	{
-		if (col >= 0 && col < col_count - 1) resize_column(col, _content_col_widths[col]);
+		if (_table_columns.fit(col)) _state.invalidate_view(view_invalid::view_layout);
 	}
 
-	void deactivate() override
-	{
-	}
+	void deactivate() override {}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, hit_test_context& ctx) override;
 
@@ -785,10 +727,10 @@ public:
 		return result;
 	}
 
-
 	void render_headers(render::draw_context& dc)
 	{
-		const auto titles = col_titles();
+		const auto columns = column_count();
+		const auto titles = column_titles();
 		const auto cy = dc.text_line_height(render::font_face::dialog) + dc.padding2 * 2;
 		const auto bg_alpha = dc.colors.alpha * 0.77f;
 		const auto text_color = core::color(dc.colors.foreground, dc.colors.alpha);
@@ -807,7 +749,7 @@ public:
 		{
 			auto xx = x;
 
-			for (int i = 0; i < col_count; ++i)
+			for (int i = 0; i < columns; ++i)
 			{
 				xx += col_widths[i] + dc.padding2;
 			}
@@ -819,7 +761,7 @@ public:
 			dc.draw_rect(header_bounds_right, header_bg);
 		}
 
-		for (int i = 0; i < col_count; ++i)
+		for (int i = 0; i < columns; ++i)
 		{
 			const auto cx = col_widths[i];
 			const recti col_header_bounds(x - dc.padding2, y, x + cx, y + cy);
@@ -827,14 +769,15 @@ public:
 
 			if (_header_active)
 			{
-				const core::color bg(core::darken(_header_active_num == i
-					                              ? ui::style::colors.dialog_selected_background
-					                              : dc.colors.background, 0.33f), bg_alpha);
+				const core::color bg(core::darken(_header_active_num == i ? ui::style::colors.dialog_selected_background
+				                                                          : dc.colors.background,
+				                                  0.33f),
+				                     bg_alpha);
 				dc.draw_rect(col_header_bounds, bg);
 			}
 
-			dc.draw_text(titles[i], col_header_text_bounds, render::font_face::dialog,
-			             render::text_style::single_line, text_color, {});
+			dc.draw_text(titles[i], col_header_text_bounds, render::font_face::dialog, render::text_style::single_line,
+			             text_color, {});
 
 			_col_header_bounds[i] = col_header_bounds;
 			x += cx + dc.padding2;
@@ -843,7 +786,7 @@ public:
 		// The dividers are drawn so the columns read as resizable: faintly, and plainly under the pointer.
 		const auto line_width = std::max(1, core::round(dc.scale_factor));
 
-		for (int i = 0; i < col_count - 1; ++i)
+		for (int i = 0; i < columns - 1; ++i)
 		{
 			const auto& divider = _col_divider_bounds[i];
 			if (divider.is_empty()) continue;
@@ -856,7 +799,7 @@ public:
 		}
 	}
 
-	void render(render::draw_context& rc, view_controller_ptr controller) override
+	void render(render::draw_context& rc, view_controller_ptr /*controller*/) override
 	{
 		const auto offset = -_scroller.scroll_offset();
 
@@ -880,13 +823,13 @@ public:
 			if (!message.empty())
 			{
 				const auto text_color = core::color(rc.colors.foreground, rc.colors.alpha);
-				rc.draw_text(message, recti(_extent), render::font_face::dialog,
-				             render::text_style::single_line_center, text_color, {});
+				rc.draw_text(message, recti(_extent), render::font_face::dialog, render::text_style::single_line_center,
+				             text_color, {});
 			}
 		}
 	}
 
-	bool mouse_wheel(const pointi loc, const platform::wheel_notch notch) override
+	bool mouse_wheel(const pointi /*loc*/, const platform::wheel_notch notch) override
 	{
 		if (!notch.is_vertical()) return false;
 		_scroller.offset(_host, 0, -notch.delta);
@@ -894,16 +837,34 @@ public:
 		return _scroller.can_scroll();
 	}
 
+	// The keys that scroll the review while it has the keyboard: the arrows by a row, Page Up and Page Down by what
+	// shows under the headings, Home and End to either end.
+	bool key_down(const char32_t key, const platform::key_state keys) override
+	{
+		if (keys.control || keys.alt) return false;
+
+		const auto page = std::max(_row_step, _scroller.client_bounds().height() - _band_height - _row_step);
+		const auto y = _scroller.scroll_offset().y;
+		int to;
+
+		if (key == platform::keys::UP) to = y - _row_step;
+		else if (key == platform::keys::DOWN) to = y + _row_step;
+		else if (key == platform::keys::PRIOR) to = y - page;
+		else if (key == platform::keys::NEXT) to = y + page;
+		else if (key == platform::keys::HOME) to = 0;
+		else if (key == platform::keys::END) to = std::numeric_limits<int>::max();
+		else return false;
+
+		_scroller.scroll_offset(_host, 0, to);
+		_state.invalidate_view(view_invalid::controller);
+		return true;
+	}
+
 	virtual text_t empty_message() { return {}; }
 
 	virtual std::array<text_t, max_col_count> col_titles()
 	{
-		return std::array<text_t, max_col_count>{
-			text_t{},
-			text_t{},
-			text_t{},
-			text_t{}
-		};
+		return std::array<text_t, max_col_count>{text_t{}, text_t{}, text_t{}, text_t{}};
 	};
 };
 
@@ -927,8 +888,8 @@ public:
 	                    std::function<void(size_t)> started,
 	                    std::function<void(std::string, std::vector<view_operation_result>)> completed) :
 		_async(async), _cancel_source(std::move(cancel_source)),
-		_cancel_version(_cancel_source ? _cancel_source->load() : 0),
-		_started(std::move(started)), _completed(std::move(completed))
+		_cancel_version(_cancel_source ? _cancel_source->load() : 0), _started(std::move(started)),
+		_completed(std::move(completed))
 	{
 	}
 
@@ -961,23 +922,16 @@ public:
 
 	bool has_failures() const override { return _has_failures; }
 
-	bool is_canceled() const override
-	{
-		return _cancel_source && _cancel_source->load() != _cancel_version;
-	}
+	bool is_canceled() const override { return _cancel_source && _cancel_source->load() != _cancel_version; }
 
 	void abort(const std::string_view message) override { finish(std::string(message)); }
 	void complete(const std::string_view message = {}) override { finish(std::string(message)); }
 	void show_errors() override { finish({}); }
 	void show_message(const std::string_view message) override { finish(std::string(message)); }
 
-	void message(std::string_view, int64_t, int64_t) override
-	{
-	}
+	void message(std::string_view, int64_t, int64_t) override {}
 
-	void wait_for_complete() const override
-	{
-	}
+	void wait_for_complete() const override {}
 
 private:
 	void publish_progress()
@@ -1002,9 +956,9 @@ private:
 		}
 		_async.queue_ui(
 			[self = shared_from_this(), message = std::move(message), results = std::move(results)]() mutable
-			{
-				if (self->_completed) self->_completed(std::move(message), std::move(results));
-			});
+		{
+			if (self->_completed) self->_completed(std::move(message), std::move(results));
+		});
 	}
 };
 
@@ -1014,20 +968,21 @@ inline std::shared_ptr<view_command_status> list_view::make_run_status(const std
                                                                        std::string review_status,
                                                                        std::shared_ptr<void> hold)
 {
-	return std::make_shared<view_command_status>(
-		view->_state._async, std::move(cancel_source),
-		[view, generation](const size_t index)
-		{
-			if (view->is_processing_generation(generation)) view->processing_work_item(index);
-		},
-		[view, generation, review_status = std::move(review_status), hold = std::move(hold)](
-		std::string message, const std::vector<view_operation_result>& results)
-		{
-			if (!view->is_processing_generation(generation)) return;
-			view->end_processing();
-			view->_status = conclude_run(view->show_results(results), std::move(message), review_status);
-			view->_state.invalidate_view(view_invalid::status | view_invalid::command_state);
-		});
+	return std::make_shared<view_command_status>(view->_state._async, std::move(cancel_source),
+	                                             [view, generation](const size_t index)
+	{
+		if (view->is_processing_generation(generation)) view->processing_work_item(index);
+	},
+	                                             [view, generation, review_status = std::move(review_status),
+	                                              hold = std::move(
+													  hold)](std::string message,
+	                                                         const std::vector<view_operation_result>& results)
+	{
+		if (!view->is_processing_generation(generation)) return;
+		view->end_processing();
+		view->_status = conclude_run(view->show_results(results), std::move(message), review_status);
+		view->_state.invalidate_view(view_invalid::status | view_invalid::command_state);
+	});
 }
 
 // The panel of a task view's controls: a column of elements beside the view, drawn in the view's own frame
@@ -1060,10 +1015,7 @@ public:
 
 	~view_controls_host() override = default;
 
-	pointi elements_offset() const
-	{
-		return -_scroller.scroll_offset();
-	}
+	pointi elements_offset() const { return -_scroller.scroll_offset(); }
 
 	virtual void layout_controls(render::measure_context& mc)
 	{
@@ -1164,56 +1116,27 @@ public:
 	}
 
 	// Drawn by the view's frame, never laid out or painted as a frame of its own.
-	void on_window_layout(render::measure_context& mc, const sizei extent, bool is_minimized) override
-	{
-	}
+	void on_window_layout(render::measure_context& /*mc*/, const sizei /*extent*/, bool /*is_minimized*/) override {}
 
-	void on_window_paint(render::draw_context& dc) override
-	{
-	}
+	void on_window_paint(render::draw_context& /*dc*/) override {}
 
-	void tick() override
-	{
-	}
+	void tick() override {}
 
-	void activate(bool is_active) override
-	{
-	}
+	void activate(bool /*is_active*/) override {}
 
-	bool key_down(const int c, const platform::key_state keys) override
-	{
-		return false;
-	}
+	bool key_down(const char32_t /*c*/, const platform::key_state /*keys*/) override { return false; }
 
-	const ui::frame_ptr frame() const override
-	{
-		return _frame ? _frame : ui::no_frame();
-	}
+	const ui::frame_ptr frame() const override { return _frame ? _frame : ui::no_frame(); }
 
-	const ui::frame_ptr owner() override
-	{
-		return frame();
-	}
+	const ui::frame_ptr owner() override { return frame(); }
 
-	void invoke(const commands cmd) override
-	{
-		_state.invoke(cmd);
-	}
+	void invoke(const commands cmd) override { _state.invoke(cmd); }
 
-	bool is_command_checked(const commands cmd) override
-	{
-		return _state.is_command_checked(cmd);
-	}
+	bool is_command_checked(const commands cmd) override { return _state.is_command_checked(cmd); }
 
-	void controller_changed() override
-	{
-		_state.invalidate_view(view_invalid::tooltip);
-	}
+	void controller_changed() override { _state.invalidate_view(view_invalid::tooltip); }
 
-	void invalidate_element(const view_element_ptr& e) override
-	{
-		frame()->invalidate(_bounds);
-	}
+	void invalidate_element(const view_element_ptr& /*e*/) override { frame()->invalidate(_bounds); }
 
 	view_controller_ptr controller_from_location(const pointi loc, hit_test_context& ctx) override
 	{
@@ -1236,7 +1159,8 @@ public:
 
 	// A wheel over something in the panel that scrolls - a list of results - turns that; elsewhere it
 	// scrolls the panel.
-	void on_mouse_wheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled) override
+	void on_mouse_wheel(const pointi loc, const int delta, const platform::key_state /*keys*/,
+	                    bool& was_handled) override
 	{
 		const auto offset = elements_offset();
 
@@ -1293,16 +1217,14 @@ public:
 		_state.command_hover(c, window_bounds);
 	}
 
+	// bounds are this frame's; the menu opens where they are on the screen, as the view frame's do.
 	void track_menu(const recti bounds, const std::vector<ui::command_ptr>& commands) override
 	{
 		const auto f = frame();
-		_state.track_menu(f, bounds.offset(f->window_bounds().top_left()), commands);
+		_state.track_menu(f, bounds.offset(f->client_to_screen({})), commands);
 	}
 
-	void invalidate_view(const view_invalid invalid) override
-	{
-		_state.invalidate_view(invalid);
-	}
+	void invalidate_view(const view_invalid invalid) override { _state.invalidate_view(invalid); }
 
 	void on_window_destroy() override
 	{
@@ -1335,28 +1257,20 @@ public:
 		_parent._header_active = false;
 	}
 
-	void draw(render::draw_context& rc) override
-	{
-	}
+	void draw(render::draw_context& /*rc*/) override {}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::link;
-	}
+	platform::cursor cursor() const override { return platform::cursor::link; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_last_loc = loc;
 		_parent._header_tracking = true;
 		_host->frame()->invalidate();
 	}
 
-	void on_mouse_move(const pointi loc) override
-	{
-		_last_loc = loc;
-	}
+	void on_mouse_move(const pointi loc) override { _last_loc = loc; }
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		_last_loc = loc;
 
@@ -1381,9 +1295,7 @@ public:
 		return true;
 	}
 
-	void popup_from_location(view_hover_element& hover) override
-	{
-	}
+	void popup_from_location(view_hover_element& /*hover*/) override {}
 };
 
 // Drags a column divider, which resizes the column before it as in a file browser's details view: the
@@ -1394,11 +1306,7 @@ class column_divider_controller final : public view_controller
 {
 	list_view& _parent;
 	int _col = 0;
-	bool _tracking = false;
-	bool _moved = false;
-	int _start_x = 0;
-	int _start_width = 0;
-	list_view::column_sizes _before;
+	ui::table_layout::resize_gesture _drag;
 
 public:
 	column_divider_controller(const view_host_ptr& host, list_view& parent, const recti bounds, const int col) :
@@ -1410,60 +1318,50 @@ public:
 
 	~column_divider_controller() override
 	{
-		if (_tracking) escape();
+		if (_drag.active()) escape();
 		_parent._divider_active = -1;
 		_host->frame()->invalidate();
 	}
 
-	platform::cursor cursor() const override
-	{
-		return platform::cursor::left_right;
-	}
+	platform::cursor cursor() const override { return platform::cursor::left_right; }
 
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
 	{
-		_tracking = true;
-		_moved = false;
-		_start_x = loc.x;
-		_start_width = _parent.col_widths[_col];
-		_before = _parent.current_column_sizes();
+		_drag.begin(_parent._table_columns, _col, loc.x);
 	}
 
 	void on_mouse_move(const pointi loc) override
 	{
-		if (!_tracking || (!_moved && loc.x == _start_x)) return;
-		_moved = true;
-		_parent.resize_column(_col, _start_width + loc.x - _start_x);
+		if (_drag.update(_parent._table_columns, loc.x)) _parent._state.invalidate_view(view_invalid::view_layout);
 	}
 
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
 	{
 		on_mouse_move(loc);
-		_tracking = false;
+		_drag.finish();
 	}
 
-	void on_mouse_left_button_double_click(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_double_click(const pointi /*loc*/, const platform::key_state /*keys*/) override
 	{
-		_tracking = false;
+		_drag.finish();
 		_parent.fit_column(_col);
 	}
 
 	bool escape() override
 	{
-		if (!_tracking) return false;
-		_tracking = false;
-		_parent.restore_column_sizes(_before);
+		if (!_drag.cancel(_parent._table_columns)) return false;
+		_parent._state.invalidate_view(view_invalid::view_layout);
 		return true;
 	}
 };
 
 inline view_controller_ptr list_view::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                              hit_test_context& ctx)
+                                                               hit_test_context& ctx)
 {
 	if (_progress.active) return nullptr;
 
 	// A divider sits over the edges of the headers either side of it, so it is found first.
-	for (int i = 0; i < col_count - 1 && !_rows.empty(); ++i)
+	for (int i = 0; i < column_count() - 1 && !_rows.empty(); ++i)
 	{
 		if (ctx.occluded(_col_divider_bounds[i]))
 		{
@@ -1471,7 +1369,7 @@ inline view_controller_ptr list_view::controller_from_location(const view_host_p
 		}
 	}
 
-	for (int i = 0; i < col_count; ++i)
+	for (int i = 0; i < column_count(); ++i)
 	{
 		if (ctx.occluded(_col_header_bounds[i]))
 		{

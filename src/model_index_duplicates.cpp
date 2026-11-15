@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Duplicate prediction and presence. Groups the index by identity - byte-identical CRC, then
 // perceptual hash within capture time and picture shape - to predict duplicate sets, asks for the
@@ -17,6 +16,7 @@
 #include "model_locations.h"
 #include "model_property.h"
 #include "model.h"
+#include "util_crash_files_db.h"
 #include "util_text.h"
 
 // Capture time is recorded to the second and cameras shoot faster than that. A picture that matches
@@ -43,7 +43,6 @@ constexpr uint64_t max_phash_file_bytes = core::max_blob_size;
 // clear the record's hash.
 std::function<void(const df::index_file_item& anchor)> test_after_duplicate_anchor;
 
-
 static auto next_dup_group = 1000u;
 
 // A set keeps the id one of its members already carries, unless another set has claimed that id this
@@ -52,8 +51,8 @@ static auto next_dup_group = 1000u;
 // matching nothing.
 template <typename RootOf, typename PreviousId>
 static core::hash_map<size_t, uint32_t> assign_group_ids(const size_t file_count, const RootOf& root_of,
-                                                       const core::hash_map<size_t, core::int_counter>& counts,
-                                                       const PreviousId& previous_id)
+                                                         const core::hash_map<size_t, core::int_counter>& counts,
+                                                         const PreviousId& previous_id)
 {
 	core::hash_map<size_t, uint32_t> ids;
 	core::hash_set<uint32_t> claimed;
@@ -82,7 +81,6 @@ static __forceinline uint32_t x64to32(const uint64_t n)
 	const auto result = (fnv_offset_basis ^ n) * fnv_prime;
 	return static_cast<uint32_t>(result);
 }
-
 
 std::vector<std::pair<core::file_path, df::index_file_item>> index_state::duplicate_list(const uint32_t group) const
 {
@@ -120,7 +118,6 @@ void index_state::update_predictions()
 	// crc32c
 	// the same picture at the same capture time, by perceptual hash
 
-
 	struct duplicate_candidate
 	{
 		const df::index_folder_item_ptr& folder;
@@ -146,10 +143,7 @@ void index_state::update_predictions()
 		size_t index = 0;
 		df::copy_grade grade = df::copy_grade::none;
 
-		auto key() const
-		{
-			return std::tie(kind, name, first, second);
-		}
+		auto key() const { return std::tie(kind, name, first, second); }
 	};
 
 	std::vector<duplicate_evidence> dups;
@@ -208,8 +202,8 @@ void index_state::update_predictions()
 		{
 			for (const auto& file : ifn.second->files)
 			{
-				_items.update_file(core::file_path(ifn.first, file.name), [](const df::index_folder_item_ptr&,
-				                                                           const df::index_file_item& current_file)
+				_items.update_file(core::file_path(ifn.first, file.name),
+				                   [](const df::index_folder_item_ptr&, const df::index_file_item& current_file)
 				{
 					if (current_file.exact_duplicate_group.load() == 0) return false;
 					current_file.exact_duplicate_group = 0;
@@ -220,9 +214,7 @@ void index_state::update_predictions()
 	}
 
 	std::ranges::sort(dups, [](const duplicate_evidence& left, const duplicate_evidence& right)
-	{
-		return left.key() < right.key();
-	});
+	{ return left.key() < right.key(); });
 
 	std::vector<size_t> parents(files.size());
 	std::vector<uint8_t> ranks(files.size());
@@ -296,9 +288,7 @@ void index_state::update_predictions()
 
 	const auto exact_component_groups = assign_group_ids(files.size(), find_root, exact_component_counts,
 	                                                     [&files](const size_t i)
-	                                                     {
-		                                                     return files[i].file->exact_duplicate_group.load();
-	                                                     });
+	{ return files[i].file->exact_duplicate_group.load(); });
 
 	for (auto i = 0u; i < files.size(); ++i)
 	{
@@ -306,7 +296,7 @@ void index_state::update_predictions()
 		const auto found = exact_component_groups.find(root);
 		const auto group = found == exact_component_groups.end() ? 0u : found->second;
 		_items.update_file(core::file_path(files[i].path, files[i].file->name),
-		                    [group](const df::index_folder_item_ptr&, const df::index_file_item& file)
+		                   [group](const df::index_folder_item_ptr&, const df::index_file_item& file)
 		{
 			if (file.exact_duplicate_group.load() == group) return false;
 			file.exact_duplicate_group = group;
@@ -458,9 +448,8 @@ void index_state::update_predictions()
 				auto held = files[member].file->phash.load();
 				if (!held || !held->is_usable()) continue;
 
-				if (anchor == files.size() ||
-					core::file_path(files[member].path, files[member].file->name) <
-					core::file_path(files[anchor].path, files[anchor].file->name))
+				if (anchor == files.size() || core::file_path(files[member].path, files[member].file->name) <
+				                                  core::file_path(files[anchor].path, files[anchor].file->name))
 				{
 					anchor = member;
 					anchor_hashes = std::move(held);
@@ -567,11 +556,8 @@ void index_state::update_predictions()
 		++component_counts[find_root(i)];
 	}
 
-	const auto component_groups = assign_group_ids(files.size(), find_root, component_counts,
-	                                               [&files](const size_t i)
-	                                               {
-		                                               return files[i].file->duplicates.load().group;
-	                                               });
+	const auto component_groups = assign_group_ids(files.size(), find_root, component_counts, [&files](const size_t i)
+	{ return files[i].file->duplicates.load().group; });
 
 	auto duplicates_changed = false;
 
@@ -590,13 +576,14 @@ void index_state::update_predictions()
 		{
 			const auto existing = file.duplicates.load();
 			if (existing.count == dup_info.count && existing.group == dup_info.group &&
-				existing.grade == dup_info.grade && existing.same_picture_crowded == dup_info.same_picture_crowded)
+			    existing.grade == dup_info.grade && existing.same_picture_crowded == dup_info.same_picture_crowded)
 			{
 				return false;
 			}
 			file.update_duplicates(folder, dup_info);
 			return true;
-		}, index_items::file_change::derived);
+		},
+		                                         index_items::file_change::derived);
 	}
 
 	stats.indexed_dup_folder_count = static_cast<int>(component_groups.size());
@@ -646,10 +633,16 @@ void index_state::queue_calc_perceptual_hashes(std::vector<phash_request> reques
 			crypto::phash_rotations hash{};
 			auto readable = false;
 
+			// A file on the crash list faulted the process while it was open, so decoding it here would
+			// repeat that crash on every launch. It is declined unread, and the refusal is not stored.
+			const auto known_crash = crash_files().is_known_crash_file(path);
+
+			if (!known_crash)
 			{
 				core::scope_locked_inc loading(df::loading_media);
 				core::perf_timer timer(df::index_perf.phash_us, &df::index_perf.phash_max_us);
 				core::bump(df::index_perf.phash_computed);
+				record_open_path record(crash_files(), path, "queue_calc_perceptual_hashes");
 				file_read_stream stream;
 
 				if (stream.open(path) && stream.size() <= max_phash_file_bytes)
@@ -675,7 +668,8 @@ void index_state::queue_calc_perceptual_hashes(std::vector<phash_request> reques
 			}
 			else
 			{
-				hashed.emplace_back(path, request.revision, crypto::phash_rotations{crypto::phash_declined, 0, 0, 0});
+				hashed.emplace_back(path, request.revision, crypto::phash_rotations{crypto::phash_declined, 0, 0, 0},
+				                    !known_crash);
 				if (readable) core::bump(df::index_perf.phash_declined);
 			}
 
@@ -747,17 +741,15 @@ static df::copy_grade dup_match_grade(const df::index_file_item& file, const pre
 
 	const auto name_match = icmp(file.name, other.path.name()) == 0;
 
-	if (name_match && file.ft->has_trait(file_traits::av) &&
-		file.size.to_int64() != 0 && other.size.to_int64() != 0 &&
-		file.size == other.size)
+	if (name_match && file.ft->has_trait(file_traits::av) && file.size.to_int64() != 0 && other.size.to_int64() != 0 &&
+	    file.size == other.size)
 	{
 		return df::copy_grade::same_file;
 	}
 
 	const auto created = file.created();
-	return name_match && created.is_valid() && created == other.media_created
-		       ? df::copy_grade::same_file
-		       : df::copy_grade::none;
+	return name_match && created.is_valid() && created == other.media_created ? df::copy_grade::same_file
+	                                                                          : df::copy_grade::none;
 }
 
 // An outside file the cheap grades could not place, held until the walk is over because deciding it
@@ -772,7 +764,6 @@ struct presence_similar_candidate
 	df::duplicate_info duplicates;
 	sizei dimensions;
 };
-
 
 static void items_possible_hashes_contains(std::vector<presence_match>& matches,
                                            const std::vector<std::pair<unsigned, size_t>>& possible,
@@ -792,7 +783,7 @@ static void items_possible_hashes_contains(std::vector<presence_match>& matches,
 			auto candidate = item_presence::unknown;
 
 			if (indexed_file.file_modified == request.file_modified ||
-				(indexed_file.crc32c != 0 && indexed_file.crc32c == request.crc32c))
+			    (indexed_file.crc32c != 0 && indexed_file.crc32c == request.crc32c))
 			{
 				candidate = item_presence::similar_in;
 			}
@@ -809,7 +800,7 @@ static void items_possible_hashes_contains(std::vector<presence_match>& matches,
 			duplicates.grade = grade;
 			auto& current = matches[request_index];
 			if (presence_rank(candidate) > presence_rank(current.state) ||
-				(candidate == current.state && prefer_duplicate_info(duplicates, current.duplicates)))
+			    (candidate == current.state && prefer_duplicate_info(duplicates, current.duplicates)))
 			{
 				current.state = candidate;
 				current.duplicates = duplicates;
@@ -829,10 +820,7 @@ static void resolve_similar_presence(index_state& index, const std::vector<prese
 {
 	if (candidates.empty()) return;
 
-	std::ranges::sort(candidates, [](auto&& left, auto&& right)
-	{
-		return left.request_index < right.request_index;
-	});
+	std::ranges::sort(candidates, [](auto&& left, auto&& right) { return left.request_index < right.request_index; });
 
 	files decoder;
 
@@ -844,6 +832,15 @@ static void resolve_similar_presence(index_state& index, const std::vector<prese
 	{
 		if (known[0] != 0) return known;
 
+		// As in the predictions pass, a file on the crash list is declined unread and the refusal is
+		// published without being stored.
+		if (crash_files().is_known_crash_file(path))
+		{
+			const crypto::phash_rotations declined{crypto::phash_declined, 0, 0, 0};
+			index.save_phash(path, revision, declined, false);
+			return declined;
+		}
+
 		crypto::phash_rotations hash{};
 
 		{
@@ -851,6 +848,7 @@ static void resolve_similar_presence(index_state& index, const std::vector<prese
 			core::perf_timer timer(df::index_perf.phash_us, &df::index_perf.phash_max_us);
 			core::bump(df::index_perf.phash_computed);
 			core::bump(df::index_perf.phash_presence);
+			record_open_path record(crash_files(), path, "resolve_similar_presence");
 			file_read_stream stream;
 
 			if (stream.open(path) && stream.size() <= max_phash_file_bytes)
@@ -858,9 +856,8 @@ static void resolve_similar_presence(index_state& index, const std::vector<prese
 				core::blob owner;
 				core::bump(df::index_perf.phash_bytes, stream.size());
 				hash = decoder.calc_perceptual_hash_rotations(stream.view_all(owner));
-				core::bump(crypto::phash_is_usable(hash[0])
-					         ? df::index_perf.phash_usable
-					         : df::index_perf.phash_declined);
+				core::bump(crypto::phash_is_usable(hash[0]) ? df::index_perf.phash_usable
+				                                            : df::index_perf.phash_declined);
 			}
 			else
 			{
@@ -908,8 +905,7 @@ static void resolve_similar_presence(index_state& index, const std::vector<prese
 					// Shape narrows before the picture is decoded, exactly as duplicate search does.
 					if (!same_picture_shape(request.dimensions, candidate->dimensions)) continue;
 
-					const auto candidate_hash = hash_of(candidate->path,
-					                                    {candidate->file_modified, candidate->size},
+					const auto candidate_hash = hash_of(candidate->path, {candidate->file_modified, candidate->size},
 					                                    candidate->phash);
 
 					if (!crypto::phash_is_usable(candidate_hash[0])) continue;
@@ -933,8 +929,7 @@ static void resolve_similar_presence(index_state& index, const std::vector<prese
 						auto state = item_presence::similar_in;
 
 						if (candidate->file_modified < request.file_modified) state = item_presence::older_in;
-						else if (candidate->file_modified > request.file_modified)
-							state = item_presence::newer_in;
+						else if (candidate->file_modified > request.file_modified) state = item_presence::newer_in;
 
 						auto duplicates = candidate->duplicates;
 						duplicates.grade = df::copy_grade::same_picture;
@@ -965,9 +960,8 @@ void index_state::queue_update_presence(const df::item_set& items)
 	{
 		const auto ft = item->file_type();
 		const auto md = item->metadata();
-		requests.emplace_back(item, item->path(), item->file_size(), item->file_modified(),
-		                      item->media_created(), item->crc32c(), item->is_folder(),
-		                      ft && ft->has_trait(file_traits::bitmap),
+		requests.emplace_back(item, item->path(), item->file_size(), item->file_modified(), item->media_created(),
+		                      item->crc32c(), item->is_folder(), ft && ft->has_trait(file_traits::bitmap),
 		                      md ? md->dimensions() : sizei{});
 	}
 
@@ -1035,10 +1029,8 @@ void index_state::queue_update_presence(const df::item_set& items)
 
 		if (!items_possible_hashes.empty())
 		{
-			std::ranges::sort(items_possible_hashes, [](auto&& left, auto&& right)
-			{
-				return left.first < right.first;
-			});
+			std::ranges::sort(items_possible_hashes,
+			                  [](auto&& left, auto&& right) { return left.first < right.first; });
 			const auto folders = _items.all_folders();
 
 			for (const auto& ifn : folders)
@@ -1049,8 +1041,7 @@ void index_state::queue_update_presence(const df::item_set& items)
 					{
 						if (file.crc32c)
 						{
-							items_possible_hashes_contains(matches, items_possible_hashes, requests, file,
-							                               file.crc32c);
+							items_possible_hashes_contains(matches, items_possible_hashes, requests, file, file.crc32c);
 						}
 
 						const auto created_date = file.created();
@@ -1063,7 +1054,7 @@ void index_state::queue_update_presence(const df::item_set& items)
 							const auto shares_time = requests_by_capture_time.find(created_date.to_int64());
 
 							if (shares_time != requests_by_capture_time.end() &&
-								file.ft->has_trait(file_traits::bitmap))
+							    file.ft->has_trait(file_traits::bitmap))
 							{
 								const auto held = file.phash.load();
 								const auto rotations = held ? held->rotations : crypto::phash_rotations{};
@@ -1073,12 +1064,9 @@ void index_state::queue_update_presence(const df::item_set& items)
 								for (const auto request_index : shares_time->second)
 								{
 									similar_candidates.emplace_back(request_index,
-									                                core::file_path(ifn.first, file.name),
-									                                rotations,
-									                                file.file_modified.load(),
-									                                file.size.to_int64(),
-									                                file.duplicates.load(),
-									                                file_dims);
+									                                core::file_path(ifn.first, file.name), rotations,
+									                                file.file_modified.load(), file.size.to_int64(),
+									                                file.duplicates.load(), file_dims);
 								}
 							}
 						}
@@ -1112,7 +1100,7 @@ void index_state::queue_update_presence(const df::item_set& items)
 					{
 						const auto file = find_file(folder->files, request.path.name());
 						evidence_complete = file != folder->files.end() &&
-							!needs_scan_impl(folder, *file, false, false);
+						                    !needs_scan_impl(folder, *file, false, false);
 					}
 				}
 				match.state = evidence_complete ? item_presence::not_in : item_presence::unknown;
@@ -1135,8 +1123,8 @@ void index_state::queue_update_presence(const df::item_set& items)
 			{
 				const auto item = result.source.lifetime.lock();
 				if (!item || item->path() != result.source.path || item->file_size() != result.source.size ||
-					item->file_modified() != result.source.file_modified ||
-					item->media_created() != result.source.media_created || item->crc32c() != result.source.crc32c)
+				    item->file_modified() != result.source.file_modified ||
+				    item->media_created() != result.source.media_created || item->crc32c() != result.source.crc32c)
 				{
 					continue;
 				}

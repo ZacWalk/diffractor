@@ -3667,8 +3667,8 @@ msgstr "Orijinal tarihe göre sırala"
 msgid "Movie mixer"
 msgstr "Film karıştırıcı"
 
-msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
-msgstr "Seçili fotoğrafları ve videoları tek bir videoda birleştirin. Aşağıdaki şeritte klip ekleyin, kaldırın ve sıralarını değiştirin, seçili klibi kırpın. Önizleme, işlenecek olanın aynısıdır; siz işleyene veya kaydedene kadar hiçbir şey yazılmaz."
+msgid "Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "Seçili fotoğrafları, videoları ve ses dosyalarını, istediğiniz yerlere metin ekranları koyarak tek bir videoda birleştirin. Aşağıdaki şeritte öge ekleyin, kaldırın ve sıralarını değiştirin, seçili ögeyi burada düzenleyin. Önizleme, işlenecek olanın aynısıdır; siz işleyene veya kaydedene kadar hiçbir şey yazılmaz."
 
 msgid "Movie"
 msgstr "Film"
@@ -3676,50 +3676,38 @@ msgstr "Film"
 msgid "Selected clip"
 msgstr "Seçili klip"
 
-msgid "Crossfade between clips"
-msgstr "Klipler arasında çapraz geçiş"
+msgid "Text screen"
+msgstr "Metin ekranı"
 
-msgid "Cut between clips"
-msgstr "Klipler arasında kesme"
+msgid "Text"
+msgstr "Metin"
 
-msgid "Transition (tenths of a second)"
-msgstr "Geçiş (saniyenin onda biri)"
+msgid "Caption"
+msgstr "Altyazı"
 
-msgid "Fade (tenths of a second)"
-msgstr "Açılma/kararma (saniyenin onda biri)"
+msgid "Shown for (tenths of a second)"
+msgstr "Gösterim süresi (saniyenin onda biri)"
 
-msgid "Fade in from black"
-msgstr "Siyahtan aç"
+msgid "Stabilize (not applied yet)"
+msgstr "Sabitle (henüz uygulanmıyor)"
 
-msgid "Fade out to black"
-msgstr "Siyaha karart"
-
-msgid "Photo duration (tenths of a second)"
-msgstr "Fotoğraf süresi (saniyenin onda biri)"
-
-msgid "This photo (tenths of a second)"
-msgstr "Bu fotoğraf (saniyenin onda biri)"
-
-msgid "Use the movie default"
-msgstr "Film varsayılanını kullan"
-
-msgid "Add photos and videos to build a movie."
-msgstr "Film oluşturmak için fotoğraf ve video ekleyin."
+msgid "Add photos, videos and audio files to build a movie."
+msgstr "Film oluşturmak için fotoğraf, video ve ses dosyası ekleyin."
 
 msgid "Output {} x {} at {} fps, {} long."
 msgstr "Çıktı {} x {}, {} fps, süre {}."
 
-msgid "{} - clip {} of {}, starting at {}."
-msgstr "{} - klip {}/{}, başlangıç {}."
+msgid "{} - item {} of {}, starting at {}."
+msgstr "{} - öge {}/{}, başlangıç {}."
+
+msgid "Item {} of {}, starting at {}."
+msgstr "Öge {}/{}, başlangıç {}."
 
 msgid "Movie project"
 msgstr "Film projesi"
 
-msgid "Windows Movie Maker project"
-msgstr "Windows Movie Maker projesi"
-
-msgid "Photos and videos"
-msgstr "Fotoğraflar ve videolar"
+msgid "Photos, videos and audio"
+msgstr "Fotoğraflar, videolar ve ses"
 
 msgid "Could not read the project {}."
 msgstr "{} projesi okunamadı."
@@ -3727,11 +3715,17 @@ msgstr "{} projesi okunamadı."
 msgid "Could not save the project {}."
 msgstr "{} projesi kaydedilemedi."
 
-msgid "Assemble the selected photos and videos into one video."
-msgstr "Seçili fotoğrafları ve videoları tek bir videoda birleştirir."
+msgid "Assemble the selected photos, videos and audio files into one video."
+msgstr "Seçili fotoğrafları, videoları ve ses dosyalarını tek bir videoda birleştirir."
 
 msgid "Add files"
 msgstr "Dosya ekle"
+
+msgid "Add text screen"
+msgstr "Metin ekranı ekle"
+
+msgid "Add a screen of text on black after the selected item."
+msgstr "Seçili ögeden sonra siyah üzerine metin içeren bir ekran ekler."
 
 msgid "Remove from movie"
 msgstr "Filmden kaldır"
@@ -3744,9 +3738,6 @@ msgstr "Projeyi aç"
 
 msgid "Save project"
 msgstr "Projeyi kaydet"
-
-msgid "Import Movie Maker project"
-msgstr "Movie Maker projesini içe aktar"
 
 msgid "Video"
 msgstr "Video"
@@ -3802,24 +3793,52 @@ msgstr "Eksik dosyaları yeniden bağla"
 msgid "Point clips whose source file has moved at a folder you choose."
 msgstr "Kaynak dosyası taşınmış klipleri seçtiğiniz bir klasöre yönlendirir."
 
-msgid "1 element of the imported project was left out because Movie cannot represent it."
-msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
-msgstr[0] "İçe aktarılan projenin 1 ögesi, Film onu temsil edemediği için dışarıda bırakıldı."
-msgstr[1] "İçe aktarılan projenin {count} ögesi, Film onları temsil edemediği için dışarıda bırakıldı."
+msgid "1 line of the project could not be read and was left out."
+msgid_plural "{count} lines of the project could not be read and were left out."
+msgstr[0] "Projenin 1 satırı okunamadı ve dışarıda bırakıldı."
+msgstr[1] "Projenin {count} satırı okunamadı ve dışarıda bırakıldı."
 
 msgid "1 clip cannot find its source file."
 msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "1 klip kaynak dosyasını bulamıyor."
 msgstr[1] "{count} klip kaynak dosyalarını bulamıyor."
 
-msgid "1 clip was relinked."
-msgid_plural "{count} clips were relinked."
-msgstr[0] "1 klip yeniden bağlandı."
-msgstr[1] "{count} klip yeniden bağlandı."
 
+msgid "Pattern"
+msgstr "Desen"
 
-msgid "SID monitor"
-msgstr "SID izleyici"
+msgid "Row"
+msgstr "Satır"
+
+msgid "Speed"
+msgstr "Hız"
+
+msgid "Samples"
+msgstr "Örnekler"
+
+msgid "Instruments"
+msgstr "Enstrümanlar"
+
+msgid "Follow playback"
+msgstr "Oynatmayı takip et"
+
+msgid "Notes"
+msgstr "Notalar"
+
+msgid "Range"
+msgstr "Ses aralığı"
+
+msgid "Compressed"
+msgstr "Sıkıştırılmış"
+
+msgid "Codec"
+msgstr "Codec"
+
+msgid "Format"
+msgstr "Format"
+
+msgid "Sidecars"
+msgstr "Yan dosyalar"
 
 msgid "Voice {}"
 msgstr "Ses {}"
@@ -3838,6 +3857,21 @@ msgstr "Yazmaç yazmaları"
 
 msgid "Solo"
 msgstr "Solo"
+
+msgid "Run on an emulated Commodore 64"
+msgstr "Öykünülen bir Commodore 64'te çalıştır"
+
+msgid "Start"
+msgstr "Başlat"
+
+msgid "Joystick port {}"
+msgstr "Joystick bağlantı noktası {}"
+
+msgid "Arrow keys and Space: joystick. Esc: back."
+msgstr "Ok tuşları ve Boşluk: joystick. Esc: geri."
+
+msgid "This file could not be started."
+msgstr "Bu dosya başlatılamadı."
 
 msgid "Same film"
 msgstr "Aynı film"

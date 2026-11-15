@@ -3665,8 +3665,8 @@ msgstr "원본 날짜를 기준으로 정렬"
 msgid "Movie mixer"
 msgstr "동영상 믹서"
 
-msgid "Assemble the selected photos and videos into one video. Add, remove and reorder clips on the strip below, and trim the selected one. The preview is what will be rendered; nothing is written until you render or save."
-msgstr "선택한 사진과 동영상을 하나의 동영상으로 구성합니다. 아래 스트립에서 클립을 추가, 제거, 재정렬하고 선택한 클립을 자를 수 있습니다. 미리 보기는 렌더링 결과와 같으며, 렌더링하거나 저장하기 전까지는 아무것도 기록되지 않습니다."
+msgid "Assemble the selected photos, videos and audio files into one video, with screens of text where you want them. Add, remove and reorder items on the strip below, and edit the selected one here. The preview is what will be rendered; nothing is written until you render or save."
+msgstr "선택한 사진, 동영상, 오디오 파일을 하나의 동영상으로 구성하고 원하는 곳에 텍스트 화면을 넣습니다. 아래 스트립에서 항목을 추가, 제거, 재정렬하고 선택한 항목을 여기서 편집할 수 있습니다. 미리 보기는 렌더링 결과와 같으며, 렌더링하거나 저장하기 전까지는 아무것도 기록되지 않습니다."
 
 msgid "Movie"
 msgstr "동영상"
@@ -3674,50 +3674,38 @@ msgstr "동영상"
 msgid "Selected clip"
 msgstr "선택한 클립"
 
-msgid "Crossfade between clips"
-msgstr "클립 사이 크로스페이드"
+msgid "Text screen"
+msgstr "텍스트 화면"
 
-msgid "Cut between clips"
-msgstr "클립 사이 컷"
+msgid "Text"
+msgstr "텍스트"
 
-msgid "Transition (tenths of a second)"
-msgstr "전환 (10분의 1초)"
+msgid "Caption"
+msgstr "캡션"
 
-msgid "Fade (tenths of a second)"
-msgstr "페이드 (10분의 1초)"
+msgid "Shown for (tenths of a second)"
+msgstr "표시 시간 (10분의 1초)"
 
-msgid "Fade in from black"
-msgstr "검은 화면에서 페이드 인"
+msgid "Stabilize (not applied yet)"
+msgstr "흔들림 보정 (아직 적용되지 않음)"
 
-msgid "Fade out to black"
-msgstr "검은 화면으로 페이드 아웃"
-
-msgid "Photo duration (tenths of a second)"
-msgstr "사진 표시 시간 (10분의 1초)"
-
-msgid "This photo (tenths of a second)"
-msgstr "이 사진 (10분의 1초)"
-
-msgid "Use the movie default"
-msgstr "동영상 기본값 사용"
-
-msgid "Add photos and videos to build a movie."
-msgstr "사진과 동영상을 추가하여 동영상을 만드세요."
+msgid "Add photos, videos and audio files to build a movie."
+msgstr "사진, 동영상, 오디오 파일을 추가하여 동영상을 만드세요."
 
 msgid "Output {} x {} at {} fps, {} long."
 msgstr "출력 {} x {}, {} fps, 길이 {}."
 
-msgid "{} - clip {} of {}, starting at {}."
-msgstr "{} - {}/{}번째 클립, 시작 {}."
+msgid "{} - item {} of {}, starting at {}."
+msgstr "{} - {}/{}번째 항목, 시작 {}."
+
+msgid "Item {} of {}, starting at {}."
+msgstr "{}/{}번째 항목, 시작 {}."
 
 msgid "Movie project"
 msgstr "동영상 프로젝트"
 
-msgid "Windows Movie Maker project"
-msgstr "Windows Movie Maker 프로젝트"
-
-msgid "Photos and videos"
-msgstr "사진 및 동영상"
+msgid "Photos, videos and audio"
+msgstr "사진, 동영상 및 오디오"
 
 msgid "Could not read the project {}."
 msgstr "프로젝트 {}을(를) 읽을 수 없습니다."
@@ -3725,11 +3713,17 @@ msgstr "프로젝트 {}을(를) 읽을 수 없습니다."
 msgid "Could not save the project {}."
 msgstr "프로젝트 {}을(를) 저장할 수 없습니다."
 
-msgid "Assemble the selected photos and videos into one video."
-msgstr "선택한 사진과 동영상을 하나의 동영상으로 구성합니다."
+msgid "Assemble the selected photos, videos and audio files into one video."
+msgstr "선택한 사진, 동영상, 오디오 파일을 하나의 동영상으로 구성합니다."
 
 msgid "Add files"
 msgstr "파일 추가"
+
+msgid "Add text screen"
+msgstr "텍스트 화면 추가"
+
+msgid "Add a screen of text on black after the selected item."
+msgstr "선택한 항목 뒤에 검은 배경의 텍스트 화면을 추가합니다."
 
 msgid "Remove from movie"
 msgstr "동영상에서 제거"
@@ -3742,9 +3736,6 @@ msgstr "프로젝트 열기"
 
 msgid "Save project"
 msgstr "프로젝트 저장"
-
-msgid "Import Movie Maker project"
-msgstr "Movie Maker 프로젝트 가져오기"
 
 msgid "Video"
 msgstr "동영상"
@@ -3800,24 +3791,52 @@ msgstr "누락된 파일 다시 연결"
 msgid "Point clips whose source file has moved at a folder you choose."
 msgstr "원본 파일이 이동한 클립을 선택한 폴더로 다시 지정합니다."
 
-msgid "1 element of the imported project was left out because Movie cannot represent it."
-msgid_plural "{count} elements of the imported project were left out because Movie cannot represent them."
-msgstr[0] "가져온 프로젝트의 요소 1개는 동영상에서 표현할 수 없어 제외했습니다."
-msgstr[1] "가져온 프로젝트의 요소 {count}개는 동영상에서 표현할 수 없어 제외했습니다."
+msgid "1 line of the project could not be read and was left out."
+msgid_plural "{count} lines of the project could not be read and were left out."
+msgstr[0] "프로젝트의 1줄을 읽을 수 없어 제외했습니다."
+msgstr[1] "프로젝트의 {count}줄을 읽을 수 없어 제외했습니다."
 
 msgid "1 clip cannot find its source file."
 msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "클립 1개가 원본 파일을 찾지 못했습니다."
 msgstr[1] "클립 {count}개가 원본 파일을 찾지 못했습니다."
 
-msgid "1 clip was relinked."
-msgid_plural "{count} clips were relinked."
-msgstr[0] "클립 1개를 다시 연결했습니다."
-msgstr[1] "클립 {count}개를 다시 연결했습니다."
 
+msgid "Pattern"
+msgstr "패턴"
 
-msgid "SID monitor"
-msgstr "SID 모니터"
+msgid "Row"
+msgstr "행"
+
+msgid "Speed"
+msgstr "속도"
+
+msgid "Samples"
+msgstr "샘플"
+
+msgid "Instruments"
+msgstr "악기"
+
+msgid "Follow playback"
+msgstr "재생 위치 따라가기"
+
+msgid "Notes"
+msgstr "음표"
+
+msgid "Range"
+msgstr "음역"
+
+msgid "Compressed"
+msgstr "압축 크기"
+
+msgid "Codec"
+msgstr "코덱"
+
+msgid "Format"
+msgstr "형식"
+
+msgid "Sidecars"
+msgstr "사이드카"
 
 msgid "Voice {}"
 msgstr "보이스 {}"
@@ -3836,6 +3855,21 @@ msgstr "레지스터 쓰기"
 
 msgid "Solo"
 msgstr "솔로"
+
+msgid "Run on an emulated Commodore 64"
+msgstr "에뮬레이션된 Commodore 64에서 실행"
+
+msgid "Start"
+msgstr "시작"
+
+msgid "Joystick port {}"
+msgstr "조이스틱 포트 {}"
+
+msgid "Arrow keys and Space: joystick. Esc: back."
+msgstr "화살표 키와 스페이스: 조이스틱. Esc: 뒤로."
+
+msgid "This file could not be started."
+msgstr "이 파일을 시작할 수 없습니다."
 
 msgid "Same film"
 msgstr "같은 영화"

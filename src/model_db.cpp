@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: SQLite database layer. Manages persistent storage of indexed file metadata,
 // thumbnails, and application state using SQLite database.
@@ -15,6 +14,7 @@
 
 #include "files.h"
 #include "model_db.h"
+#include "av_tracker.h"
 
 #include "model.h"
 #include "model_db_pack.h"
@@ -35,11 +35,8 @@ inline void db_trace_error(sqlite3* db, const std::string_view sql)
 	case SQLITE_BUSY:
 	case SQLITE_LOCKED:
 	case SQLITE_INTERRUPT:
-	case SQLITE_CONSTRAINT:
-		break;
-	default:
-		db_fails.fetch_add(1);
-		break;
+	case SQLITE_CONSTRAINT: break;
+	default: db_fails.fetch_add(1); break;
 	}
 }
 
@@ -61,10 +58,7 @@ class db_statement
 	sqlite3_stmt* _handle;
 
 public:
-	db_statement(sqlite3* db, const std::string& sql) : _db(db), _handle(nullptr)
-	{
-		compile(sql);
-	}
+	db_statement(sqlite3* db, const std::string& sql) : _db(db), _handle(nullptr) { compile(sql); }
 
 	~db_statement()
 	{
@@ -73,8 +67,7 @@ public:
 			const int ret = sqlite3_finalize(_handle);
 			_handle = nullptr;
 
-			if (ret != SQLITE_OK)
-				db_trace_error(_db, "sqlite3_finalize");
+			if (ret != SQLITE_OK) db_trace_error(_db, "sqlite3_finalize");
 		}
 	}
 
@@ -83,27 +76,21 @@ public:
 		const int ret = sqlite3_prepare_v2(_db, std::bit_cast<const char*>(sql.data()), static_cast<int>(sql.size()),
 		                                   &_handle, nullptr);
 
-		if (ret != SQLITE_OK)
-			db_trace_error(_db, "sqlite3_prepare_v2");
+		if (ret != SQLITE_OK) db_trace_error(_db, "sqlite3_prepare_v2");
 	}
 
 	// False when the statement failed to compile. Every accessor below is then a silent no-op,
 	// so a caller that must not mistake "no rows" for "could not ask" has to check this.
-	bool is_valid() const
-	{
-		return _handle != nullptr;
-	}
+	bool is_valid() const { return _handle != nullptr; }
 
 	void bind(const int i, const std::string_view v) const
 	{
 		if (_handle != nullptr)
 		{
 			const int ret = sqlite3_bind_text(_handle, i, std::bit_cast<const char*>(v.data()),
-			                                  static_cast<int>(v.size()),
-			                                  SQLITE_STATIC);
+			                                  static_cast<int>(v.size()), SQLITE_STATIC);
 
-			if (ret != SQLITE_OK)
-				db_trace_error(_db, std::format("sqlite3_bind_text {} {}", i, v));
+			if (ret != SQLITE_OK) db_trace_error(_db, std::format("sqlite3_bind_text {} {}", i, v));
 		}
 	}
 
@@ -113,8 +100,7 @@ public:
 		{
 			const int ret = sqlite3_bind_int(_handle, i, n);
 
-			if (ret != SQLITE_OK)
-				db_trace_error(_db, std::format("sqlite3_bind_int {} {}", i, n));
+			if (ret != SQLITE_OK) db_trace_error(_db, std::format("sqlite3_bind_int {} {}", i, n));
 		}
 	}
 
@@ -131,8 +117,7 @@ public:
 
 			const int ret = sqlite3_bind_int(_handle, i, static_cast<int>(n));
 
-			if (ret != SQLITE_OK)
-				db_trace_error(_db, std::format("sqlite3_bind_int {} {}", i, n));
+			if (ret != SQLITE_OK) db_trace_error(_db, std::format("sqlite3_bind_int {} {}", i, n));
 		}
 	}
 
@@ -142,8 +127,7 @@ public:
 		{
 			const int ret = sqlite3_bind_double(_handle, i, n);
 
-			if (ret != SQLITE_OK)
-				db_trace_error(_db, std::format("sqlite3_bind_double {} {}", i, n));
+			if (ret != SQLITE_OK) db_trace_error(_db, std::format("sqlite3_bind_double {} {}", i, n));
 		}
 	}
 
@@ -153,8 +137,7 @@ public:
 		{
 			const int ret = sqlite3_bind_int64(_handle, i, n);
 
-			if (ret != SQLITE_OK)
-				db_trace_error(_db, std::format("sqlite3_bind_int64 {} {}", i, n));
+			if (ret != SQLITE_OK) db_trace_error(_db, std::format("sqlite3_bind_int64 {} {}", i, n));
 		}
 	}
 
@@ -171,8 +154,7 @@ public:
 
 			const int ret = sqlite3_bind_int64(_handle, i, static_cast<sqlite3_int64>(n));
 
-			if (ret != SQLITE_OK)
-				db_trace_error(_db, std::format("sqlite3_bind_int64 {} {}", i, n));
+			if (ret != SQLITE_OK) db_trace_error(_db, std::format("sqlite3_bind_int64 {} {}", i, n));
 		}
 	}
 
@@ -182,8 +164,7 @@ public:
 		{
 			const int ret = sqlite3_bind_blob(_handle, i, cs.data, static_cast<int>(cs.size), SQLITE_STATIC);
 
-			if (ret != SQLITE_OK)
-				db_trace_error(_db, std::format("sqlite3_bind_blob {}", i));
+			if (ret != SQLITE_OK) db_trace_error(_db, std::format("sqlite3_bind_blob {}", i));
 		}
 	}
 
@@ -191,8 +172,7 @@ public:
 	{
 		if (_handle != nullptr)
 		{
-			if (sqlite3_bind_null(_handle, i) != SQLITE_OK)
-				db_trace_error(_db, std::format("sqlite3_bind_null {}", i));
+			if (sqlite3_bind_null(_handle, i) != SQLITE_OK) db_trace_error(_db, std::format("sqlite3_bind_null {}", i));
 		}
 	}
 
@@ -200,11 +180,9 @@ public:
 	{
 		if (_handle != nullptr)
 		{
-			if (sqlite3_reset(_handle) != SQLITE_OK)
-				db_trace_error(_db, "sqlite3_reset");
+			if (sqlite3_reset(_handle) != SQLITE_OK) db_trace_error(_db, "sqlite3_reset");
 
-			if (sqlite3_clear_bindings(_handle) != SQLITE_OK)
-				db_trace_error(_db, "sqlite3_clear_bindings");
+			if (sqlite3_clear_bindings(_handle) != SQLITE_OK) db_trace_error(_db, "sqlite3_clear_bindings");
 		}
 	}
 
@@ -216,15 +194,13 @@ public:
 
 			switch (result)
 			{
-			case SQLITE_ROW:
-				return true;
-			case SQLITE_DONE:
-				return false;
+			case SQLITE_ROW: return true;
+			case SQLITE_DONE: return false;
 			default:
 				db_trace_error(_db, "sqlite3_step");
 				if (checked)
-					throw app_exception(std::format("Failed to read cached properties: {}",
-					                                core::utf8_cast(sqlite3_errmsg(_db))));
+					throw app_exception(
+						std::format("Failed to read cached properties: {}", core::utf8_cast(sqlite3_errmsg(_db))));
 			}
 		}
 		else if (checked)
@@ -235,10 +211,7 @@ public:
 		return false;
 	}
 
-	bool read_checked() const
-	{
-		return read(true);
-	}
+	bool read_checked() const { return read(true); }
 
 	void exec() const
 	{
@@ -314,10 +287,7 @@ public:
 
 	// Distinguishes a column an upgrade added but never filled from one holding zero, which the
 	// typed readers cannot: both answer 0.
-	bool is_null(const int i) const
-	{
-		return _handle == nullptr || sqlite3_column_type(_handle, i) == SQLITE_NULL;
-	}
+	bool is_null(const int i) const { return _handle == nullptr || sqlite3_column_type(_handle, i) == SQLITE_NULL; }
 };
 
 class transaction
@@ -405,7 +375,6 @@ df_assert_move_only(item_db_write);
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -454,7 +423,10 @@ static std::string load_create_sql()
 // and never stored, and a track, disc or episode number with no total is stored. Older rows hold the old
 // name reading as though the file carried it, and lack those numbers, so audio and video items are asked
 // to be re-scanned, as for 5; they still answer meanwhile.
-constexpr int db_metadata_version = 6;
+// 7: a tracker module's comment is its song message alone. Where a module has none, libopenmpt stands its
+// sample and instrument names in for one, and those were stored as though the file carried them - the panel
+// that lists the names showed them twice. Tracker modules are asked to be re-scanned; they answer meanwhile.
+constexpr int db_metadata_version = 7;
 
 // Only the metadata is dropped. Thumbnails, hashes, playback positions, and import history
 // stay, so the re-index re-reads files but never re-encodes a thumbnail.
@@ -477,7 +449,7 @@ bool database::request_date_pack_rescan() const
 	return db_exec(_db, "UPDATE item_properties SET last_scanned = NULL;"s) == SQLITE_OK;
 }
 
-bool database::request_audio_metadata_rescan() const
+bool database::request_rescan(const std::function<bool(std::string_view name)>& admits) const
 {
 	std::vector<std::pair<std::string, core::cached>> rows;
 
@@ -488,14 +460,7 @@ bool database::request_audio_metadata_rescan() const
 		while (items.read())
 		{
 			const auto name = core::cache(items.text(1));
-			const auto* const ft = files::file_type_from_name(name);
-			if (!ft->has_trait(file_traits::music_metadata) && !ft->has_trait(file_traits::video_metadata) &&
-				!ft->has_trait(file_traits::av))
-			{
-				continue;
-			}
-
-			rows.emplace_back(items.text(0), name);
+			if (admits(name)) rows.emplace_back(items.text(0), name);
 		}
 	}
 
@@ -511,6 +476,22 @@ bool database::request_audio_metadata_rescan() const
 	}
 
 	return t.commit();
+}
+
+bool database::request_audio_metadata_rescan() const
+{
+	return request_rescan([](const std::string_view name)
+	{
+		const auto* const ft = files::file_type_from_name(name);
+		return ft->has_trait(file_traits::music_metadata) || ft->has_trait(file_traits::video_metadata) ||
+		       ft->has_trait(file_traits::av);
+	});
+}
+
+bool database::request_tracker_metadata_rescan() const
+{
+	return request_rescan([](const std::string_view name)
+	{ return is_tracker_extension(name.substr(core::find_ext(name))); });
 }
 
 void database::upgrade_cached_metadata()
@@ -535,7 +516,7 @@ void database::upgrade_cached_metadata()
 		db_exec(_db, std::format("PRAGMA user_version = {};", db_metadata_version));
 
 		core::log(__FUNCTION__, std::format("Cached metadata was written by a newer build: version {} -> {}",
-		                                  stored_version, db_metadata_version));
+		                                    stored_version, db_metadata_version));
 		return;
 	}
 
@@ -544,27 +525,28 @@ void database::upgrade_cached_metadata()
 		return;
 	}
 
-	// Only version 1 rows can answer while they wait for the re-scan. They predate the pack and carry
-	// the two plain date records this build still reads. Version 2 was stamped mid-branch against an
-	// unversioned pack, which this build refuses and which has no legacy copy beside it, so keeping
-	// those rows would leave every one of them dateless until a scan happened to reach it.
-	const auto upgraded = stored_version == 1
-		                      ? request_date_pack_rescan()
-		                      : stored_version >= 3 && stored_version <= 5
-		                      ? request_audio_metadata_rescan()
-		                      : invalidate_cached_metadata();
+	// Version 1 rows can answer while they wait for the re-scan: they predate the pack and carry the two
+	// plain date records this build still reads. Version 2 was stamped mid-branch against an unversioned
+	// pack, which this build refuses and which has no legacy copy beside it, so keeping those rows would
+	// leave every one of them dateless until a scan happened to reach it. Later versions each changed what
+	// one kind of file records, so only those files are asked to be read again - audio and video from 3 to
+	// 5, which covers the tracker modules 6 asks for as well.
+	const auto upgraded = stored_version == 1                          ? request_date_pack_rescan()
+	                      : stored_version >= 3 && stored_version <= 5 ? request_audio_metadata_rescan()
+	                      : stored_version == 6                        ? request_tracker_metadata_rescan()
+	                                                                   : invalidate_cached_metadata();
 
 	if (!upgraded)
 	{
-		core::log(__FUNCTION__, std::format("Failed to invalidate cached metadata written by version {}",
-		                                  stored_version));
+		core::log(__FUNCTION__,
+		          std::format("Failed to invalidate cached metadata written by version {}", stored_version));
 		return;
 	}
 
 	db_exec(_db, std::format("PRAGMA user_version = {};", db_metadata_version));
 
-	core::log(__FUNCTION__, std::format("Cached metadata invalidated: version {} -> {}", stored_version,
-	                                  db_metadata_version));
+	core::log(__FUNCTION__,
+	          std::format("Cached metadata invalidated: version {} -> {}", stored_version, db_metadata_version));
 }
 
 // Memory-mapped reads replace a syscall and a page copy with a page fault. Measured 1.7-1.8x on
@@ -581,10 +563,8 @@ static bool is_unusable_db_file(const int result)
 	{
 	case SQLITE_CORRUPT:
 	case SQLITE_NOTADB:
-	case SQLITE_FORMAT:
-		return true;
-	default:
-		return false;
+	case SQLITE_FORMAT: return true;
+	default: return false;
 	}
 }
 
@@ -637,7 +617,8 @@ int database_test_seams::probe_journal_mode(sqlite3* db)
 	if (prepare_result != SQLITE_OK)
 	{
 		if (handle) sqlite3_finalize(handle);
-		core::log(__FUNCTION__, std::format("Failed to prepare journal probe: {}", core::utf8_cast(sqlite3_errmsg(db))));
+		core::log(__FUNCTION__,
+		          std::format("Failed to prepare journal probe: {}", core::utf8_cast(sqlite3_errmsg(db))));
 		return sqlite3_extended_errcode(db);
 	}
 
@@ -665,21 +646,6 @@ enum class schema_check_result
 // WAL keeps its index in a memory-mapped -shm file shared between processes. Network shares, and
 // some virtualised or redirected profile filesystems, cannot provide one, and the failure arrives
 // as an I/O or open error on the first statement that needs a write transaction.
-static bool is_shared_memory_failure(sqlite3* db)
-{
-	switch (sqlite3_extended_errcode(db))
-	{
-	case SQLITE_CANTOPEN:
-	case SQLITE_IOERR_SHMOPEN:
-	case SQLITE_IOERR_SHMSIZE:
-	case SQLITE_IOERR_SHMLOCK:
-	case SQLITE_IOERR_SHMMAP:
-		return true;
-	default:
-		return false;
-	}
-}
-
 static bool is_shared_memory_failure_result(const int result)
 {
 	switch (result)
@@ -688,10 +654,8 @@ static bool is_shared_memory_failure_result(const int result)
 	case SQLITE_IOERR_SHMOPEN:
 	case SQLITE_IOERR_SHMSIZE:
 	case SQLITE_IOERR_SHMLOCK:
-	case SQLITE_IOERR_SHMMAP:
-		return true;
-	default:
-		return false;
+	case SQLITE_IOERR_SHMMAP: return true;
+	default: return false;
 	}
 }
 
@@ -719,10 +683,10 @@ static schema_check_result schema_is_usable(sqlite3* db)
 		if (result != SQLITE_OK)
 		{
 			core::log(__FUNCTION__,
-			        std::format("Schema check failed: {} [{}]", core::utf8_cast(sqlite3_errmsg(db)), sql));
+			          std::format("Schema check failed: {} [{}]", core::utf8_cast(sqlite3_errmsg(db)), sql));
 			return database_test_seams::schema_failure_allows_replacement(result)
-				       ? schema_check_result::incompatible
-				       : schema_check_result::environmental_failure;
+			           ? schema_check_result::incompatible
+			           : schema_check_result::environmental_failure;
 		}
 	}
 
@@ -919,8 +883,7 @@ bool database::prepare_database(const bool can_replace)
 	// checked rather than assumed.
 	switch (schema_is_usable(_db))
 	{
-	case schema_check_result::usable:
-		break;
+	case schema_check_result::usable: break;
 	case schema_check_result::incompatible:
 		if (can_replace)
 		{
@@ -956,8 +919,7 @@ size_t database_test_seams::folder_thumbnail_visit_budget()
 }
 
 void database_test_seams::visit_folder_thumbnail_candidates(
-	const core::folder_path& root,
-	const std::function<bool(const core::folder_path&)>& visit,
+	const core::folder_path& root, const std::function<bool(const core::folder_path&)>& visit,
 	const std::function<std::vector<core::folder_path>(const core::folder_path&)>& enumerate)
 {
 	std::vector<core::folder_path> folders;
@@ -1061,7 +1023,10 @@ inline void metadata_packer::pack(const prop::item_metadata_ptr& md)
 	reset_to_header();
 
 	// Values read from the name are derived again whenever the item loads, so only the file's own are stored.
-	const auto stored = [&md](const uint8_t name_bit) { return (md->from_name & name_bit) == 0; };
+	const auto stored = [&md](const uint8_t name_bit)
+	{
+		return (md->from_name & name_bit) == 0;
+	};
 
 	if (!prop::is_null(md->album)) write(prop::album.id, md->album);
 	if (!prop::is_null(md->album_artist)) write(prop::album_artist.id, md->album_artist);
@@ -1100,17 +1065,14 @@ inline void metadata_packer::pack(const prop::item_metadata_ptr& md)
 	if (!prop::is_null(md->doc_id)) write(prop::doc_id.id, md->doc_id);
 
 	if (!prop::is_null(md->width) || !prop::is_null(md->height))
-		write(prop::dimensions.id,
-		      core::xy32::make(md->width, md->height));
+		write(prop::dimensions.id, core::xy32::make(md->width, md->height));
 	if (!prop::is_null(md->iso_speed)) write(prop::iso_speed.id, md->iso_speed);
 	if (!prop::is_null(md->focal_length)) write(prop::focal_length.id, md->focal_length);
 	if (!prop::is_null(md->focal_length_35mm_equivalent))
-		write(prop::focal_length_35mm_equivalent.id,
-		      md->focal_length_35mm_equivalent);
+		write(prop::focal_length_35mm_equivalent.id, md->focal_length_35mm_equivalent);
 	if (!prop::is_null(md->rating)) write(prop::rating.id, md->rating);
 	if (!prop::is_null(md->audio_sample_rate))
-		write(prop::audio_sample_rate.id,
-		      static_cast<uint16_t>(std::min<uint32_t>(md->audio_sample_rate, UINT16_MAX)));
+		write(prop::audio_sample_rate.id, static_cast<uint16_t>(std::min<uint32_t>(md->audio_sample_rate, UINT16_MAX)));
 	if (!prop::is_null(md->audio_channels)) write(prop::audio_channels.id, md->audio_channels);
 	if (!prop::is_null(md->audio_sample_type)) write(prop::audio_sample_type.id, md->audio_sample_type);
 	if (!prop::is_null(md->season) && stored(prop::from_name::season))
@@ -1175,7 +1137,6 @@ inline void metadata_packer::pack(const prop::item_metadata_ptr& md)
 	if (!prop::is_null(md->audio_sample_rate)) write(prop::audio_sample_rate_full.id, md->audio_sample_rate);
 }
 
-
 void database::clean(const std::vector<core::file_path>& indexed_items) const
 {
 	core::assert_true(is_db_thread());
@@ -1185,8 +1146,7 @@ void database::clean(const std::vector<core::file_path>& indexed_items) const
 	const auto today = core::utc_now().to_days();
 
 	transaction t(_db);
-	const db_statement
-		update_properties(_db, "update item_properties set last_indexed = ? where folder=? and name=?"s);
+	const db_statement update_properties(_db, "update item_properties set last_indexed = ? where folder=? and name=?"s);
 
 	for (const auto& i : indexed_items)
 	{
@@ -1253,8 +1213,8 @@ void metadata_unpacker::unpack(const prop::item_metadata_ptr& md)
 		{
 			core::xy32 xy{};
 			read_val(xy);
-			md->width = xy.x;
-			md->height = xy.y;
+			md->width = static_cast<uint16_t>(xy.x);
+			md->height = static_cast<uint16_t>(xy.y);
 		}
 		else if (t == prop::year) read_val(md->year);
 		else if (t == prop::rating)
@@ -1299,8 +1259,8 @@ void metadata_unpacker::unpack(const prop::item_metadata_ptr& md)
 			uint8_t val = 0;
 			read_val(val);
 			md->panorama = val > static_cast<uint8_t>(prop::panorama_projection::unspecified)
-				               ? prop::panorama_projection::unspecified
-				               : static_cast<prop::panorama_projection>(val);
+			                   ? prop::panorama_projection::unspecified
+			                   : static_cast<prop::panorama_projection>(val);
 		}
 		else if (t == prop::exposure_time) read_val(md->exposure_time);
 		else if (t == prop::f_number) read_val(md->f_number);
@@ -1360,8 +1320,8 @@ void database::load_index_values() const
 	{
 		// Reading no rows here is indistinguishable from an empty collection, and the index would
 		// go on to re-scan everything and then let clean() delete the rows it could not read.
-		throw app_exception(std::format("Failed to read the index: {}\n\nPath: {}",
-		                                core::utf8_cast(sqlite3_errmsg(_db)), _db_path));
+		throw app_exception(
+			std::format("Failed to read the index: {}\n\nPath: {}", core::utf8_cast(sqlite3_errmsg(_db)), _db_path));
 	}
 
 	while (items.read() && !platform::is_closing)
@@ -1373,21 +1333,16 @@ void database::load_index_values() const
 		const auto media_position = items.int32(4);
 		const auto last_scanned = core::date_t(items.int64(5));
 		const auto phash = static_cast<uint64_t>(items.int64(6));
-		const crypto::phash_rotations rotations{
-			phash,
-			static_cast<uint64_t>(items.int64(7)),
-			static_cast<uint64_t>(items.int64(8)),
-			static_cast<uint64_t>(items.int64(9))
-		};
+		const crypto::phash_rotations rotations{phash, static_cast<uint64_t>(items.int64(7)),
+		                                        static_cast<uint64_t>(items.int64(8)),
+		                                        static_cast<uint64_t>(items.int64(9))};
 
 		if (last_group_name != folder)
 		{
 			if (!cached_items.empty())
 			{
 				std::ranges::sort(cached_items, [](const db_item_t& left, const db_item_t& right)
-				{
-					return icmp(left.path, right.path) < 0;
-				});
+				{ return icmp(left.path, right.path) < 0; });
 				_state.merge_folder(last_group_name, cached_items);
 			}
 
@@ -1432,9 +1387,7 @@ void database::load_index_values() const
 	if (!cached_items.empty())
 	{
 		std::ranges::sort(cached_items, [](const db_item_t& left, const db_item_t& right)
-		{
-			return icmp(left.path, right.path) < 0;
-		});
+		{ return icmp(left.path, right.path) < 0; });
 		_state.merge_folder(last_group_name, cached_items);
 		cached_items.clear();
 	}
@@ -1534,8 +1487,9 @@ void database::web_service_cache(const std::string_view key, const std::string_v
 	}
 
 	// The row cap is a hard bound, so it is enforced on every write.
-	db_exec(_db,
-	        "DELETE FROM web_service_cache WHERE rowid IN (SELECT rowid FROM web_service_cache ORDER BY created_date DESC, rowid DESC LIMIT -1 OFFSET 1000);"s);
+	db_exec(
+		_db,
+		"DELETE FROM web_service_cache WHERE rowid IN (SELECT rowid FROM web_service_cache ORDER BY created_date DESC, rowid DESC LIMIT -1 OFFSET 1000);"s);
 }
 
 item_import_set database::load_item_imports() const
@@ -1590,13 +1544,9 @@ bool database::is_db_thread() const
 
 database::thumbnail_request::thumbnail_request(std::weak_ptr<df::item_element> lifetime_in, core::file_path path_in,
                                                core::folder_path folder_in, const uint64_t generation_in,
-                                               const bool is_folder_in, const bool has_thumbnail_in) noexcept
-	: lifetime(std::move(lifetime_in)),
-	  path(std::move(path_in)),
-	  folder(std::move(folder_in)),
-	  generation(generation_in),
-	  is_folder(is_folder_in),
-	  has_thumbnail(has_thumbnail_in)
+                                               const bool is_folder_in, const bool has_thumbnail_in) noexcept :
+	lifetime(std::move(lifetime_in)), path(path_in), folder(folder_in), generation(generation_in),
+	is_folder(is_folder_in), has_thumbnail(has_thumbnail_in)
 {
 }
 
@@ -1631,14 +1581,12 @@ void database::load_thumbnails(const index_state& index, const thumbnail_request
 
 	for (const auto& request : requests)
 	{
-		if (platform::is_closing)
-			break;
+		if (platform::is_closing) break;
 
 		if (request.is_folder)
 		{
-			database_test_seams::visit_folder_thumbnail_candidates(
-				request.folder,
-				[&](const core::folder_path& folder)
+			database_test_seams::visit_folder_thumbnail_candidates(request.folder,
+			                                                       [&](const core::folder_path& folder)
 			{
 				auto loaded = load_folder_thumbnail(folder.text());
 
@@ -1651,23 +1599,22 @@ void database::load_thumbnails(const index_state& index, const thumbnail_request
 				}
 
 				return !request.has_thumbnail;
-			},
-				[](const core::folder_path& folder)
+			}, [](const core::folder_path& folder)
+			{
+				std::vector<core::folder_path> result;
+				for (const auto& f : platform::select_folders(core::item_selector(folder), setting.show_hidden))
 				{
-					std::vector<core::folder_path> result;
-					for (const auto& f : platform::select_folders(core::item_selector(folder), setting.show_hidden))
-					{
-						result.emplace_back(folder.combine(f.name));
-					}
-					return result;
-				});
+					result.emplace_back(folder.combine(f.name));
+				}
+				return result;
+			});
 		}
 		else
 		{
 			auto loaded = load_thumbnail(request.path);
 			cover_art_loaded |= core::is_valid(loaded.cover_art);
-			results.emplace_back(request.lifetime, request.path, std::move(loaded.thumb),
-			                     std::move(loaded.cover_art), loaded.last_indexed, request.generation);
+			results.emplace_back(request.lifetime, request.path, std::move(loaded.thumb), std::move(loaded.cover_art),
+			                     loaded.last_indexed, request.generation);
 		}
 	}
 
@@ -1725,19 +1672,18 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 		"media_position = coalesce(excluded.media_position, item_properties.media_position), "
 		"last_scanned = excluded.last_scanned, last_indexed = excluded.last_indexed"s);
 	const db_statement update_metadata_scanned(
-		_db,
-		"update item_properties set last_scanned = ?, last_indexed = ? where folder = ? and name = ?"s);
-	const db_statement previous_properties(
-		_db, "select properties from item_properties where folder=? and name=?"s);
+		_db, "update item_properties set last_scanned = ?, last_indexed = ? where folder = ? and name = ?"s);
+	const db_statement previous_properties(_db, "select properties from item_properties where folder=? and name=?"s);
 	const db_statement update_hash(_db, "update item_properties set hash = ? where folder=? and name=?"s);
 	const db_statement update_crc(_db, "update item_properties set crc = ? where folder=? and name=?"s);
 	const db_statement update_phash(
-		_db, "update item_properties set phash = ?, phash90 = ?, phash180 = ?, phash270 = ? where folder=? and name=?"s);
+		_db,
+		"update item_properties set phash = ?, phash90 = ?, phash180 = ?, phash270 = ? where folder=? and name=?"s);
 	const db_statement clear_hashes(
 		_db,
 		"update item_properties set crc = null, phash = null, phash90 = null, phash180 = null, phash270 = null where folder=? and name=?"s);
-	const db_statement update_media_position(
-		_db, "update item_properties set media_position = ? where folder=? and name=?"s);
+	const db_statement
+		update_media_position(_db, "update item_properties set media_position = ? where folder=? and name=?"s);
 	const db_statement insert_thumbnails(
 		_db,
 		"insert or replace into item_thumbnails (folder, name, bitmap, cover_art, last_scanned) values (?, ?, ?, ?, ?)"s);
@@ -1783,10 +1729,9 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 			else insert_properties.bind_null(4);
 
 			const auto media_position = write.media_position.has_value()
-				                            ? write.media_position
-				                            : (md && md->media_position != 0.0
-					                               ? std::optional{md->media_position}
-					                               : std::nullopt);
+			                                ? write.media_position
+			                                : (md && md->media_position != 0.0 ? std::optional{md->media_position}
+			                                                                   : std::nullopt);
 
 			if (media_position.has_value()) insert_properties.bind(5, static_cast<int>(media_position.value()));
 			else insert_properties.bind_null(5);
@@ -1869,8 +1814,8 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 			insert_thumbnails.bind(2, path.name());
 			insert_thumbnails.bind(3, write.thumb.value()->data());
 			insert_thumbnails.bind(4, write.cover_art.has_value() && is_valid(write.cover_art.value())
-				                          ? write.cover_art.value()->data()
-				                          : core::cspan{});
+			                              ? write.cover_art.value()->data()
+			                              : core::cspan{});
 			insert_thumbnails.bind(5, write.thumb_scanned.has_value() ? write.thumb_scanned.value().to_int64() : 0);
 			insert_thumbnails.exec();
 			insert_thumbnails.reset();
@@ -1878,7 +1823,6 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 			core::bump(df::db_perf.thumbs_written);
 			++_state.stats.thumbs_saved;
 		}
-
 	}
 
 	_state.stats.database_size = platform::file_attributes(_db_path).size;
@@ -1905,8 +1849,8 @@ void database::maintenance(const bool is_reset)
 			// which is the honest outcome. Reporting success would hide an index that never reset.
 			open();
 
-			throw app_exception(delete_result.format_error(
-				std::format("Failed to reset the index\n\nPath: {}", _db_path)));
+			throw app_exception(
+				delete_result.format_error(std::format("Failed to reset the index\n\nPath: {}", _db_path)));
 		}
 
 		db_fails.store(0);

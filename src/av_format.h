@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: FFmpeg-based media format decoder. Handles video/audio stream parsing, codec management,
 // frame extraction, seeking, and format conversion using libavformat and libavcodec, and decodes the
@@ -14,7 +13,6 @@
 
 #include "av_sound.h"
 #include "av_subtitle.h"
-
 
 struct SwsContext;
 struct AVFormatContext;
@@ -58,12 +56,19 @@ struct load_diagnostic;
 
 // These cannot be forward-declared: an opaque enum declaration is an MSVC extension, and giving
 // them a fixed underlying type here would contradict FFmpeg's own definition.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4244) // FFmpeg's C clipping helpers in libavutil/common.h narrow an int implicitly
+#endif
 extern "C"
 {
 #include <libavutil/pixfmt.h>
 #include <libavutil/samplefmt.h>
 #include <libavcodec/codec_id.h>
 }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 // Whether FFmpeg can hand this stream to the platform's hardware decoder at all. It offers hardware
 // surfaces only for 4:2:0 -- 8-bit for H.264, MPEG-2 and VC-1, and 10-bit as well for HEVC, VP9 and
@@ -80,14 +85,11 @@ inline bool av_hw_decode_eligible(const AVCodecID codec, const AVPixelFormat for
 	case AV_CODEC_ID_H264:
 	case AV_CODEC_ID_MPEG2VIDEO:
 	case AV_CODEC_ID_VC1:
-	case AV_CODEC_ID_WMV3:
-		return any || eight_bit_420;
+	case AV_CODEC_ID_WMV3: return any || eight_bit_420;
 	case AV_CODEC_ID_HEVC:
 	case AV_CODEC_ID_VP9:
-	case AV_CODEC_ID_AV1:
-		return any || eight_bit_420 || format == AV_PIX_FMT_YUV420P10LE;
-	default:
-		return false;
+	case AV_CODEC_ID_AV1: return any || eight_bit_420 || format == AV_PIX_FMT_YUV420P10LE;
+	default: return false;
 	}
 }
 
@@ -122,7 +124,6 @@ bool av_platform_hw_device_usable(AVBufferRef* device);
 // and each would be copied through system memory. Null when no device can be made, and the stream then
 // decodes in software.
 AVBufferRef* av_platform_create_hw_device(int device_type);
-
 
 using av_packet_ptr = std::shared_ptr<av_packet>;
 using av_frame_ptr = std::shared_ptr<av_frame>;
@@ -163,8 +164,7 @@ inline bool should_drain_delayed_video_frames_at_eof(const av_nearest_frame_choi
 inline bool should_use_kept_sequential_frame(const double kept_time, const double decoded_time,
                                              const double target_time)
 {
-	return !core::equiv(kept_time, decoded_time) &&
-		fabs(kept_time - target_time) <= fabs(decoded_time - target_time);
+	return !core::equiv(kept_time, decoded_time) && fabs(kept_time - target_time) <= fabs(decoded_time - target_time);
 }
 
 inline bool is_key(const std::string_view l, const std::string_view r)
@@ -186,7 +186,7 @@ enum class av_codec_media_type
 
 struct av_codec_doc
 {
-	std::string name; // short codec name, e.g. "h264"
+	std::string name;      // short codec name, e.g. "h264"
 	std::string long_name; // human readable name, e.g. "H.264 / AVC / MPEG-4 AVC"
 	av_codec_media_type media_type = av_codec_media_type::other;
 };
@@ -241,8 +241,10 @@ double av_audio_frame_duration(const av_frame_ptr& f);
 bool av_is_frame_empty(const av_frame_ptr& f);
 
 // Bytes a queued item charges against the queue's read-ahead budget.
-template <typename T>
-size_t av_queued_payload_bytes(const std::shared_ptr<T>&) { return 0; }
+template <typename T> size_t av_queued_payload_bytes(const std::shared_ptr<T>&)
+{
+	return 0;
+}
 
 size_t av_queued_payload_bytes(const av_packet_ptr& p);
 
@@ -275,7 +277,6 @@ struct av_rational
 	int den = 0;
 };
 
-
 struct video_info_t
 {
 	sizei display_dimensions;
@@ -284,7 +285,6 @@ struct video_info_t
 	AVPixelFormat format = {};
 	bool is_yuv = false;
 };
-
 
 class audio_resampler final : core::no_copy
 {
@@ -375,11 +375,9 @@ public:
 // TGA, SGI, the portable pixmaps and DPX have no signature worth probing, so a caller that knows the
 // file name passes its extension: that is the only thing that can name the format for those.
 core::surface_ptr av_decode_still(core::cspan data, sizei max_dim, std::string_view extension_hint = {},
-                                load_diagnostic* diagnostic = nullptr);
+                                  load_diagnostic* diagnostic = nullptr);
 
-
-template <typename T>
-class av_queue final : public core::no_copy
+template <typename T> class av_queue final : public core::no_copy
 {
 	// Depth at which a producer stops reading ahead. Deep enough to absorb decode
 	// jitter, shallow enough that a seek discards little work - and bounded by
@@ -402,10 +400,7 @@ class av_queue final : public core::no_copy
 public:
 	av_queue() = default;
 
-	~av_queue() override
-	{
-		clear();
-	}
+	~av_queue() override { clear(); }
 
 	void clear()
 	{
@@ -414,8 +409,7 @@ public:
 		_bytes = 0;
 	}
 
-	template <typename U>
-	void push(U&& packet)
+	template <typename U> void push(U&& packet)
 	{
 		core::exclusive_lock lock(_mutex);
 		_bytes += av_queued_payload_bytes(packet);
@@ -531,13 +525,11 @@ struct metadata_block
 
 	metadata_block() = default;
 
-	metadata_block(const metadata_standard s, metadata_kv_list v) noexcept : standard(s), values(std::move(v))
-	{
-	}
+	metadata_block(const metadata_standard s, metadata_kv_list v) noexcept : standard(s), values(std::move(v)) {}
 
 	metadata_block(const metadata_standard s, metadata_kv_list v, const uint64_t b, const bool p,
-	               std::string r = {}) noexcept : standard(s), values(std::move(v)), bytes(b), parsed(p),
-	                                              raw(std::move(r))
+	               std::string r = {}) noexcept :
+		standard(s), values(std::move(v)), bytes(b), parsed(p), raw(std::move(r))
 	{
 	}
 };
@@ -579,7 +571,7 @@ public:
 // timestamp when the stream supplies none, and repairing one that fails to advance.
 struct av_pts_correction
 {
-	int64_t last_output; /// Last timestamp returned (keeps the output monotonic)
+	int64_t last_output;    /// Last timestamp returned (keeps the output monotonic)
 	int64_t frame_interval; /// Smallest positive step seen (synthesis fallback)
 
 	av_pts_correction();
@@ -588,7 +580,6 @@ struct av_pts_correction
 	// duration is AVFrame::duration (0 if unknown). Result is in stream time-base units.
 	int64_t guess(int64_t best_effort, int64_t pts, int64_t dts, int64_t duration = 0);
 };
-
 
 class av_format_decoder final : public core::no_copy
 {
@@ -608,10 +599,7 @@ public:
 
 	std::unique_ptr<audio_resampler> make_audio_resampler() const;
 
-	const core::file_path path() const
-	{
-		return _path;
-	}
+	const core::file_path path() const { return _path; }
 
 	bool open(core::file_path path, media_intent intent);
 	bool open(const platform::file_ptr& file, core::file_path path, media_intent intent);
@@ -756,29 +744,19 @@ private:
 	friend class av_session;
 
 public:
-	bool has_audio() const
-	{
-		return _has_audio;
-	}
+	bool has_audio() const { return _has_audio; }
 
-	bool has_video() const
-	{
-		return _has_video;
-	}
+	bool has_video() const { return _has_video; }
 
-	int video_stream_id() const
-	{
-		return _video_stream_index;
-	}
+	int video_stream_id() const { return _video_stream_index; }
 
-	int audio_stream_id() const
-	{
-		return _audio_stream_index;
-	}
-
+	int audio_stream_id() const { return _audio_stream_index; }
 
 	video_info_t video_information() const;
 	double video_frame_rate() const;
+	// The mean rate over the stream: its frames divided by its length. A phone's variable-rate video can
+	// declare a rate several times the one its frames come at. Zero when the container does not say.
+	double video_average_frame_rate() const;
 	audio_info_t audio_info() const;
 
 	bool extract_seek_frame(core::surface_ptr& dest_surface, sizei max_dim, double pos_numerator = 10,
@@ -787,8 +765,8 @@ public:
 	// the duration. Zero decodes to the exact frame; a caller that only needs a sense of the content
 	// asks for slack and gets an answer a whole GOP sooner.
 	bool extract_thumbnail(core::surface_ptr& dest_surface, sizei max_dim, double pos_numerator = 10,
-	                       double pos_denominator = 100, bool exact_frame = true,
-	                       double tolerance_fraction = 0.0, core::cancel_token abandon = {});
+	                       double pos_denominator = 100, bool exact_frame = true, double tolerance_fraction = 0.0,
+	                       core::cancel_token abandon = {});
 	// The frame nearest `wanted_time`, decoding forward from wherever this decoder already sits and
 	// seeking only when the target is behind it or far enough ahead that walking there costs more.
 	// A caller stepping through a clip in order therefore keeps one decoder open across frames
@@ -808,7 +786,7 @@ public:
 	// Decodes only the retained presentation interval. Samples are placed by timestamp, so a stream
 	// offset becomes silence rather than shifting the soundtrack against the picture.
 	std::vector<int16_t> extract_audio_pcm_range(int sample_rate, double start_seconds, double duration_seconds,
-	                                           core::cancel_token abandon = {});
+	                                             core::cancel_token abandon = {});
 	file_load_result render_frame(const av_frame_ptr& frame_in) const;
 	void receive_frames(av_packet_queue& packets, av_frame_queue& frames);
 

@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Utility functions for file operations including import, sync, and batch
 // processing. Handles file renaming, metadata updates, folder synchronization, and the copies
@@ -27,8 +26,7 @@
 command_line_t command_line;
 
 std::function<void(core::file_path path)> test_before_import_rollback_cleanup;
-std::function<std::optional<platform::file_op_result>(core::file_path destination)>
-test_import_sidecar_write_override;
+std::function<std::optional<platform::file_op_result>(core::file_path destination)> test_import_sidecar_write_override;
 
 crash_files_db& crash_files()
 {
@@ -47,12 +45,15 @@ void log_open_files_to_crash_files_list()
 	crash_files().log_open_files();
 }
 
-void view_state::modify_items(const df::results_ptr& results, icon_index icon, const std::string_view title,
+void view_state::modify_items(const df::results_ptr& results, icon_index /*icon*/, const std::string_view /*title*/,
                               const df::item_elements& items_to_modify, const metadata_edits& edits,
                               const view_host_base_ptr& view)
 {
 	batch_edit_spec spec;
-	spec.make_edits = [edits](core::file_path) { return item_edits{edits, {}}; };
+	spec.make_edits = [edits](core::file_path)
+	{
+		return item_edits{edits, {}};
+	};
 	spec.process_type = df::process_items_type::can_save_metadata;
 	spec.encode_params.jpeg_save_quality = setting.jpeg_save_quality;
 	// This overload never applies photo edits, so orientation is the only thing that can change what
@@ -94,8 +95,8 @@ void view_state::modify_items(const df::results_ptr& results, const df::item_ele
 			// post-write rescan must not regenerate it. Re-decoding one is slow on large video and
 			// republishing it makes the tile visibly blank and reappear.
 			const auto load_thumbnail = spec.changes_presentation || !item->has_thumb();
-			requests.emplace_back(item_index.make_scan_request(item, load_thumbnail, false), item->name(),
-			                      item->path(), item->xmp());
+			requests.emplace_back(item_index.make_scan_request(item, load_thumbnail, false), item->name(), item->path(),
+			                      item->xmp());
 			claimed.emplace_back(item->path());
 		}
 
@@ -114,7 +115,8 @@ void view_state::modify_items(const df::results_ptr& results, const df::item_ele
 				const auto is_modified = [&items_to_modify](const df::item_element_ptr& i)
 				{
 					if (!i) return false;
-					for (const auto& item : items_to_modify) if (item == i) return true;
+					for (const auto& item : items_to_modify)
+						if (item == i) return true;
 					return false;
 				};
 
@@ -129,147 +131,140 @@ void view_state::modify_items(const df::results_ptr& results, const df::item_ele
 
 		queue_async(async_queue::work,
 		            [this, requests = std::move(requests), claimed = std::move(claimed), spec, results, detach,
-			            displayed_paths = spec.changes_presentation
-				                              ? displayed_photo_paths()
-				                              : std::vector<core::file_path>{},
-			            detached_av_path = detached_display_av_path()]() mutable
-		            {
-			            result_scope rr(results);
-			            std::string message;
-			            files ff;
+		             displayed_paths = spec.changes_presentation ? displayed_photo_paths()
+		                                                         : std::vector<core::file_path>{},
+		             detached_av_path = detached_display_av_path()]() mutable
+		{
+			result_scope rr(results);
+			std::string message;
+			files ff;
 
-			            // Only the UI hop at the end releases the claim, and drain_queue swallows an
-			            // exception before it is ever posted - which parks these items with no thumbnail and
-			            // no metadata refresh for the rest of the session. The release is therefore owned by
-			            // a guard rather than by the success path. The guard keeps its own copy of the paths
-			            // because the success path moves the originals into the UI callback.
-			            auto claim_handed_over = false;
-			            core::scope_exit release_claim([this, &claim_handed_over, claimed]
-			            {
-				            if (!claim_handed_over)
-				            {
-					            _async.queue_ui([this, claimed] { item_index.release_write_claim(claimed); });
-				            }
-			            });
+			// Only the UI hop at the end releases the claim, and drain_queue swallows an
+			// exception before it is ever posted - which parks these items with no thumbnail and
+			// no metadata refresh for the rest of the session. The release is therefore owned by
+			// a guard rather than by the success path. The guard keeps its own copy of the paths
+			// because the success path moves the originals into the UI callback.
+			auto claim_handed_over = false;
+			core::scope_exit release_claim([this, &claim_handed_over, claimed]
+			{
+				if (!claim_handed_over)
+				{
+					_async.queue_ui([this, claimed] { item_index.release_write_claim(claimed); });
+				}
+			});
 
-			            // Items the write already re-scanned for us vs. those whose scan failed and still need a
-			            // forced background rescan.
-			            std::vector<index_state::item_scan_request> immediate_done;
-			            std::vector<index_state::item_scan_request> needs_force;
-			            // The written bytes for each item on screen, handed over instead of read back. The modified
-			            // time travels with them so the display stamps in the file clock domain.
-			            struct written_image
-			            {
-				            core::file_path path;
-				            file_load_result loaded;
-				            core::date_t modified;
-			            };
-			            std::vector<written_image> written_images;
-			            // The open handle over the playable item the display is about to reopen.
-			            platform::file_ptr detached_av_handle;
+			// Items the write already re-scanned for us vs. those whose scan failed and still need a
+			// forced background rescan.
+			std::vector<index_state::item_scan_request> immediate_done;
+			std::vector<index_state::item_scan_request> needs_force;
+			// The written bytes for each item on screen, handed over instead of read back. The modified
+			// time travels with them so the display stamps in the file clock domain.
+			struct written_image
+			{
+				core::file_path path;
+				file_load_result loaded;
+				core::date_t modified;
+			};
+			std::vector<written_image> written_images;
+			// The open handle over the playable item the display is about to reopen.
+			platform::file_ptr detached_av_handle;
 
-			            for (const auto& request : requests)
-			            {
-				            // Asked before the write, not after it. A cancel that arrived while the
-				            // previous item was being written - or before this loop started at all -
-				            // must not reach one more file, and the row it stops at is reported as the
-				            // cancellation it was rather than left out of the result list entirely.
-				            if (results->is_canceled())
-				            {
-					            results->end_item(request.name, item_status::cancel);
-					            continue;
-				            }
+			for (const auto& request : requests)
+			{
+				// Asked before the write, not after it. A cancel that arrived while the
+				// previous item was being written - or before this loop started at all -
+				// must not reach one more file, and the row it stops at is reported as the
+				// cancellation it was rather than left out of the result list entirely.
+				if (results->is_canceled())
+				{
+					results->end_item(request.name, item_status::cancel);
+					continue;
+				}
 
-				            results->start_item(request.name);
+				results->start_item(request.name);
 
-				            const auto edits = spec.make_edits(request.path);
-				            file_update_result update_result;
-				            const auto is_displayed = std::ranges::find(displayed_paths, request.path) !=
-					            displayed_paths.end();
+				const auto edits = spec.make_edits(request.path);
+				file_update_result update_result;
+				const auto is_displayed = std::ranges::find(displayed_paths, request.path) != displayed_paths.end();
 
-				            if (edits)
-				            {
-					            update_result = ff.update(request.path, request.path, edits->metadata, edits->image,
-					                                      spec.encode_params, false, request.xmp, request.xmp,
-					                                      index_state::make_rescan_spec(request.scan, request.xmp,
-						                                      is_displayed,
-						                                      request.path == detached_av_path));
-				            }
+				if (edits)
+				{
+					update_result = ff.update(request.path, request.path, edits->metadata, edits->image,
+					                          spec.encode_params, false, request.xmp, request.xmp,
+					                          index_state::make_rescan_spec(request.scan, request.xmp, is_displayed,
+					                                                        request.path == detached_av_path));
+				}
 
-				            results->end_item(request.name, to_status(update_result.code));
+				results->end_item(request.name, to_status(update_result.code));
 
-				            if (!update_result.success())
-				            {
-					            if (failed_write_needs_forced_rescan(update_result))
-					            {
-						            needs_force.emplace_back(request.scan);
-					            }
-					            message = update_result.format_error();
-					            break;
-				            }
+				if (!update_result.success())
+				{
+					if (failed_write_needs_forced_rescan(update_result))
+					{
+						needs_force.emplace_back(request.scan);
+					}
+					message = update_result.format_error();
+					break;
+				}
 
-				            if (request.path == detached_av_path) detached_av_handle = std::move(
-					            update_result.display_handle);
+				if (request.path == detached_av_path) detached_av_handle = std::move(update_result.display_handle);
 
-				            if (is_displayed)
-				            {
-					            written_images.emplace_back(request.path, std::move(update_result.loaded),
-					                                        core::date_t(update_result.modified));
-				            }
+				if (is_displayed)
+				{
+					written_images.emplace_back(request.path, std::move(update_result.loaded),
+					                            core::date_t(update_result.modified));
+				}
 
-				            if (item_index.apply_write_scan(request.scan, update_result))
-				            {
-					            needs_force.emplace_back(request.scan);
-				            }
-				            else
-				            {
-					            immediate_done.emplace_back(request.scan);
-				            }
-			            }
+				if (item_index.apply_write_scan(request.scan, update_result))
+				{
+					needs_force.emplace_back(request.scan);
+				}
+				else
+				{
+					immediate_done.emplace_back(request.scan);
+				}
+			}
 
-			            // Background rescan: force the items whose immediate scan failed (the mtime-tie heuristic
-			            // can miss a rapid successive edit whose sidecar modified time ties with the previous scan
-			            // timestamp); the scanned items are already current, so queue them non-forced as a cheap
-			            // no-op safety net. The detach reference is handed over here so the handles stay
-			            // detached until the writes finish and the destructor runs on the UI thread.
-			            _async.queue_ui(
-				            [this, detach = std::move(detach), claimed = std::move(claimed), immediate_done =
-					            std::move(immediate_done), needs_force = std::move(needs_force), written_images =
-					            std::move(written_images), detached_av_path, detached_av_handle = std::move(
-						            detached_av_handle)]() mutable
-				            {
-					            item_index.release_write_claim(claimed);
+			// Background rescan: force the items whose immediate scan failed (the mtime-tie heuristic
+			// can miss a rapid successive edit whose sidecar modified time ties with the previous scan
+			// timestamp); the scanned items are already current, so queue them non-forced as a cheap
+			// no-op safety net. The detach reference is handed over here so the handles stay
+			// detached until the writes finish and the destructor runs on the UI thread.
+			_async.queue_ui(
+				[this, detach = detach, claimed = std::move(claimed), immediate_done = std::move(immediate_done),
+			     needs_force = std::move(needs_force), written_images = std::move(written_images), detached_av_path,
+			     detached_av_handle = std::move(detached_av_handle)]() mutable
+			{
+				item_index.release_write_claim(claimed);
 
-					            for (auto& written : written_images)
-					            {
-						            publish_written_image(written.path, std::move(written.loaded), written.modified);
-					            }
+				for (auto& written : written_images)
+				{
+					publish_written_image(written.path, std::move(written.loaded), written.modified);
+				}
 
-					            // Before the guard is released below, because releasing it is what reopens the session.
-					            publish_written_handle(detached_av_path, std::move(detached_av_handle));
+				// Before the guard is released below, because releasing it is what reopens the session.
+				publish_written_handle(detached_av_path, std::move(detached_av_handle));
 
-					            df::item_set immediate_items;
-					            df::item_set force_items;
-					            for (const auto& request : immediate_done)
-					            {
-						            const auto item = request.lifetime.lock();
-						            if (item && item->path() == request.path) immediate_items.add(item);
-					            }
-					            for (const auto& request : needs_force)
-					            {
-						            const auto item = request.lifetime.lock();
-						            if (item && item->path() == request.path) force_items.add(item);
-					            }
-					            if (!force_items.empty()) item_index.queue_scan_modified_items(
-						            std::move(force_items), true);
-					            if (!immediate_items.empty()) item_index.queue_scan_modified_items(
-						            std::move(immediate_items), false);
-				            });
+				df::item_set immediate_items;
+				df::item_set force_items;
+				for (const auto& request : immediate_done)
+				{
+					const auto item = request.lifetime.lock();
+					if (item && item->path() == request.path) immediate_items.add(item);
+				}
+				for (const auto& request : needs_force)
+				{
+					const auto item = request.lifetime.lock();
+					if (item && item->path() == request.path) force_items.add(item);
+				}
+				if (!force_items.empty()) item_index.queue_scan_modified_items(std::move(force_items), true);
+				if (!immediate_items.empty()) item_index.queue_scan_modified_items(std::move(immediate_items), false);
+			});
 
-			            claim_handed_over = true;
+			claim_handed_over = true;
 
-			            rr.complete(message);
-		            });
+			rr.complete(message);
+		});
 
 		results->wait_for_complete();
 	}
@@ -279,13 +274,11 @@ void view_state::modify_items(const df::results_ptr& results, const df::item_ele
 	}
 }
 
-
 static platform::file_op_result move_or_copy(const core::file_path source_path, const core::file_path dest_path,
                                              const bool is_move, const bool fail_if_exists)
 {
-	return is_move
-		       ? platform::move_file(source_path, dest_path, fail_if_exists)
-		       : platform::copy_file(source_path, dest_path, fail_if_exists, false);
+	return is_move ? platform::move_file(source_path, dest_path, fail_if_exists)
+	               : platform::copy_file(source_path, dest_path, fail_if_exists, false);
 }
 
 static platform::file_op_result delete_temp_file(const core::file_path path)
@@ -297,7 +290,8 @@ static platform::file_op_result delete_temp_file(const core::file_path path)
 	const auto result = platform::delete_file(path);
 	if (result.failed())
 	{
-		core::log(__FUNCTION__, std::format("could not delete temporary file {}; {}", path.str(), result.format_error()));
+		core::log(__FUNCTION__,
+		          std::format("could not delete temporary file {}; {}", path.str(), result.format_error()));
 	}
 	return result;
 }
@@ -305,9 +299,8 @@ static platform::file_op_result delete_temp_file(const core::file_path path)
 static core::file_path rename_destination(const rename_source& item, const std::string_view name)
 {
 	const auto source = item.source;
-	return item.is_folder
-		       ? core::file_path(source.folder().parent(), name)
-		       : core::file_path(source.folder(), name, source.extension());
+	return item.is_folder ? core::file_path(source.folder().parent(), name)
+	                      : core::file_path(source.folder(), name, source.extension());
 }
 
 bool rename_path_exists(const core::file_path path, const bool is_folder)
@@ -367,16 +360,14 @@ static void assign_shared_rename_sidecars(std::vector<rename_source>& sources)
 
 	for (size_t row = 0; row < sources.size(); ++row)
 	{
-		std::erase_if(sources[row].sidecars, [&owner, row](const core::file_path& sidecar)
-		{
-			return owner.at(sidecar) != row;
-		});
+		std::erase_if(sources[row].sidecars,
+		              [&owner, row](const core::file_path& sidecar) { return owner.at(sidecar) != row; });
 	}
 }
 
 std::vector<rename_item> calc_item_renames(const std::vector<rename_source>& sources,
-                                           const std::string_view template_name,
-                                           const int start, const collision_policy policy)
+                                           const std::string_view template_name, const int start,
+                                           const collision_policy policy)
 {
 	auto items = sources;
 	assign_shared_rename_sidecars(items);
@@ -442,8 +433,7 @@ std::vector<rename_item> calc_item_renames(const std::vector<rename_source>& sou
 					vacated.emplace(sidecar_source.pack());
 		}
 
-		name_is_usable.emplace_back(
-			platform::is_valid_file_name(name) && rename.destination.is_save_valid() ? 1 : 0);
+		name_is_usable.emplace_back(platform::is_valid_file_name(name) && rename.destination.is_save_valid() ? 1 : 0);
 		seq += 1;
 		results.emplace_back(std::move(rename));
 	}
@@ -459,20 +449,18 @@ std::vector<rename_item> calc_item_renames(const std::vector<rename_source>& sou
 		{
 			const auto destination_key = rename_path_key(rename.destination, rename.is_folder);
 			rename.destination_exists = rename_path_exists(rename.destination, rename.is_folder);
-			rename.destination_attributes = rename.is_folder
-				                                ? platform::file_attributes_t{}
-				                                : platform::file_attributes(rename.destination);
+			rename.destination_attributes = rename.is_folder ? platform::file_attributes_t{}
+			                                                 : platform::file_attributes(rename.destination);
 
 			if (core::compare_path_key(source_key, destination_key) != 0 && rename.destination_exists &&
-				!vacated.contains(destination_key))
+			    !vacated.contains(destination_key))
 				return true;
 
 			for (auto sidecar = 0_z; sidecar < rename.sidecars.size(); ++sidecar)
 			{
 				const auto& [sidecar_source, sidecar_destination] = rename.sidecars[sidecar];
 				if (core::compare_path_key(sidecar_source.pack(), sidecar_destination.pack()) != 0 &&
-					rename.sidecar_destinations_exist[sidecar] &&
-					!vacated.contains(sidecar_destination.pack()))
+				    rename.sidecar_destinations_exist[sidecar] && !vacated.contains(sidecar_destination.pack()))
 					return true;
 			}
 			return false;
@@ -489,7 +477,7 @@ std::vector<rename_item> calc_item_renames(const std::vector<rename_source>& sou
 			{
 				const auto candidate = std::format("{} ({})", base_name, suffix);
 				rename.destination = core::file_path(rename.destination.folder(), candidate,
-				                                   rename.destination.extension());
+				                                     rename.destination.extension());
 				assign_sidecars(rename, i, rename.destination);
 
 				if (!group_collides())
@@ -576,10 +564,8 @@ std::vector<rename_item> calc_item_renames(const std::vector<rename_source>& sou
 	for (auto& rename : results)
 	{
 		const auto duplicates = destination_counts[rename_path_key(rename.destination, rename.is_folder)] > 1 ||
-			std::ranges::any_of(rename.sidecars, [&](const auto& sidecar)
-			{
-				return destination_counts[sidecar.second.pack()] > 1;
-			});
+		                        std::ranges::any_of(rename.sidecars, [&](const auto& sidecar)
+		{ return destination_counts[sidecar.second.pack()] > 1; });
 		if (duplicates)
 		{
 			rename.valid = false;
@@ -601,7 +587,7 @@ std::vector<rename_item> calc_item_renames(const df::item_set& items, const std:
 bool can_rename_items(const std::vector<rename_item>& renames)
 {
 	return !renames.empty() && std::ranges::all_of(renames, [](const rename_item& item) { return item.valid; }) &&
-		std::ranges::any_of(renames, [](const rename_item& item) { return !item.noop; });
+	       std::ranges::any_of(renames, [](const rename_item& item) { return !item.noop; });
 }
 
 int count_rename_collisions(const std::vector<rename_item>& renames, const collision_policy policy)
@@ -614,10 +600,8 @@ int count_rename_collisions(const std::vector<rename_item>& renames, const colli
 	switch (policy)
 	{
 	case collision_policy::skip: return count([](const rename_item& item) { return item.skipped; });
-	case collision_policy::auto_rename: return count([](const rename_item& item)
-		{
-			return item.renamed_to_avoid_collision;
-		});
+	case collision_policy::auto_rename:
+		return count([](const rename_item& item) { return item.renamed_to_avoid_collision; });
 	case collision_policy::replace:
 	case collision_policy::block_run: break;
 	}
@@ -625,8 +609,7 @@ int count_rename_collisions(const std::vector<rename_item>& renames, const colli
 	return count([](const rename_item& item) { return item.collides; });
 }
 
-std::string format_sequence(const std::string_view original_name, const std::string_view template_name,
-                            const int seq)
+std::string format_sequence(const std::string_view original_name, const std::string_view template_name, const int seq)
 
 {
 	static auto numbers = "0123456789";
@@ -667,9 +650,7 @@ std::string format_sequence(const std::string_view original_name, const std::str
 				result.push_back(org_len > original_index ? reverse_name[original_index] : ' ');
 				++original_index;
 				break;
-			default:
-				result.push_back(c);
-				break;
+			default: result.push_back(c); break;
 			}
 		}
 	}
@@ -683,9 +664,8 @@ bool unchanged_since_analysis(const core::file_path path, const uint64_t modifie
 	return current.exists() && current.modified == modified && current.size == size;
 }
 
-import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_items,
-                                       const import_options& options, const item_import_set& previous_imported,
-                                       const core::cancel_token& token)
+import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_items, const import_options& options,
+                                       const item_import_set& previous_imported, const core::cancel_token& token)
 {
 	import_analysis_result result;
 	const auto now = core::utc_now();
@@ -734,7 +714,7 @@ import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_
 			{
 				const auto sidecar_path_in = i.folder.combine_file(file_name);
 				if (sidecar_path_in != path_in &&
-					std::ranges::find(sidecar_paths_in, sidecar_path_in) == sidecar_paths_in.end())
+				    std::ranges::find(sidecar_paths_in, sidecar_path_in) == sidecar_paths_in.end())
 					sidecar_paths_in.emplace_back(sidecar_path_in);
 			}
 		}
@@ -746,15 +726,13 @@ import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_
 		auto group_exists = [&](const core::file_path primary)
 		{
 			if (platform::exists(primary) || planned_destinations.contains(primary)) return true;
-			return std::ranges::any_of(sidecar_paths_in,
-			                           [&](const auto sidecar)
-			                           {
-				                           const auto destination = sidecar_destination(primary, sidecar);
-				                           const auto owner = sidecar_owners.find(destination);
-				                           return platform::exists(destination) ||
-					                           (planned_destinations.contains(destination) &&
-						                           (owner == sidecar_owners.end() || owner->second != sidecar));
-			                           });
+			return std::ranges::any_of(sidecar_paths_in, [&](const auto sidecar)
+			{
+				const auto destination = sidecar_destination(primary, sidecar);
+				const auto owner = sidecar_owners.find(destination);
+				return platform::exists(destination) || (planned_destinations.contains(destination) &&
+				                                         (owner == sidecar_owners.end() || owner->second != sidecar));
+			});
 		};
 
 		const bool already_exists = group_exists(path_out);
@@ -771,8 +749,9 @@ import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_
 				for (auto suffix = 2; suffix < 10000; ++suffix)
 				{
 					const auto candidate = core::file_path(path_out.folder(),
-					                                     std::format("{} ({})", path_out.file_name_without_extension(),
-					                                                 suffix), path_out.extension());
+					                                       std::format("{} ({})",
+					                                                   path_out.file_name_without_extension(), suffix),
+					                                       path_out.extension());
 					if (!group_exists(candidate))
 					{
 						path_out = candidate;
@@ -780,17 +759,15 @@ import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_
 					}
 				}
 				break;
-			case collision_policy::replace:
-				break;
+			case collision_policy::replace: break;
 			case collision_policy::skip:
-			case collision_policy::block_run:
-				blocked_by_collision = true;
-				break;
+			case collision_policy::block_run: blocked_by_collision = true; break;
 			}
 		}
 
-		const auto action = previous_imported.contains(import_rec) ? import_action::already_imported :
-			blocked_by_collision ? import_action::already_exists : import_action::import;
+		const auto action = previous_imported.contains(import_rec) ? import_action::already_imported
+		                    : blocked_by_collision                 ? import_action::already_exists
+		                                                           : import_action::import;
 		const auto importing = action == import_action::import;
 		std::vector<import_analysis_item::sidecar_move> sidecars;
 		sidecars.reserve(sidecar_paths_in.size());
@@ -799,10 +776,11 @@ import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_
 		{
 			const auto sidecar_path_out = sidecar_destination(path_out, sidecar_path_in);
 			sidecars.emplace_back(sidecar_path_in, sidecar_path_out,
-			                      importing ? platform::file_attributes(sidecar_path_in) : platform::file_attributes_t{},
+			                      importing ? platform::file_attributes(sidecar_path_in)
+			                                : platform::file_attributes_t{},
 			                      importing && options.collision == collision_policy::replace
-				                      ? platform::file_attributes(sidecar_path_out)
-				                      : platform::file_attributes_t{});
+			                          ? platform::file_attributes(sidecar_path_out)
+			                          : platform::file_attributes_t{});
 			if (importing)
 			{
 				planned_destinations.emplace(sidecar_path_out);
@@ -812,12 +790,13 @@ import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_
 
 		// Ignored rows retain their dependencies, so Move cannot remove a companion they still need.
 		const auto destination_fi = importing && options.collision == collision_policy::replace
-			                            ? platform::file_attributes(path_out)
-			                            : platform::file_attributes_t{};
+		                                ? platform::file_attributes(path_out)
+		                                : platform::file_attributes_t{};
 
-		result[path_out.folder()].emplace_back(path_in, path_out, action, created, import_rec,
-		                                       already_exists, import_folder_out,
-		                                       importing ? platform::file_attributes(path_in) : platform::file_attributes_t{},
+		result[path_out.folder()].emplace_back(path_in, path_out, action, created, import_rec, already_exists,
+		                                       import_folder_out,
+		                                       importing ? platform::file_attributes(path_in)
+		                                                 : platform::file_attributes_t{},
 		                                       destination_fi, std::move(sidecars));
 		if (importing) planned_destinations.emplace(path_out);
 	}
@@ -825,7 +804,7 @@ import_analysis_result import_analysis(const std::vector<folder_scan_item>& src_
 	return result;
 }
 
-import_result import_copy(index_state& index, df::results_ptr results, const import_analysis_result& src_items,
+import_result import_copy(index_state& index, const df::results_ptr& results, const import_analysis_result& src_items,
                           const import_options& options, core::cancel_token token)
 {
 	import_result result;
@@ -886,18 +865,15 @@ import_result import_copy(index_state& index, df::results_ptr results, const imp
 
 		// Nothing is written here when every item was already imported or resolved away by the
 		// collision policy, so do not create a destination folder that would stay empty.
-		const auto has_imports = std::ranges::any_of(ff_dest.second,
-		                                             [](const auto& item)
-		                                             {
-			                                             return item.action == import_action::import;
-		                                             });
+		const auto has_imports = std::ranges::any_of(ff_dest.second, [](const auto& item)
+		{ return item.action == import_action::import; });
 
 		if (has_imports)
 		{
 			const bool folder_out_exists = platform::exists(folder_out);
 			const auto create_folder_result = folder_out_exists
-				                                  ? platform::file_op_result{platform::file_op_result_code::OK, {}, {}}
-				                                  : platform::create_folder(folder_out);
+			                                      ? platform::file_op_result{platform::file_op_result_code::OK, {}, {}}
+			                                      : platform::create_folder(folder_out);
 
 			if (create_folder_result.failed())
 			{
@@ -950,27 +926,28 @@ import_result import_copy(index_state& index, df::results_ptr results, const imp
 				return unchanged_since_analysis(path, reviewed.modified, reviewed.size);
 			};
 
-			const auto reviewed_destination = [fail_if_exists](const core::file_path path,
-			                                                   const platform::file_attributes_t& reviewed)
+			const auto reviewed_destination =
+				[fail_if_exists](const core::file_path path, const platform::file_attributes_t& reviewed)
 			{
 				return fail_if_exists || !reviewed.exists() ||
-					unchanged_since_analysis(path, reviewed.modified, reviewed.size);
+				       unchanged_since_analysis(path, reviewed.modified, reviewed.size);
 			};
 
 			const auto source_unchanged = reviewed_source(path_in, i.source_fi) &&
-				std::ranges::all_of(i.sidecars, [&reviewed_source](const import_analysis_item::sidecar_move& sc)
-				{
-					return reviewed_source(sc.source, sc.source_fi);
-				});
+			                              std::ranges::all_of(i.sidecars,
+			                                                  [&reviewed_source](
+																  const import_analysis_item::sidecar_move& sc)
+			{ return reviewed_source(sc.source, sc.source_fi); });
 
 			const auto destination_unchanged = reviewed_destination(path_out, i.destination_fi) &&
-				std::ranges::all_of(i.sidecars, [&](const import_analysis_item::sidecar_move& sc)
-				{
-					if (const auto found = published_sidecars.find(sc.destination); found != published_sidecars.end())
-						return found->second.source == sc.source &&
-							reviewed_source(sc.destination, found->second.attributes);
-					return reviewed_destination(sc.destination, sc.destination_fi);
-				});
+			                                   std::ranges::all_of(i.sidecars,
+			                                                       [&](const import_analysis_item::sidecar_move& sc)
+			{
+				if (const auto found = published_sidecars.find(sc.destination); found != published_sidecars.end())
+					return found->second.source == sc.source &&
+					       reviewed_source(sc.destination, found->second.attributes);
+				return reviewed_destination(sc.destination, sc.destination_fi);
+			});
 
 			if (!source_unchanged || !destination_unchanged)
 			{
@@ -991,7 +968,7 @@ import_result import_copy(index_state& index, df::results_ptr results, const imp
 
 			// Copy companions before moving a primary. A shared source stays until every dependent
 			// primary has moved; a failed row only undoes companion destinations it created itself.
-			auto undo_sidecar = [&](const sidecar_undo& undo)
+			auto undo_sidecar = [&, function = __FUNCTION__](const sidecar_undo& undo)
 			{
 				write_folders.emplace(undo.source.folder());
 				write_folders.emplace(undo.destination.folder());
@@ -1003,8 +980,8 @@ import_result import_copy(index_state& index, df::results_ptr results, const imp
 					undo_result = platform::replace_file(undo.destination, undo.rollback, false);
 					if (undo_result.failed())
 					{
-						core::log(__FUNCTION__, std::format("could not restore import sidecar {}; original retained as {}",
-						                                  undo.destination.str(), undo.rollback.str()));
+						core::log(function, std::format("could not restore import sidecar {}; original retained as {}",
+						                                undo.destination.str(), undo.rollback.str()));
 					}
 				}
 				else
@@ -1014,11 +991,11 @@ import_result import_copy(index_state& index, df::results_ptr results, const imp
 
 				return undo_result;
 			};
-			const auto restore_replaced_sidecar_if_changed = [&](const sidecar_undo& undo,
-			                                                     const platform::file_attributes_t& reviewed)
+			const auto restore_replaced_sidecar_if_changed =
+				[&, function = __FUNCTION__](const sidecar_undo& undo, const platform::file_attributes_t& reviewed)
 			{
 				if (undo.rollback.is_empty() ||
-					unchanged_since_analysis(undo.destination, reviewed.modified, reviewed.size))
+				    unchanged_since_analysis(undo.destination, reviewed.modified, reviewed.size))
 				{
 					return delete_temp_file(undo.rollback);
 				}
@@ -1027,8 +1004,8 @@ import_result import_copy(index_state& index, df::results_ptr results, const imp
 				const auto restore_result = platform::replace_file(undo.destination, undo.rollback, false);
 				if (restore_result.failed())
 				{
-					core::log(__FUNCTION__, std::format("could not restore import sidecar {}; original retained as {}",
-					                                  undo.destination.str(), undo.rollback.str()));
+					core::log(function, std::format("could not restore import sidecar {}; original retained as {}",
+					                                undo.destination.str(), undo.rollback.str()));
 				}
 				return restore_result;
 			};
@@ -1055,8 +1032,7 @@ import_result import_copy(index_state& index, df::results_ptr results, const imp
 					}
 				}
 
-				move_or_copy_result = move_or_copy(sidecar.source, sidecar.destination, false,
-				                                   sidecar_fail_if_exists);
+				move_or_copy_result = move_or_copy(sidecar.source, sidecar.destination, false, sidecar_fail_if_exists);
 				if (move_or_copy_result.success() && test_import_sidecar_write_override)
 				{
 					if (auto overridden = test_import_sidecar_write_override(sidecar.destination))
@@ -1072,7 +1048,7 @@ import_result import_copy(index_state& index, df::results_ptr results, const imp
 					}
 					break;
 				}
-				moved_sidecars.emplace_back(std::move(undo));
+				moved_sidecars.emplace_back(undo);
 			}
 
 			if (move_or_copy_result.success())
@@ -1104,15 +1080,15 @@ import_result import_copy(index_state& index, df::results_ptr results, const imp
 				{
 					if (!published_sidecars.contains(sidecar.destination))
 						published_sidecars.emplace(sidecar.destination,
-						                          published_sidecar{sidecar.source,
-							                          platform::file_attributes(sidecar.destination)});
+						                           published_sidecar{sidecar.source,
+						                                             platform::file_attributes(sidecar.destination)});
 				}
 
 				if (options.is_move && path_in != path_out)
 					for (const auto& sidecar : i.sidecars)
 					{
-						if (--sidecar_consumers.at(sidecar.source) != 0 ||
-							published_sidecars.contains(sidecar.source)) continue;
+						if (--sidecar_consumers.at(sidecar.source) != 0 || published_sidecars.contains(sidecar.source))
+							continue;
 
 						write_folders.emplace(sidecar.source.folder());
 						auto cleanup = platform::file_op_result{platform::file_op_result_code::ALREADY_EXISTS};
@@ -1184,16 +1160,14 @@ import_result import_copy(index_state& index, df::results_ptr results, const imp
 	if (!existing.empty())
 	{
 		result_text += format_plural_text(tt.ignored_exist_already_fmt, existing.front().item.name,
-		                                  static_cast<int>(existing.size()), {},
-		                                  static_cast<int>(src_items.size()));
+		                                  static_cast<int>(existing.size()), {}, static_cast<int>(src_items.size()));
 	}
 
 	if (!previous.empty())
 	{
 		if (!result_text.empty()) result_text += "\n\n";
 		result_text += format_plural_text(tt.ignored_previous_fmt, previous.front().item.name,
-		                                  static_cast<int>(previous.size()), {},
-		                                  static_cast<int>(src_items.size()));
+		                                  static_cast<int>(previous.size()), {}, static_cast<int>(src_items.size()));
 	}
 
 	if (result.dates_unset > 0)
@@ -1259,9 +1233,7 @@ size_t count_import_colliding_writes(const import_analysis_result& items)
 	for (const auto& [folder, folder_items] : items)
 	{
 		result += std::ranges::count_if(folder_items, [](const auto& item)
-		{
-			return item.already_exists && item.action == import_action::import;
-		});
+		{ return item.already_exists && item.action == import_action::import; });
 	}
 	return result;
 }
@@ -1326,7 +1298,6 @@ platform::drives import_source_drives(const platform::drives& drives, const size
 	return result;
 }
 
-
 std::string relative_combine(const std::string& relative, const core::cached name)
 {
 	auto result = relative;
@@ -1345,17 +1316,15 @@ std::string relative_combine(const std::string& relative, const core::cached nam
 // changed again and is copied again on every Sync. Times are FILETIME ticks of 100 ns.
 constexpr uint64_t sync_same_time_ticks = 2 * 10'000'000ull;
 
-sync_action calc_sync_action(const bool local_exists, const bool remote_exists,
-                             const uint64_t local_modified, const uint64_t remote_modified,
-                             const uint64_t local_size, const uint64_t remote_size,
-                             const bool sync_local_remote, const bool sync_remote_local,
-                             const bool sync_delete_local, const bool sync_delete_remote)
+sync_action calc_sync_action(const bool local_exists, const bool remote_exists, const uint64_t local_modified,
+                             const uint64_t remote_modified, const uint64_t local_size, const uint64_t remote_size,
+                             const bool sync_local_remote, const bool sync_remote_local, const bool sync_delete_local,
+                             const bool sync_delete_remote)
 {
 	if (local_exists && remote_exists)
 	{
-		const auto difference = local_modified > remote_modified
-			                        ? local_modified - remote_modified
-			                        : remote_modified - local_modified;
+		const auto difference = local_modified > remote_modified ? local_modified - remote_modified
+		                                                         : remote_modified - local_modified;
 		const auto same_time = difference <= sync_same_time_ticks;
 
 		if (!same_time && local_modified > remote_modified && sync_local_remote) return sync_action::copy_remote;
@@ -1410,10 +1379,8 @@ std::string sync_invalid_message(const sync_analysis_result& analysis)
 		return str_format(tt.is_not_valid_folder_fmt.sv(), analysis.invalid_folder.text());
 	case sync_invalid_reason::empty_paths:
 	case sync_invalid_reason::overlapping_paths:
-	case sync_invalid_reason::ambiguous_local_root:
-		return std::string(tt.platform_text.error_invalid_files.sv());
-	case sync_invalid_reason::none:
-		break;
+	case sync_invalid_reason::ambiguous_local_root: return std::string(tt.platform_text.error_invalid_files.sv());
+	case sync_invalid_reason::none: break;
 	}
 
 	return std::string(tt.platform_text.error_cannot_continue.sv());
@@ -1598,9 +1565,8 @@ sync_analysis_result sync_analysis(const core::index_roots& local_roots, const c
 			return result;
 		}
 
-		if (exclusion != remote_exclusion_result::skip &&
-			!is_excluded(local_roots, folder.path) &&
-			(counterpart.is_empty() || !is_excluded(local_roots, counterpart)))
+		if (exclusion != remote_exclusion_result::skip && !is_excluded(local_roots, folder.path) &&
+		    (counterpart.is_empty() || !is_excluded(local_roots, counterpart)))
 		{
 			const auto contents = platform::iterate_file_items(folder.path, setting.show_hidden);
 			if (!contents.success)
@@ -1624,10 +1590,8 @@ sync_analysis_result sync_analysis(const core::index_roots& local_roots, const c
 
 			for (const auto& sub_folder : contents.folders)
 			{
-				sync_analysis_folder unknown = {
-					folder.path.combine(sub_folder.name), remote_path,
-					relative_combine(folder.relative, sub_folder.name)
-				};
+				sync_analysis_folder unknown = {folder.path.combine(sub_folder.name), remote_path,
+				                                relative_combine(folder.relative, sub_folder.name)};
 				remote_folders_to_scan.emplace_back(unknown);
 			}
 		}
@@ -1663,11 +1627,9 @@ sync_analysis_result sync_analysis(const core::index_roots& local_roots, const c
 				}
 			}
 
-			const auto action = calc_sync_action(local_exists, remote_exists,
-			                                     f.second.local_fi.attributes.modified,
+			const auto action = calc_sync_action(local_exists, remote_exists, f.second.local_fi.attributes.modified,
 			                                     f.second.remote_fi.attributes.modified,
-			                                     f.second.local_fi.attributes.size,
-			                                     f.second.remote_fi.attributes.size,
+			                                     f.second.local_fi.attributes.size, f.second.remote_fi.attributes.size,
 			                                     sync_local_remote, sync_remote_local, sync_delete_local,
 			                                     sync_delete_remote);
 
@@ -1727,7 +1689,7 @@ sync_run_result sync_copy(const df::results_ptr& status, const sync_analysis_res
 
 			core::assert_true(!remote_path.is_empty());
 			core::assert_true(!local_path.is_empty() || action == sync_action::none ||
-				action == sync_action::delete_remote);
+			                  action == sync_action::delete_remote);
 
 			// A remote-only file that no local root claims has no local name to report.
 			const auto name = local_path.is_empty() ? remote_path.name() : local_path.name();
@@ -1756,15 +1718,15 @@ sync_run_result sync_copy(const df::results_ptr& status, const sync_analysis_res
 			const auto source_unchanged = [&]
 			{
 				return action == sync_action::copy_local
-					       ? unchanged_since_analysis(remote_path, remote_attributes.modified, remote_attributes.size)
-					       : unchanged_since_analysis(local_path, local_attributes.modified, local_attributes.size);
+				           ? unchanged_since_analysis(remote_path, remote_attributes.modified, remote_attributes.size)
+				           : unchanged_since_analysis(local_path, local_attributes.modified, local_attributes.size);
 			};
 
 			// A destination the review expected to be free is proved free by the write itself, which
 			// leaves no window for it to appear. One that was already there has to still be the file
 			// the user agreed to overwrite.
-			const auto destination_unchanged = [&](const platform::file_attributes_t& reviewed,
-			                                       const core::file_path path)
+			const auto destination_unchanged =
+				[&](const platform::file_attributes_t& reviewed, const core::file_path path)
 			{
 				return !reviewed.exists() || unchanged_since_analysis(path, reviewed.modified, reviewed.size);
 			};
@@ -1776,7 +1738,7 @@ sync_run_result sync_copy(const df::results_ptr& status, const sync_analysis_res
 			{
 				const auto current = platform::file_crc32_checked(path, token);
 				return current.has_value() && f.second.delete_crc.has_value() &&
-					current.value() == f.second.delete_crc.value();
+				       current.value() == f.second.delete_crc.value();
 			};
 
 			// A cancelled check proves nothing, so it is reported as the cancellation it was rather
@@ -1799,8 +1761,7 @@ sync_run_result sync_copy(const df::results_ptr& status, const sync_analysis_res
 
 			switch (action)
 			{
-			case sync_action::none:
-				break;
+			case sync_action::none: break;
 			case sync_action::copy_local:
 				if (refused(source_unchanged() && destination_unchanged(local_attributes, local_path))) break;
 				write(platform::copy_file(remote_path, local_path, !local_attributes.exists(), true));
@@ -1812,14 +1773,14 @@ sync_run_result sync_copy(const df::results_ptr& status, const sync_analysis_res
 				break;
 			case sync_action::delete_local:
 				if (refused(unchanged_since_analysis(local_path, local_attributes.modified, local_attributes.size) &&
-					delete_content_unchanged(local_path)))
+				            delete_content_unchanged(local_path)))
 					break;
 				status->end_item(name, to_status(platform::delete_file(local_path).code));
 				result.folders_changed.emplace(local_path.folder());
 				break;
 			case sync_action::delete_remote:
 				if (refused(unchanged_since_analysis(remote_path, remote_attributes.modified, remote_attributes.size) &&
-					delete_content_unchanged(remote_path)))
+				            delete_content_unchanged(remote_path)))
 					break;
 				status->end_item(name, to_status(platform::delete_file(remote_path).code));
 				break;
@@ -1899,8 +1860,8 @@ std::vector<std::string> check_overwrite(const core::folder_path write_folder, c
 
 	for (const auto f : items.file_paths())
 	{
-		const auto dest = write_folder.combine_file(f.name()).extension(
-			new_extension.empty() ? f.extension() : new_extension);
+		const auto dest = write_folder.combine_file(f.name()).extension(new_extension.empty() ? f.extension()
+		                                                                                      : new_extension);
 
 		if (existing.contains(std::string(dest.name()))) result.emplace_back(dest.name());
 	}
@@ -2102,10 +2063,7 @@ std::vector<convert_item_plan> plan_convert_outputs(const core::folder_path writ
                                                     const std::string_view new_extension, const collision_policy policy)
 {
 	auto ordered = sources;
-	std::ranges::sort(ordered, [](const auto& left, const auto& right)
-	{
-		return left.path.icmp(right.path) < 0;
-	});
+	std::ranges::sort(ordered, [](const auto& left, const auto& right) { return left.path.icmp(right.path) < 0; });
 
 	core::hash_set<core::file_path, core::ihash, core::ieq> planned_paths;
 	// A destination that names another row's source is a file this run reads. Writing it would
@@ -2126,8 +2084,7 @@ std::vector<convert_item_plan> plan_convert_outputs(const core::folder_path writ
 	{
 		const auto taken = [&](const core::file_path candidate)
 		{
-			return planned_paths.contains(candidate) ||
-				(source_paths.contains(candidate) && candidate != source.path);
+			return planned_paths.contains(candidate) || (source_paths.contains(candidate) && candidate != source.path);
 		};
 
 		const auto base_name = source.path.file_name_without_extension();
@@ -2164,13 +2121,14 @@ std::vector<convert_item_plan> plan_convert_outputs(const core::folder_path writ
 
 		plan.destination = destination;
 		planned_paths.emplace(destination);
-		result.emplace_back(std::move(plan));
+		result.emplace_back(plan);
 	}
 
 	return result;
 }
 
-core::date_t adjusted_item_date(const core::date_t created, const core::date_t new_start, const core::date_t original_start)
+core::date_t adjusted_item_date(const core::date_t created, const core::date_t new_start,
+                                const core::date_t original_start)
 {
 	return created.is_valid() && original_start.is_valid() ? created + (new_start - original_start) : new_start;
 }
@@ -2183,9 +2141,8 @@ std::string_view adjust_date_source_name(const prop::item_metadata_const_ptr& md
 {
 	if (md)
 	{
-		for (const auto kind : {
-			     prop::date_concept::original, prop::date_concept::created, prop::date_concept::modified
-		     })
+		for (const auto kind :
+		     {prop::date_concept::original, prop::date_concept::created, prop::date_concept::modified})
 		{
 			if (md->dates.resolve(kind).is_valid()) return prop::date_source_name(md->dates.resolved_source(kind));
 		}
@@ -2205,7 +2162,7 @@ icon_index drive_icon(const platform::drive_type d)
 	case platform::drive_type::remote: return icon_index::network;
 	case platform::drive_type::cdrom: return icon_index::disk;
 	case platform::drive_type::device: return icon_index::disk;
-	default: ;
+	default:;
 	}
 
 	return icon_index::hard_drive;
@@ -2219,18 +2176,17 @@ bool core::is_excluded(const index_roots& roots, const folder_path path)
 
 		return std::ranges::none_of(roots.folders, [&roots, exclude, path](const folder_path root)
 		{
-			return exclude != root &&
-				folder_contains(exclude.text().sv(), root.text().sv()) &&
-				folder_contains(root.text().sv(), path.text().sv());
+			return exclude != root && folder_contains(exclude.text().sv(), root.text().sv()) &&
+			       folder_contains(root.text().sv(), path.text().sv());
 		});
-	})) return true;
+	}))
+		return true;
 
 	const auto name = path.name();
 
 	for (const auto& exclude : roots.exclude_wildcards)
 	{
-		if (core::wildcard_icmp(name, exclude))
-			return true;
+		if (core::wildcard_icmp(name, exclude)) return true;
 	}
 
 	return false;

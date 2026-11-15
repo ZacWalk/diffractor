@@ -1,13 +1,13 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Application settings persistence. Reads and writes all user preferences
-// to the registry including display options, import/sync settings, and collection configuration.
+// to the registry including display options, import/sync settings, and collection configuration,
+// and says where settings and the rebuildable caches live: the user's own, or a Debug run's -profile.
 
 #include "pch.h"
 
@@ -212,12 +212,9 @@ constexpr uint32_t operator|(const uint32_t lhs, group_key_type rhs)
 }
 
 // items that are details by default
-constexpr uint32_t default_detail_items = group_key_type::folder |
-	group_key_type::audio |
-	group_key_type::grouped_no_value |
-	group_key_type::archive |
-	group_key_type::other |
-	group_key_type::retro;
+constexpr uint32_t default_detail_items = group_key_type::folder | group_key_type::audio |
+                                          group_key_type::grouped_no_value | group_key_type::archive |
+                                          group_key_type::other | group_key_type::retro;
 
 bool settings_t::is_detail_display(const group_key_type type) const
 {
@@ -255,14 +252,13 @@ static int item_scale_snap_position(const int index)
 	const auto min_dimension = settings_t::item_scale_snaps[0];
 	const auto dimension_range = settings_t::item_scale_snaps[settings_t::item_scale_count - 1] - min_dimension;
 	return core::round(static_cast<double>(settings_t::item_scale_snaps[clamped_index] - min_dimension) *
-		settings_t::item_scale_position_max / std::max(1, dimension_range));
+	                   settings_t::item_scale_position_max / std::max(1, dimension_range));
 }
 
 int settings_t::item_scale_slider_position() const
 {
-	return item_scale_position < 0
-		       ? item_scale_snap_position(item_scale)
-		       : std::clamp(item_scale_position, 0, item_scale_position_max);
+	return item_scale_position < 0 ? item_scale_snap_position(item_scale)
+	                               : std::clamp(item_scale_position, 0, item_scale_position_max);
 }
 
 void settings_t::select_only_description()
@@ -280,8 +276,8 @@ int settings_t::item_scale_dimension() const
 {
 	const auto min_dimension = item_scale_snaps[0];
 	const auto dimension_range = item_scale_snaps[item_scale_count - 1] - min_dimension;
-	return min_dimension + core::round(static_cast<double>(item_scale_slider_position()) *
-		dimension_range / item_scale_position_max);
+	return min_dimension +
+	       core::round(static_cast<double>(item_scale_slider_position()) * dimension_range / item_scale_position_max);
 }
 
 void settings_t::set_item_scale_position(const int position)
@@ -291,7 +287,7 @@ void settings_t::set_item_scale_position(const int position)
 	for (auto index = 1; index < item_scale_count; ++index)
 	{
 		if (std::abs(item_scale_snap_position(index) - item_scale_position) <
-			std::abs(item_scale_snap_position(item_scale) - item_scale_position))
+		    std::abs(item_scale_snap_position(item_scale) - item_scale_position))
 		{
 			item_scale = index;
 		}
@@ -354,9 +350,10 @@ static int view_splitter_index(const view_type view)
 	}
 }
 
-static constexpr std::string_view s_view_splitter_names[settings_t::view_splitter_count] = {
-	"edit", "rename", "batch", "import", "sync", "locate", "tags"
-};
+static constexpr std::string_view s_view_splitter_names[settings_t::view_splitter_count] = {"edit",  "rename",
+                                                                                            "batch", "import",
+                                                                                            "sync",  "locate",
+                                                                                            "tags"};
 
 int settings_t::view_splitter(const view_type view) const
 {
@@ -404,15 +401,13 @@ settings_t::settings_t()
 	sort_dates_descending = true;
 	show_sidebar = true;
 	large_font = false;
-	verbose_metadata = true;
 	raw_preview = true;
 	default_location = gps_coordinate(51.5255317687988, -0.116743430495262); // London
 	detail_items = default_detail_items;
 
 	instantiations = 0;
 
-	copyright_notice = std::format("\xC2\xA9 {} {} - All Rights Reserved",
-	                               core::utc_now().year(),
+	copyright_notice = std::format("\xC2\xA9 {} {} - All Rights Reserved", core::utc_now().year(),
 	                               platform::user_name());
 	copyright_creator = platform::user_name();
 	artist = platform::user_name();
@@ -443,7 +438,6 @@ settings_t::settings_t()
 	sync.sync_remote_local = false;
 	sync.sync_delete_local = false;
 	sync.sync_delete_remote = false;
-
 
 	desktop_background.maximize = true;
 
@@ -561,9 +555,7 @@ class setting_formatter
 	platform::setting_file_ptr _file;
 
 public:
-	setting_formatter(const platform::setting_file_ptr& f) : _file(f)
-	{
-	}
+	setting_formatter(const platform::setting_file_ptr& f) : _file(f) {}
 
 	bool write(const std::string_view section, const std::string_view name, const uint32_t v) const
 	{
@@ -621,7 +613,7 @@ public:
 
 	bool read(const std::string_view section, const std::string_view name, repeat_mode& v) const
 	{
-		// Reject values outside the closed ontology rather than inventing a state: an enumerator no
+		// Reject values outside the enumeration rather than inventing a state: an enumerator no
 		// switch has an arm for behaves as none while the menu ticks nothing.
 		uint32_t vv{};
 		if (!_file->read(section, name, vv) || !is_valid_repeat_mode(vv)) return false;
@@ -661,7 +653,7 @@ public:
 		uint32_t vv{};
 		if (_file->read(section, name, vv))
 		{
-			// Reject values outside the closed ontology rather than inventing a state.
+			// Reject values outside the enumeration rather than inventing a state.
 			if (vv > static_cast<uint32_t>(collision_policy::auto_rename)) return false;
 			v = static_cast<collision_policy>(vv);
 			return true;
@@ -720,8 +712,7 @@ public:
 	{
 		uint32_t dw = 0;
 
-		if (!_file->read(section, name, dw))
-			return false;
+		if (!_file->read(section, name, dw)) return false;
 
 		v = dw != 0;
 		return true;
@@ -824,9 +815,37 @@ public:
 	}
 };
 
+#ifdef _DEBUG
+// -profile: set once, while the command line is read and before anything reads settings or opens the index.
+static core::folder_path s_profile_folder;
+static platform::setting_file_ptr s_profile_settings;
+
+void use_profile_folder(const core::folder_path folder)
+{
+	s_profile_folder = folder;
+	s_profile_settings = folder.is_empty() ? nullptr : platform::create_ini_file_settings(folder);
+}
+#endif
+
+platform::setting_file_ptr app_settings_store()
+{
+#ifdef _DEBUG
+	if (s_profile_settings) return s_profile_settings;
+#endif
+	return platform::settings();
+}
+
+core::folder_path app_cache_folder()
+{
+#ifdef _DEBUG
+	if (!s_profile_folder.is_empty()) return s_profile_folder;
+#endif
+	return known_path(platform::known_folder::app_cache_data);
+}
+
 void settings_t::read()
 {
-	const setting_formatter store(platform::settings());
+	const setting_formatter store(app_settings_store());
 
 	store.read({}, s_hidden, show_hidden);
 	store.read({}, s_show_shadow, show_shadow);
@@ -1005,7 +1024,6 @@ void settings_t::read()
 	store.read(s_index, s_more, collection.more_folders);
 	store.read(s_index, s_library_types, collection.library_types);
 
-
 	store.read(s_favorite_search, s_title, search.title, search.count);
 	store.read(s_favorite_search, s_path, search.path, search.count);
 
@@ -1031,7 +1049,7 @@ void settings_t::read()
 
 void settings_t::write() const
 {
-	setting_formatter store(platform::settings());
+	setting_formatter store(app_settings_store());
 
 	store.write({}, s_hidden, show_hidden);
 	store.write({}, s_show_shadow, show_shadow);
@@ -1193,7 +1211,6 @@ void settings_t::write() const
 	store.write(s_index, s_more, collection.more_folders);
 	store.write(s_index, s_library_types, collection.library_types);
 
-
 	store.write(s_favorite_search, s_title, search.title, search.count);
 	store.write(s_favorite_search, s_path, search.path, search.count);
 
@@ -1241,9 +1258,8 @@ std::vector<std::pair<core::folder_path, prop::library_kind>> parse_library_type
 		const auto folder = core::trim(line.substr(tab + 1));
 		if (folder.empty()) continue;
 
-		constexpr prop::library_kind kinds[] = {
-			prop::library_kind::personal, prop::library_kind::films_tv, prop::library_kind::music
-		};
+		constexpr prop::library_kind kinds[] = {prop::library_kind::personal, prop::library_kind::films_tv,
+		                                        prop::library_kind::music};
 
 		for (const auto kind : kinds)
 		{

@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Location assignment view. Provides a map-based interface for setting
 // GPS coordinates on selected items, with search and reverse geocoding.
@@ -23,13 +22,13 @@
 #include "app_command_status.h"
 #include "app_commands.h"
 
-
 // -------------------------------------------------------------------
 // Location autocomplete match for search results
 // -------------------------------------------------------------------
 
-class locate_auto_complete_match final : public ui::auto_complete_match,
-                                         public std::enable_shared_from_this<locate_auto_complete_match>
+class locate_auto_complete_match final :
+	public ui::auto_complete_match,
+	public std::enable_shared_from_this<locate_auto_complete_match>
 {
 public:
 	location_match match;
@@ -41,10 +40,7 @@ public:
 		weight = w;
 	}
 
-	std::string edit_text() const override
-	{
-		return match.location.str();
-	}
+	std::string edit_text() const override { return match.location.str(); }
 
 	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
@@ -68,8 +64,7 @@ public:
 		{
 			const auto city_extent = dc.measure_text(city_text, render::font_face::dialog,
 			                                         render::text_style::single_line, rr.width());
-			dc.draw_text(city_text, rr, render::font_face::dialog,
-			             render::text_style::single_line, clr, {});
+			dc.draw_text(city_text, rr, render::font_face::dialog, render::text_style::single_line, clr, {});
 			rr.left += city_extent.cx + dc.padding2;
 		}
 
@@ -83,8 +78,7 @@ public:
 
 		if (!sub.empty())
 		{
-			dc.draw_text(sub, rr, render::font_face::dialog,
-			             render::text_style::single_line,
+			dc.draw_text(sub, rr, render::font_face::dialog, render::text_style::single_line,
 			             core::color(dc.colors.foreground, dc.colors.alpha * 0.6f), {});
 		}
 	}
@@ -98,8 +92,7 @@ public:
 	// Enable mouse hover/click on the result row: without this override the base
 	// element returns no controller, so the dropdown only responds to the keyboard.
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             const pointi element_offset,
-	                                             hit_test_context& ctx) override
+	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
 	}
@@ -117,13 +110,13 @@ public:
 	}
 };
 
-
 // -------------------------------------------------------------------
 // Location autocomplete strategy using local location database
 // -------------------------------------------------------------------
 
-class locate_auto_complete_strategy final : public std::enable_shared_from_this<locate_auto_complete_strategy>,
-                                            public ui::complete_strategy_t
+class locate_auto_complete_strategy final :
+	public std::enable_shared_from_this<locate_auto_complete_strategy>,
+	public ui::complete_strategy_t
 {
 public:
 	view_state& _state;
@@ -138,9 +131,8 @@ public:
 
 	std::function<void(const location_t&)> _changed;
 
-	locate_auto_complete_strategy(view_state& s, ui::frame_ptr parent,
-	                              std::function<void(const location_t&)> changed)
-		: _state(s), _parent(std::move(parent)), _changed(std::move(changed))
+	locate_auto_complete_strategy(view_state& s, ui::frame_ptr parent, std::function<void(const location_t&)> changed) :
+		_state(s), _parent(std::move(parent)), _changed(std::move(changed))
 	{
 		resize_to_show_results = false;
 		max_predictions = 15u;
@@ -149,15 +141,9 @@ public:
 	// A coordinate chosen on the map, or a new item to locate, supersedes any search still on the
 	// location queue the same way a keystroke does. Its answer would otherwise select its first match
 	// and move the coordinate back to a place the user had moved away from.
-	void supersede_pending_search()
-	{
-		++_search_generation;
-	}
+	void supersede_pending_search() { ++_search_generation; }
 
-	std::string no_results_message() override
-	{
-		return std::string(tt.type_to_search);
-	}
+	std::string no_results_message() override { return std::string(tt.type_to_search); }
 
 	void initialise(std::function<void(const ui::auto_complete_results&)> complete) override
 	{
@@ -180,35 +166,33 @@ public:
 		}
 
 		_state.queue_location(
-			[t = shared_from_this(), query, generation, complete = std::move(complete)](
-			const location_cache& locations)
+			[t = shared_from_this(), query, generation, complete = std::move(complete)](const location_cache& locations)
+		{
+			const auto locally_found = locations.auto_complete(query, t->max_predictions, setting.default_location);
+
+			ui::auto_complete_results found;
+
+			// locations.md 3.4: the gazetteer already ranks matches (exact spelling, then
+			// population, then distance). Re-sorting on distance alone put a nearby hamlet
+			// above the city the user was obviously typing.
+			for (const auto& local : locally_found)
 			{
-				const auto locally_found = locations.auto_complete(query, t->max_predictions, setting.default_location);
+				found.emplace_back(
+					std::make_shared<locate_auto_complete_match>(*t, local, static_cast<int>(found.size())));
+			}
 
-				ui::auto_complete_results found;
+			t->_state.queue_ui([t, generation, complete, found]
+			{
+				if (t->_search_generation != generation) return;
 
-				// locations.md 3.4: the gazetteer already ranks matches (exact spelling, then
-				// population, then distance). Re-sorting on distance alone put a nearby hamlet
-				// above the city the user was obviously typing.
-				for (const auto& local : locally_found)
-				{
-					found.emplace_back(
-						std::make_shared<locate_auto_complete_match>(*t, local,
-						                                             static_cast<int>(found.size())));
-				}
-
-				t->_state.queue_ui([t, generation, complete, found]
-				{
-					if (t->_search_generation != generation) return;
-
-					t->_results = found;
-					if (t->_results.size() > t->max_predictions) t->_results.resize(t->max_predictions);
-					complete(t->_results);
-				});
+				t->_results = found;
+				if (t->_results.size() > t->max_predictions) t->_results.resize(t->max_predictions);
+				complete(t->_results);
 			});
+		});
 	}
 
-	void selected(const ui::auto_complete_match_ptr& i, const select_type st) override
+	void selected(const ui::auto_complete_match_ptr& i, const select_type /*st*/) override
 	{
 		if (i)
 		{
@@ -233,12 +217,8 @@ public:
 		}
 	}
 
-	ui::auto_complete_match_ptr selected() const override
-	{
-		return _selected;
-	}
+	ui::auto_complete_match_ptr selected() const override { return _selected; }
 };
-
 
 // -------------------------------------------------------------------
 // locate_view implementation
@@ -247,9 +227,7 @@ public:
 class locate_controls_host final : public view_controls_host
 {
 public:
-	locate_controls_host(view_state& state) : view_controls_host(state)
-	{
-	}
+	locate_controls_host(view_state& state) : view_controls_host(state) {}
 
 	// The search and its results fill the panel, which does not scroll.
 	void layout_controls(render::measure_context& mc) override
@@ -353,46 +331,44 @@ void locate_view::rebuild_markers()
 	_pending_marker_items = std::move(marker_items);
 
 	_state.queue_async(async_queue::query,
-	                   [&state = _state, weak_self, generation, zoom, excluded,
-		                   markers = std::move(markers)]() mutable
-	                   {
-		                   location_matrix_params params;
-		                   params.zoom = zoom;
-		                   auto matrix = state.item_index.build_location_matrix(params, *excluded);
+	                   [&state = _state, weak_self, generation, zoom, excluded, markers = std::move(markers)]() mutable
+	{
+		location_matrix_params params;
+		params.zoom = zoom;
+		auto matrix = state.item_index.build_location_matrix(params, *excluded);
 
-		                   std::vector<core::file_path> paths;
-		                   paths.reserve(matrix.cells.size());
+		std::vector<core::file_path> paths;
+		paths.reserve(matrix.cells.size());
 
-		                   for (auto& cell : matrix.cells)
-		                   {
-			                   paths.emplace_back(std::move(cell.representative_path));
-			                   markers.push_back({cell.centroid, cell.count});
-		                   }
+		for (auto& cell : matrix.cells)
+		{
+			paths.emplace_back(cell.representative_path);
+			markers.push_back({cell.centroid, cell.count});
+		}
 
-		                   auto marker_snapshot = map_engine::prepare_marker_snapshot(markers, zoom);
+		auto marker_snapshot = map_engine::prepare_marker_snapshot(markers, zoom);
 
-		                   state._async.queue_ui([weak_self, generation,
-				                   marker_snapshot = std::move(marker_snapshot), paths = std::move(paths)]() mutable
-			                   {
-				                   const auto self = weak_self.lock();
+		state._async.queue_ui(
+			[weak_self, generation, marker_snapshot = std::move(marker_snapshot), paths = std::move(paths)]() mutable
+		{
+			const auto self = weak_self.lock();
 
-				                   if (!self || self->_marker_generation != generation ||
-					                   self->_pending_marker_generation != generation)
-				                   {
-					                   return;
-				                   }
+			if (!self || self->_marker_generation != generation || self->_pending_marker_generation != generation)
+			{
+				return;
+			}
 
-				                   for (auto& path : paths)
-				                   {
-					                   self->_pending_marker_items.push_back({std::move(path), {}});
-				                   }
+			for (auto& path : paths)
+			{
+				self->_pending_marker_items.push_back({path, {}});
+			}
 
-				                   self->_marker_items = std::move(self->_pending_marker_items);
-				                   self->_pending_marker_generation = 0;
-				                   self->_engine.set_marker_snapshot(std::move(marker_snapshot));
-				                   self->_state.invalidate_view(view_invalid::view_redraw);
-			                   });
-	                   });
+			self->_marker_items = std::move(self->_pending_marker_items);
+			self->_pending_marker_generation = 0;
+			self->_engine.set_marker_snapshot(std::move(marker_snapshot));
+			self->_state.invalidate_view(view_invalid::view_redraw);
+		});
+	});
 }
 
 void locate_view::deactivate()
@@ -423,7 +399,7 @@ void locate_view::display_changed()
 	select_default_location();
 }
 
-void locate_view::on_map_zoomed(const int zoom)
+void locate_view::on_map_zoomed(const int /*zoom*/)
 {
 	rebuild_markers();
 }
@@ -486,7 +462,7 @@ void locate_view::on_map_panned(const gps_coordinate& new_center)
 
 	// Skip work if the centre has not actually moved (zero-distance click).
 	if (core::equiv(_location->latitude, new_center.latitude()) &&
-		core::equiv(_location->longitude, new_center.longitude()))
+	    core::equiv(_location->longitude, new_center.longitude()))
 	{
 		return;
 	}
@@ -530,8 +506,7 @@ void locate_view::on_marker_hover(view_hover_element& hover, const int marker_in
 
 	if (is_valid(surface))
 	{
-		elements->add(std::make_shared<surface_element>(surface, 160, flex_item::center,
-		                                                item->layout_orientation()));
+		elements->add(std::make_shared<surface_element>(surface, 160, flex_item::center, item->layout_orientation()));
 	}
 	else if (is_valid(item->thumbnail()))
 	{
@@ -543,12 +518,9 @@ void locate_view::on_marker_hover(view_hover_element& hover, const int marker_in
 	}
 
 	// Caption: item count for a cluster, otherwise the representative file name.
-	const auto caption = count > 1
-		                     ? format_plural_text(tt.map_items_here_fmt, count)
-		                     : std::string(item->name().sv());
+	const auto caption = count > 1 ? format_plural_text(tt.map_items_here_fmt, count) : std::string(item->name().sv());
 
-	elements->add(std::make_shared<text_element>(caption,
-	                                             flex_item::center | flex_item::new_line));
+	elements->add(std::make_shared<text_element>(caption, flex_item::center | flex_item::new_line));
 
 	// Anchor the bubble on the marker; the tooltip system offsets it into screen space.
 	hover.elements = elements;
@@ -560,7 +532,7 @@ void locate_view::on_marker_hover(view_hover_element& hover, const int marker_in
 
 // Here the centre is the answer, so a picked bubble is moved under the crosshair rather than
 // marked in place. Contrast the advanced-search map, which picks without moving.
-void locate_view::on_marker_clicked(const gps_coordinate& coordinate, const int count)
+void locate_view::on_marker_clicked(const gps_coordinate& coordinate, const int /*count*/)
 {
 	if (!coordinate.is_valid()) return;
 
@@ -580,48 +552,47 @@ void locate_view::request_reverse_geocode(const gps_coordinate& gps)
 {
 	const auto request_id = ++_geocode_request_id;
 	std::weak_ptr<locate_view> weak_self = shared_from_this();
-	_state._async.queue_location(
-		[&async = _state._async, gps, weak_self, request_id](const location_cache& locations)
+	_state._async.queue_location([&async = _state._async, gps, weak_self, request_id](const location_cache& locations)
+	{
+		// locations.md 2.5: bounded attribution. find_closest would name a city hundreds of
+		// kilometres away with the same confidence as a correct answer.
+		const auto attributed = locations.find_attributed(gps);
+
+		// Composed here because the record and its qualification level are only meaningful
+		// beside the gazetteer; the UI thread receives a finished answer.
+		auto label = qualified_name(attributed.place);
+
+		if (attributed.attribution == location_attribution::near)
 		{
-			// locations.md 2.5: bounded attribution. find_closest would name a city hundreds of
-			// kilometres away with the same confidence as a correct answer.
-			const auto attributed = locations.find_attributed(gps);
+			label = str_format(tt.location_near_fmt.sv(), label);
+		}
+		else if (attributed.attribution == location_attribution::remote && label.empty())
+		{
+			label = std::string(tt.location_remote.sv());
+		}
 
-			// Composed here because the record and its qualification level are only meaningful
-			// beside the gazetteer; the UI thread receives a finished answer.
-			auto label = qualified_name(attributed.place);
-
-			if (attributed.attribution == location_attribution::near)
+		async.queue_ui([attributed, label, bearing = bearing_descriptor(attributed), gps, weak_self, request_id]
+		{
+			if (const auto self = weak_self.lock())
 			{
-				label = str_format(tt.location_near_fmt.sv(), label);
-			}
-			else if (attributed.attribution == location_attribution::remote && label.empty())
-			{
-				label = std::string(tt.location_remote.sv());
-			}
-
-			async.queue_ui([attributed, label, bearing = bearing_descriptor(attributed), gps, weak_self, request_id]
-			{
-				if (const auto self = weak_self.lock())
+				// Discard stale results from earlier requests.
+				if (request_id != self->_geocode_request_id)
 				{
-					// Discard stale results from earlier requests.
-					if (request_id != self->_geocode_request_id)
-					{
-						return;
-					}
-
-					self->_place_label = label;
-					self->_bearing = bearing;
-
-					// Only an `at` answer names a place the item is actually in, so only that answer
-					// is worth remembering as a recent location.
-					self->_location->id = attributed.attribution == location_attribution::at ? attributed.place.id : 0;
-					self->_location->latitude = gps.latitude();
-					self->_location->longitude = gps.longitude();
-					self->refresh();
+					return;
 				}
-			});
+
+				self->_place_label = label;
+				self->_bearing = bearing;
+
+				// Only an `at` answer names a place the item is actually in, so only that answer
+				// is worth remembering as a recent location.
+				self->_location->id = attributed.attribution == location_attribution::at ? attributed.place.id : 0;
+				self->_location->latitude = gps.latitude();
+				self->_location->longitude = gps.longitude();
+				self->refresh();
+			}
 		});
+	});
 }
 
 void locate_view::refresh()
@@ -632,8 +603,7 @@ void locate_view::refresh()
 	{
 		// The coordinate is always true; the place name is appended only when the gazetteer
 		// had one to give, so an empty answer reads as a coordinate rather than as blanks.
-		_status = std::format("{} {}",
-		                      core::to_string(_location->latitude, 5),
+		_status = std::format("{} {}", core::to_string(_location->latitude, 5),
 		                      core::to_string(_location->longitude, 5));
 
 		if (!_place_label.empty()) _status += std::format(" | {}", _place_label);
@@ -648,10 +618,9 @@ void locate_view::refresh()
 	if (_populate_controls) _populate_controls();
 }
 
-bool locate_view::run(detach_file_handles& detach)
+bool locate_view::run(detach_file_handles& /*detach*/)
 {
-	if (!can_run())
-		return false;
+	if (!can_run()) return false;
 
 	const auto title = tt.command_locate;
 	constexpr auto icon = icon_index::location;
@@ -672,8 +641,7 @@ bool locate_view::run(detach_file_handles& detach)
 		_state.recent_locations.add(core::to_string(_location->id));
 	}
 
-	const auto results = std::make_shared<command_status>(_state._async, dlg, icon, title,
-	                                                      _state.selected_count());
+	const auto results = std::make_shared<command_status>(_state._async, dlg, icon, title, _state.selected_count());
 	_state.modify_items(results, icon, title, _state.selected_items().items(), edits, _host);
 	results->wait_for_complete();
 
@@ -705,7 +673,6 @@ view_bars locate_view::bars() const
 	return task_view_bars({commands::edit_item_save_and_prev, commands::edit_item_save_and_next, commands::locate_run});
 }
 
-
 view_controls_host_ptr locate_view::controls(const ui::frame_ptr& owner)
 {
 	auto result = std::make_shared<locate_controls_host>(_state);
@@ -716,8 +683,7 @@ view_controls_host_ptr locate_view::controls(const ui::frame_ptr& owner)
 		update_location(loc);
 	};
 
-	auto strategy = std::make_shared<locate_auto_complete_strategy>(
-		_state, frame, sel_changed);
+	auto strategy = std::make_shared<locate_auto_complete_strategy>(_state, frame, sel_changed);
 	_place_search = strategy;
 	const auto search = std::make_shared<ui::search_control>(frame, _location->search_text, strategy);
 	search->flex.align_self = flex_align::stretch;
@@ -734,12 +700,10 @@ view_controls_host_ptr locate_view::controls(const ui::frame_ptr& owner)
 	controls.emplace_back(selection_thumbnails);
 	controls.emplace_back(target_summary);
 	controls.emplace_back(overwrite_summary);
-	controls.emplace_back(std::make_shared<ui::check_control>(
-		frame, tt.show_without_location, setting.locate_only_without_location, false, false,
-		[this](const bool)
-		{
-			_state.invalidate_view(view_invalid::selector_filter | view_invalid::options_save);
-		}));
+	controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.show_without_location,
+	                                                          setting.locate_only_without_location, false, false,
+	                                                          [this](const bool)
+	{ _state.invalidate_view(view_invalid::selector_filter | view_invalid::options_save); }));
 
 	std::weak_ptr<locate_controls_host> weak_host = result;
 	_populate_controls = [this, selection_thumbnails, target_summary, overwrite_summary, weak_host]
@@ -754,17 +718,15 @@ view_controls_host_ptr locate_view::controls(const ui::frame_ptr& owner)
 		selection_thumbnails->selection_async(items.thumbs(), items.size(), _state._async);
 		target_summary->text(format_plural_text(tt.be_updated_fmt, items));
 		overwrite_summary->text(gps_items.empty()
-			                        ? std::string{}
-			                        : format_plural_text(tt.gps_overwrite_count_fmt, df::item_set(gps_items)));
+		                            ? std::string{}
+		                            : format_plural_text(tt.gps_overwrite_count_fmt, df::item_set(gps_items)));
 		overwrite_summary->is_visible(!gps_items.empty());
 		if (const auto host = weak_host.lock()) host->scroll_controls();
 	};
 
-
 	controls.emplace_back(std::make_shared<divider_element>());
 	controls.emplace_back(std::make_shared<text_element>(tt.type_to_search));
 	controls.emplace_back(search);
-
 
 	for (const auto& c : controls)
 	{

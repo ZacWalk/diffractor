@@ -10,12 +10,12 @@ only what is decided at the moment of editing these files.
 
 ## Before adding a field
 
-Mutable objects have **one owning execution context**. `docs/implementation.md` carries the
-synchronized-type registry — the closed list of approved exceptions. Adding an atomic, mutex,
-event or synchronized mutable field to a type outside that list requires first documenting, in
-that registry, the owning threads, the protected invariant, and why moved values or an immutable
-snapshot on one context is insufficient. If you cannot write those three sentences, the field is
-the wrong fix.
+Mutable objects have **one owning execution context**.
+[implementation](../../docs/implementation.md#synchronized-types) carries the synchronized-type
+registry, the list of approved exceptions. Adding an atomic, mutex, event or synchronized mutable
+field to a type outside that list requires first documenting, in that registry, the owning threads,
+the protected invariant, and why moved values or an immutable snapshot on one context is
+insufficient. If you cannot write those three sentences, the field is the wrong fix.
 
 `df::item_element` is entirely UI-owned, including its metadata snapshot and playback position.
 `df::index_file_item` is a synchronized index record whose atomic metadata pointer publishes
@@ -49,6 +49,7 @@ other context, and do not add a third connection without a thread of its own. `s
 
 ## Checks
 
-`/test:*index*`, `/test:*thumbnail*`, `/test:*search*`, then `pwsh -File tools/lint_repo.ps1`.
+`/test:*index*`, `/test:*thumbnail*`, `/test:*search*` after a Debug build with
+`python tools\dd.py build`, then `pwsh -File tools/lint_repo.ps1`.
 A new ownership migration should add a stale-result test *before* the synchronization field is
 removed, so the test is proven against the old behavior.

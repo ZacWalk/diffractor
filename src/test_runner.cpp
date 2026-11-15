@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Shared test infrastructure definitions, utility tests, test registration,
 // and console test runner.
@@ -18,10 +17,9 @@
 // Shared global definitions
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-temp_files _temps;
+temp_files test_temps;
 std::atomic_int test_version = 0;
 core::cancel_token test_token(test_version);
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Console test runner
@@ -80,8 +78,7 @@ int run_console_tests(const std::string_view test_filter)
 	// was indistinguishable from a clean run.
 	if (total == 0)
 	{
-		printf("  FAIL  no test matched the filter '%.*s'\n", static_cast<int>(test_filter.size()),
-		       test_filter.data());
+		printf("  FAIL  no test matched the filter '%.*s'\n", static_cast<int>(test_filter.size()), test_filter.data());
 		return 1;
 	}
 
@@ -94,8 +91,8 @@ int run_console_tests(const std::string_view test_filter)
 		{
 			if (count > 1)
 			{
-				printf("  FAIL  duplicate test name '%.*s' registered %d times\n",
-				       static_cast<int>(name.size()), name.data(), count);
+				printf("  FAIL  duplicate test name '%.*s' registered %d times\n", static_cast<int>(name.size()),
+				       name.data(), count);
 				++structural_failures;
 			}
 		}
@@ -150,7 +147,7 @@ int run_console_tests(const std::string_view test_filter)
 		}
 	}
 
-	const auto cleanup_errors = _temps.delete_temps();
+	const auto cleanup_errors = test_temps.delete_temps();
 	const auto cleanup_failures = static_cast<int>(cleanup_errors.size());
 	for (const auto& error : cleanup_errors)
 	{
@@ -158,8 +155,7 @@ int run_console_tests(const std::string_view test_filter)
 	}
 
 	printf("\n========================================\n");
-	printf("Results: %d passed, %d failed, %d total\n", passed, failed + cleanup_failures,
-	       total + cleanup_failures);
+	printf("Results: %d passed, %d failed, %d total\n", passed, failed + cleanup_failures, total + cleanup_failures);
 	printf("========================================\n");
 
 	return failed > 0 || cleanup_failures > 0 || structural_failures > 0 ? 1 : 0;

@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Index and database tests. Verifies the inverted/trigram/postings index, folder scanning
 // and roots parsing, the SQLite cache schema and storage, thumbnail publication, staging and
@@ -33,7 +32,7 @@ static void should_create_database_schema()
 {
 	sqlite3_initialize();
 
-	const auto database_path = _temps.next_path(".db");
+	const auto database_path = test_temps.next_path(".db");
 	sqlite3* database_handle = nullptr;
 	const auto open_result = sqlite3_open(database_path.str().c_str(), &database_handle);
 	const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw_db(database_handle, sqlite3_close);
@@ -48,8 +47,7 @@ static void should_create_database_schema()
 	const std::string schema(reinterpret_cast<const char*>(resource.data()), resource.size());
 	if (sqlite3_exec(raw_db.get(), schema.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK)
 	{
-		throw test_assert_exception(
-			std::format("Failed to execute database schema: {}", sqlite3_errmsg(raw_db.get())));
+		throw test_assert_exception(std::format("Failed to execute database schema: {}", sqlite3_errmsg(raw_db.get())));
 	}
 
 	const auto query_text = [&raw_db](const std::string_view sql)
@@ -61,8 +59,7 @@ static void should_create_database_schema()
 
 		if (prepare_result != SQLITE_OK || sqlite3_step(statement.get()) != SQLITE_ROW)
 		{
-			throw test_assert_exception(
-				std::format("Failed schema query '{}': {}", sql, sqlite3_errmsg(raw_db.get())));
+			throw test_assert_exception(std::format("Failed schema query '{}': {}", sql, sqlite3_errmsg(raw_db.get())));
 		}
 
 		const auto* text = sqlite3_column_text(statement.get(), 0);
@@ -74,7 +71,7 @@ static void should_create_database_schema()
 	assert_equal("1", query_text("PRAGMA synchronous"), "schema synchronous mode");
 	assert_equal("item_imports,item_properties,item_thumbnails,web_service_cache",
 	             query_text("SELECT group_concat(name, ',') FROM (SELECT name FROM sqlite_schema "
-		             "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name)"),
+	                        "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name)"),
 	             "schema tables");
 	assert_equal("folder,name,properties,hash,media_position,flag,crc,last_scanned,last_indexed",
 	             query_text("SELECT group_concat(name, ',') FROM pragma_table_info('item_properties')"),
@@ -90,26 +87,26 @@ static void should_create_database_schema()
 	             "item_imports columns");
 	assert_equal("folder,name",
 	             query_text("SELECT group_concat(name, ',') FROM "
-		             "(SELECT name FROM pragma_table_info('item_properties') WHERE pk > 0 ORDER BY pk)"),
+	                        "(SELECT name FROM pragma_table_info('item_properties') WHERE pk > 0 ORDER BY pk)"),
 	             "item_properties primary key");
 	assert_equal("folder,name",
 	             query_text("SELECT group_concat(name, ',') FROM "
-		             "(SELECT name FROM pragma_table_info('item_thumbnails') WHERE pk > 0 ORDER BY pk)"),
+	                        "(SELECT name FROM pragma_table_info('item_thumbnails') WHERE pk > 0 ORDER BY pk)"),
 	             "item_thumbnails primary key");
 	assert_equal("key",
 	             query_text("SELECT group_concat(name, ',') FROM "
-		             "(SELECT name FROM pragma_table_info('web_service_cache') WHERE pk > 0 ORDER BY pk)"),
+	                        "(SELECT name FROM pragma_table_info('web_service_cache') WHERE pk > 0 ORDER BY pk)"),
 	             "web_service_cache primary key");
 	assert_equal("name,modified,size",
 	             query_text("SELECT group_concat(name, ',') FROM "
-		             "(SELECT name FROM pragma_table_info('item_imports') WHERE pk > 0 ORDER BY pk)"),
+	                        "(SELECT name FROM pragma_table_info('item_imports') WHERE pk > 0 ORDER BY pk)"),
 	             "item_imports primary key");
 	assert_equal("ok", query_text("PRAGMA integrity_check"), "schema integrity");
 }
 
 static void should_open_database_in_wal_mode()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	const auto db_path = core::file_path(index_path.folder(), index_path.file_name_without_extension(), ".db");
 
 	null_async_strategy as;
@@ -141,7 +138,7 @@ static void should_keep_rollback_journal_schema_initialization()
 {
 	sqlite3_initialize();
 
-	const auto database_path = _temps.next_path(".db");
+	const auto database_path = test_temps.next_path(".db");
 	sqlite3* database_handle = nullptr;
 	const auto open_result = sqlite3_open(database_path.str().c_str(), &database_handle);
 	const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw_db(database_handle, sqlite3_close);
@@ -202,25 +199,26 @@ static void should_keep_rollback_journal_schema_initialization()
 			             std::format("{} stays in rollback journal mode", label));
 		}
 
-		if (sqlite3_exec(raw.get(), "BEGIN; INSERT OR REPLACE INTO web_service_cache VALUES ('probe', 1, 'ok'); COMMIT;",
-		                 nullptr, nullptr, nullptr) != SQLITE_OK)
+		if (sqlite3_exec(raw.get(),
+		                 "BEGIN; INSERT OR REPLACE INTO web_service_cache VALUES ('probe', 1, 'ok'); COMMIT;", nullptr,
+		                 nullptr, nullptr) != SQLITE_OK)
 		{
-			throw test_assert_exception(std::format("{} could not write after fallback: {}", label,
-			                                        sqlite3_errmsg(raw.get())));
+			throw test_assert_exception(
+				std::format("{} could not write after fallback: {}", label, sqlite3_errmsg(raw.get())));
 		}
 	};
 
-	assert_fallback_open(_temps.next_path(), "fresh database"sv);
+	assert_fallback_open(test_temps.next_path(), "fresh database"sv);
 
-	const auto rollback_path = _temps.next_path();
+	const auto rollback_path = test_temps.next_path();
 	{
-		const auto rollback_db_path = core::file_path(rollback_path.folder(), rollback_path.file_name_without_extension(), ".db");
+		const auto rollback_db_path = core::file_path(rollback_path.folder(),
+		                                              rollback_path.file_name_without_extension(), ".db");
 		sqlite3* handle = nullptr;
 		if (sqlite3_open(rollback_db_path.str().c_str(), &handle) != SQLITE_OK)
 			throw test_assert_exception("Failed to seed rollback database"s);
 		const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
-		assert_equal(SQLITE_OK, database_test_seams::set_journal_mode(raw.get(), "DELETE"sv),
-		             "seed rollback journal");
+		assert_equal(SQLITE_OK, database_test_seams::set_journal_mode(raw.get(), "DELETE"sv), "seed rollback journal");
 		const auto seeded_schema = load_app_resource(app_resource::sql);
 		const std::string seeded_sql(reinterpret_cast<const char*>(seeded_schema.data()), seeded_schema.size());
 		if (sqlite3_exec(raw.get(), seeded_sql.c_str(), nullptr, nullptr, nullptr) != SQLITE_OK)
@@ -228,7 +226,7 @@ static void should_keep_rollback_journal_schema_initialization()
 	}
 	assert_fallback_open(rollback_path, "rollback database"sv);
 
-	const auto wal_path = _temps.next_path();
+	const auto wal_path = test_temps.next_path();
 	{
 		null_async_strategy as;
 		const location_cache locations;
@@ -258,7 +256,7 @@ static void should_classify_schema_check_failures_before_replacement()
 
 static void should_store_thumbnails()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	const auto file_path = test_files_folder().combine_file("Test.jpg");
 
 	null_async_strategy as;
@@ -277,7 +275,7 @@ static void should_store_thumbnails()
 
 static void should_store_cover_art()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	const auto file_path = test_files_folder().combine_file("indy.mp4");
 
 	null_async_strategy as;
@@ -296,7 +294,7 @@ static void should_store_cover_art()
 
 static void should_store_item_properties()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	const auto file_path = test_files_folder().combine_file("Test.jpg");
 
 	null_async_strategy as;
@@ -334,8 +332,7 @@ static void should_store_item_properties()
 
 	assert_metadata(*md, *item_md, "index");
 	assert_equal(crc32c_expected, item.crc32c, "index crc32");
-	assert_equal(static_cast<int>(media_pos), static_cast<int>(item_md->media_position),
-	             "index media position");
+	assert_equal(static_cast<int>(media_pos), static_cast<int>(item_md->media_position), "index media position");
 	assert_equal(md->orientation, item_md->orientation, "index orientation");
 
 	const auto reloaded_crc = platform::file_crc32(file_path);
@@ -380,13 +377,12 @@ static void should_round_trip_opaque_cache_properties()
 	const auto original = alias._data.clone();
 	alias.write_blob(prop::cache::faces, alias.cdata());
 	const auto found = metadata_find_blob_property(alias.cdata(), prop::cache::faces);
-	assert_equal(true, found && found->size == original.size() &&
-	             memcmp(found->data, original.data(), original.size()) == 0,
+	assert_equal(true,
+	             found && found->size == original.size() && memcmp(found->data, original.data(), original.size()) == 0,
 	             "a borrowed value may refer to the packer's own buffer");
 
-	for (const auto& invalid : {core::blob{0xff}, core::blob{0xff, 1, 1},
-	                          core::blob{0xff, 1, 1, 0, 0xfe, 1},
-	                          core::blob{0xff, 1, 1, 0, 4, 0}})
+	for (const auto& invalid : {core::blob{0xff}, core::blob{0xff, 1, 1}, core::blob{0xff, 1, 1, 0, 0xfe, 1},
+	                            core::blob{0xff, 1, 1, 0, 4, 0}})
 	{
 		auto rejected = false;
 		try
@@ -404,15 +400,14 @@ static void should_round_trip_opaque_cache_properties()
 static core::blob read_test_cached_properties(sqlite3* db, const core::file_path path)
 {
 	sqlite3_stmt* handle = nullptr;
-	const auto prepared = sqlite3_prepare_v2(db,
-		"select properties from item_properties where folder=? and name=?", -1, &handle, nullptr);
+	const auto prepared = sqlite3_prepare_v2(db, "select properties from item_properties where folder=? and name=?", -1,
+	                                         &handle, nullptr);
 	const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> statement(handle, sqlite3_finalize);
 	const auto folder = path.folder().text();
 	const auto name = std::string(path.name());
-	if (prepared != SQLITE_OK ||
-		sqlite3_bind_text(handle, 1, folder.sz(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-		sqlite3_bind_text(handle, 2, name.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-		sqlite3_step(handle) != SQLITE_ROW)
+	if (prepared != SQLITE_OK || sqlite3_bind_text(handle, 1, folder.sz(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+	    sqlite3_bind_text(handle, 2, name.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+	    sqlite3_step(handle) != SQLITE_ROW)
 		throw test_assert_exception(std::format("Cannot read test cache: {}", sqlite3_errmsg(db)));
 	const auto size = sqlite3_column_bytes(handle, 0);
 	const auto* bytes = static_cast<const uint8_t*>(sqlite3_column_blob(handle, 0));
@@ -423,7 +418,7 @@ static core::blob read_test_cached_properties(sqlite3* db, const core::file_path
 // A metadata-only rescan used to erase opaque cache records. Exercise the actual database writer.
 static void should_preserve_opaque_properties_when_metadata_is_rewritten()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	const auto db_path = core::file_path(index_path.folder(), index_path.file_name_without_extension(), ".db");
 	const auto path = test_files_folder().combine_file("Test.jpg");
 	null_async_strategy async;
@@ -453,22 +448,23 @@ static void should_preserve_opaque_properties_when_metadata_is_rewritten()
 	if (opened != SQLITE_OK) throw test_assert_exception("Cannot open test property cache");
 	const core::blob payload(65536, 0x5a);
 	const core::blob other{1, 2, 3};
-	auto stored = metadata_replace_blob_property(read_test_cached_properties(handle, path),
-	                                            prop::cache::faces, core::cspan(payload));
+	auto stored = metadata_replace_blob_property(read_test_cached_properties(handle, path), prop::cache::faces,
+	                                             core::cspan(payload));
 	stored = metadata_replace_blob_property(stored, 0xfffd, core::cspan(other));
 	{
 		sqlite3_stmt* update_handle = nullptr;
 		const auto prepared = sqlite3_prepare_v2(handle,
-			"update item_properties set properties=? where folder=? and name=?", -1,
-		                                         &update_handle, nullptr);
+		                                         "update item_properties set properties=? where folder=? and name=?",
+		                                         -1, &update_handle, nullptr);
 		const std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> update(update_handle, sqlite3_finalize);
 		const auto folder = path.folder().text();
 		const auto name = std::string(path.name());
 		if (prepared != SQLITE_OK ||
-			sqlite3_bind_blob(update_handle, 1, stored.data(), static_cast<int>(stored.size()), SQLITE_TRANSIENT) != SQLITE_OK ||
-			sqlite3_bind_text(update_handle, 2, folder.sz(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-			sqlite3_bind_text(update_handle, 3, name.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
-			sqlite3_step(update_handle) != SQLITE_DONE)
+		    sqlite3_bind_blob(update_handle, 1, stored.data(), static_cast<int>(stored.size()), SQLITE_TRANSIENT) !=
+		        SQLITE_OK ||
+		    sqlite3_bind_text(update_handle, 2, folder.sz(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+		    sqlite3_bind_text(update_handle, 3, name.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+		    sqlite3_step(update_handle) != SQLITE_DONE)
 			throw test_assert_exception("Cannot seed test cache properties");
 	}
 	auto changed = std::make_shared<prop::item_metadata>(*md);
@@ -479,12 +475,12 @@ static void should_preserve_opaque_properties_when_metadata_is_rewritten()
 	save(std::move(write));
 	const auto reloaded = read_test_cached_properties(handle, path);
 	const auto found = metadata_find_blob_property(reloaded, prop::cache::faces);
-	assert_equal(true, found && found->size == payload.size() &&
-	             memcmp(found->data, payload.data(), payload.size()) == 0,
+	assert_equal(true,
+	             found && found->size == payload.size() && memcmp(found->data, payload.data(), payload.size()) == 0,
 	             "ordinary metadata writes preserve the opaque face-cache value");
 	const auto retained = metadata_find_blob_property(reloaded, 0xfffd);
-	assert_equal(true, retained && retained->size == other.size() &&
-	             memcmp(retained->data, other.data(), other.size()) == 0,
+	assert_equal(true,
+	             retained && retained->size == other.size() && memcmp(retained->data, other.data(), other.size()) == 0,
 	             "other unknown properties survive too");
 	db.load_index_values();
 	const auto item = index.find_item(path);
@@ -507,7 +503,7 @@ static void should_preserve_opaque_properties_when_metadata_is_rewritten()
 
 static void should_hold_a_saved_playback_position_in_the_index()
 {
-	const auto root = _temps.next_folder("saved-playback-position");
+	const auto root = test_temps.next_folder("saved-playback-position");
 	const auto path = root.combine_file("played.jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), path, false, false);
 
@@ -533,7 +529,7 @@ static void should_hold_a_saved_playback_position_in_the_index()
 // Everything a rescan does not replace is kept, or the upgrade would cost a full thumbnail rebuild.
 static void should_invalidate_cached_metadata_written_by_an_older_build()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	const auto db_path = core::file_path(index_path.folder(), index_path.file_name_without_extension(), ".db");
 	const auto file_path = test_files_folder().combine_file("Test.jpg");
 
@@ -569,7 +565,7 @@ static void should_invalidate_cached_metadata_written_by_an_older_build()
 		const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
 
 		if (open_result != SQLITE_OK ||
-			sqlite3_exec(raw.get(), "PRAGMA user_version = 0;", nullptr, nullptr, nullptr) != SQLITE_OK)
+		    sqlite3_exec(raw.get(), "PRAGMA user_version = 0;", nullptr, nullptr, nullptr) != SQLITE_OK)
 		{
 			throw test_assert_exception("Failed to reset the database metadata version"s);
 		}
@@ -594,7 +590,7 @@ static void should_invalidate_cached_metadata_written_by_an_older_build()
 // and timeline would go blank until the background re-index caught up.
 static void should_keep_answering_while_upgrading_to_the_date_pack()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	const auto db_path = core::file_path(index_path.folder(), index_path.file_name_without_extension(), ".db");
 	const auto file_path = test_files_folder().combine_file("Test.jpg");
 
@@ -629,7 +625,7 @@ static void should_keep_answering_while_upgrading_to_the_date_pack()
 		const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
 
 		if (open_result != SQLITE_OK ||
-			sqlite3_exec(raw.get(), "PRAGMA user_version = 1;", nullptr, nullptr, nullptr) != SQLITE_OK)
+		    sqlite3_exec(raw.get(), "PRAGMA user_version = 1;", nullptr, nullptr, nullptr) != SQLITE_OK)
 		{
 			throw test_assert_exception("Failed to set the database metadata version"s);
 		}
@@ -653,7 +649,7 @@ static void should_keep_answering_while_upgrading_to_the_date_pack()
 // items alone to be re-scanned, and every row keeps answering meanwhile.
 static void should_keep_answering_while_upgrading_audio_metadata(const int stored_version)
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	const auto db_path = core::file_path(index_path.folder(), index_path.file_name_without_extension(), ".db");
 	const auto photo_path = test_files_folder().combine_file("Test.jpg");
 	const auto audio_path = test_files_folder().combine_file("Colorblind.mp3");
@@ -695,8 +691,8 @@ static void should_keep_answering_while_upgrading_audio_metadata(const int store
 		const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
 
 		if (open_result != SQLITE_OK ||
-			sqlite3_exec(raw.get(), std::format("PRAGMA user_version = {};", stored_version).c_str(), nullptr,
-			             nullptr, nullptr) != SQLITE_OK)
+		    sqlite3_exec(raw.get(), std::format("PRAGMA user_version = {};", stored_version).c_str(), nullptr, nullptr,
+		                 nullptr) != SQLITE_OK)
 		{
 			throw test_assert_exception("Failed to set the audio metadata version"s);
 		}
@@ -720,13 +716,73 @@ static void should_keep_answering_while_upgrading_audio_metadata(const int store
 	assert_equal(65535u, audio_md->audio_sample_rate, "legacy saturated sample rate remains readable meanwhile");
 }
 
+// Version 6 recorded libopenmpt's stand-in for a missing song message - the module's sample and instrument
+// names - as its comment. Only tracker modules are read again for it, and they keep answering meanwhile.
+static void should_keep_answering_while_upgrading_tracker_comments()
+{
+	const auto index_path = test_temps.next_path();
+	const auto db_path = core::file_path(index_path.folder(), index_path.file_name_without_extension(), ".db");
+	const auto audio_path = test_files_folder().combine_file("Colorblind.mp3");
+	const auto module_path = test_files_folder().combine("retro").combine_file("giana.mod");
+	const auto scanned = core::date_t(2020, 1, 1, 0, 0, 0);
+
+	null_async_strategy as;
+	location_cache locations;
+
+	{
+		index_state index(as, locations);
+		database db(index);
+		db.open(index_path.folder(), index_path.file_name_without_extension());
+
+		std::deque<item_db_write> writes;
+
+		for (const auto& path : {audio_path, module_path})
+		{
+			auto md = std::make_shared<prop::item_metadata>();
+			md->comment = "Triangle"_c;
+			item_db_write w;
+			w.path = path;
+			w.md = md;
+			w.metadata_scanned = scanned;
+			writes.emplace_back(std::move(w));
+		}
+
+		db.perform_writes(std::move(writes));
+		db.close();
+	}
+
+	{
+		sqlite3* handle = nullptr;
+		const auto open_result = sqlite3_open(db_path.str().c_str(), &handle);
+		const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
+
+		if (open_result != SQLITE_OK ||
+		    sqlite3_exec(raw.get(), "PRAGMA user_version = 6;", nullptr, nullptr, nullptr) != SQLITE_OK)
+		{
+			throw test_assert_exception("Failed to set the tracker metadata version"s);
+		}
+	}
+
+	index_state index(as, locations);
+	database db(index);
+	db.open(index_path.folder(), index_path.file_name_without_extension());
+
+	const auto audio = index.find_item(audio_path);
+	const auto module = index.find_item(module_path);
+	const auto module_md = module.metadata.load();
+
+	assert_equal(scanned.to_int64(), audio.metadata_scanned.load().to_int64(), "other audio is not read again");
+	assert_equal(0ll, module.metadata_scanned.load().to_int64(), "a tracker module is");
+	assert_equal(true, module_md != nullptr && module_md->comment.sv() == "Triangle", "and answers meanwhile");
+}
+
 // Rolling a release back is ordinary, and the cache file is shared with whatever build the user
 // goes back to. The rows stay readable, but the version stamp must come back down: left above this
 // build's own, going forward again would find a version already satisfied and skip the upgrade it
 // owed, trusting rows written in an older shape in the meantime.
 static void should_reclaim_a_cache_written_by_a_newer_build()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	const auto db_path = core::file_path(index_path.folder(), index_path.file_name_without_extension(), ".db");
 	const auto file_path = test_files_folder().combine_file("Test.jpg");
 
@@ -760,7 +816,7 @@ static void should_reclaim_a_cache_written_by_a_newer_build()
 		const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
 
 		if (open_result != SQLITE_OK ||
-			sqlite3_exec(raw.get(), "PRAGMA user_version = 99;", nullptr, nullptr, nullptr) != SQLITE_OK)
+		    sqlite3_exec(raw.get(), "PRAGMA user_version = 99;", nullptr, nullptr, nullptr) != SQLITE_OK)
 		{
 			throw test_assert_exception("Failed to set the database metadata version"s);
 		}
@@ -797,7 +853,7 @@ static void should_reclaim_a_cache_written_by_a_newer_build()
 		}
 	}
 
-	assert_equal(6, stamped, "the stamp comes back down to what this build writes");
+	assert_equal(7, stamped, "the stamp comes back down to what this build writes");
 }
 
 // A cache file this build cannot read must be replaced, not refused. Everything it holds can be
@@ -805,13 +861,13 @@ static void should_reclaim_a_cache_written_by_a_newer_build()
 // reset that would repair it.
 static void should_replace_an_unreadable_database()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	const auto db_path = core::file_path(index_path.folder(), index_path.file_name_without_extension(), ".db");
 	const auto file_path = test_files_folder().combine_file("Test.jpg");
 
 	{
 		std::ofstream corrupt(platform::to_stream_path(db_path), std::ios::binary | std::ios::trunc);
-		corrupt << "SQLite format 3\0not a database at all";
+		corrupt << "SQLite format 3\0not a database at all"s;
 	}
 
 	null_async_strategy as;
@@ -845,7 +901,7 @@ static void should_replace_an_unreadable_database()
 // for a whole session against a database that can never accept them.
 static void should_run_without_a_database()
 {
-	const auto missing_folder = _temps.next_path().folder().combine("missing-cache-folder");
+	const auto missing_folder = test_temps.next_path().folder().combine("missing-cache-folder");
 	const auto file_path = test_files_folder().combine_file("Test.jpg");
 
 	null_async_strategy as;
@@ -886,7 +942,7 @@ static void should_hand_scan_results_to_the_database_in_groups()
 		int drains = 0;
 		size_t rows = 0;
 
-		void queue_database(std::function<void(database&)> f) override
+		void queue_database(std::function<void(database&)> /*f*/) override
 		{
 			++drains;
 			rows += index->db_writes().dequeue_all().size();
@@ -968,8 +1024,9 @@ static void should_pack_item_properties()
 		assert_equal(static_cast<int16_t>(0), bad_unpacked->rating, "out-of-range cached rating is ignored");
 	}
 
-	for (const auto rating : {static_cast<int16_t>(-1), static_cast<int16_t>(0), static_cast<int16_t>(1),
-		     static_cast<int16_t>(2), static_cast<int16_t>(3), static_cast<int16_t>(4), static_cast<int16_t>(5)})
+	for (const auto rating :
+	     {static_cast<int16_t>(-1), static_cast<int16_t>(0), static_cast<int16_t>(1), static_cast<int16_t>(2),
+	      static_cast<int16_t>(3), static_cast<int16_t>(4), static_cast<int16_t>(5)})
 	{
 		metadata_packer good_rating;
 		good_rating.write(prop::rating.id, rating);
@@ -1189,8 +1246,7 @@ static void should_write_dates_an_older_build_can_read()
 	assert_equal(core::date_t(2019, 5, 4, 9, 0, 0), unpacked->dates.original(), "the pack answers Original");
 	assert_equal(false, unpacked->dates.has_source(prop::date_source::legacy_original),
 	             "and the copy written for an older build is not read back as a source");
-	assert_equal(false, unpacked->dates.has_source(prop::date_source::legacy_created),
-	             "for either date");
+	assert_equal(false, unpacked->dates.has_source(prop::date_source::legacy_created), "for either date");
 
 	// A row written before the pack existed has no pack, and those same records are then the only
 	// dates there are.
@@ -1249,8 +1305,7 @@ static void should_read_a_date_pack_written_by_a_later_release()
 	             "a longer group record still yields its date");
 	assert_equal(true, unpacked->dates.has_source(prop::date_source::rip_date),
 	             "and a longer trailer still yields the overflow mask");
-	assert_equal(static_cast<int16_t>(3), unpacked->rating,
-	             "and the record after it is not knocked out of alignment");
+	assert_equal(static_cast<int16_t>(3), unpacked->rating, "and the record after it is not knocked out of alignment");
 }
 
 // A pack can be structurally perfect and still restore nothing: a later release may name a date
@@ -1263,10 +1318,10 @@ static void should_fall_back_when_a_pack_names_no_source_this_build_knows()
 	constexpr uint64_t unknown_source = 1ull << 40;
 
 	core::blob body;
-	body.push_back(2); // the pack version this build writes
-	body.push_back(1); // one group
+	body.push_back(2);  // the pack version this build writes
+	body.push_back(1);  // one group
 	body.push_back(18); // this build's own group stride
-	body.push_back(8); // and its own trailer
+	body.push_back(8);  // and its own trailer
 
 	const auto push = [&body](const auto v)
 	{
@@ -1298,7 +1353,7 @@ static void should_fall_back_when_a_pack_names_no_source_this_build_knows()
 
 static void should_store_webservice_results()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 
 	null_async_strategy as;
 	const location_cache locations;
@@ -1316,7 +1371,7 @@ static void should_store_webservice_results()
 
 static void should_bound_webservice_cache()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 
 	null_async_strategy as;
 	const location_cache locations;
@@ -1351,7 +1406,7 @@ static void should_index(shared_test_context& stc)
 	assert_equal("\"Mark Ridgwell\"", actual->copyright_creator, "copyright_creator");
 }
 
-static void should_parse_roots(shared_test_context& stc)
+static void should_parse_roots(shared_test_context& /*stc*/)
 {
 	core::index_roots roots1;
 	parse_more_folders(roots1, test_files_folder().text());
@@ -1386,7 +1441,7 @@ static void should_parse_roots(shared_test_context& stc)
 	assert_equal("secret", exclude_wildcards[1], "parsed exclude");
 }
 
-static void should_parse_drive_label_roots(shared_test_context& stc)
+static void should_parse_drive_label_roots(shared_test_context& /*stc*/)
 {
 	// A device label (volume name) entered in the collection list should resolve
 	// to the matching drive by its volume label - not by its drive letter.
@@ -1411,12 +1466,13 @@ static void should_parse_drive_label_roots(shared_test_context& stc)
 
 static void should_apply_collection_exclusions_before_membership_shortcuts()
 {
-	const auto root = _temps.next_folder("excluded-membership");
+	const auto root = test_temps.next_folder("excluded-membership");
 	const auto excluded = root.combine("secret");
 	const auto sibling = root.combine("public");
 	platform::create_folder(excluded);
 	platform::create_folder(sibling);
-	platform::copy_file(test_files_folder().combine_file("Test.jpg"), excluded.combine_file("hidden.jpg"), false, false);
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), excluded.combine_file("hidden.jpg"), false,
+	                    false);
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), sibling.combine_file("shown.jpg"), false, false);
 
 	null_async_strategy as;
@@ -1449,7 +1505,7 @@ static void should_apply_collection_exclusions_before_membership_shortcuts()
 
 static void should_restore_cached_offline_collection_descendant_membership()
 {
-	const auto root = _temps.folder().combine("missing-parent").combine("offline-cache-root");
+	const auto root = test_temps.folder().combine("missing-parent").combine("offline-cache-root");
 	const auto leaf = root.combine("fileless").combine("leaf");
 	const auto excluded = root.combine("secret").combine("leaf");
 	const auto wildcard_excluded = root.combine("@eaDir").combine("leaf");
@@ -1495,7 +1551,7 @@ static void should_restore_cached_offline_collection_descendant_membership()
 
 static void should_not_restore_deleted_cached_collection_folders()
 {
-	const auto root = _temps.next_folder("deleted-cache-root");
+	const auto root = test_temps.next_folder("deleted-cache-root");
 	const auto deleted = root.combine("deleted");
 	const auto kept = root.combine("kept");
 	platform::create_folder(kept);
@@ -1531,13 +1587,13 @@ static void should_not_restore_deleted_cached_collection_folders()
 // an untouched copy, and the row kept them for every launch after.
 static void should_not_adopt_cached_hashes_older_than_the_file()
 {
-	const auto root = _temps.next_folder("merge-after-validation");
+	const auto root = test_temps.next_folder("merge-after-validation");
 	const auto changed = root.combine_file("changed.jpg");
 	const auto unchanged = root.combine_file("unchanged.jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), changed, false, false);
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), unchanged, false, false);
 
-	const auto db_path = _temps.next_path();
+	const auto db_path = test_temps.next_path();
 	null_async_strategy as;
 	location_cache locations;
 
@@ -1584,7 +1640,7 @@ static void should_not_adopt_cached_hashes_older_than_the_file()
 
 static void should_drop_deleted_declared_root_cache()
 {
-	const auto parent = _temps.next_folder("deleted-root-parent");
+	const auto parent = test_temps.next_folder("deleted-root-parent");
 	const auto root = parent.combine("deleted-root");
 	const auto leaf = root.combine("leaf");
 
@@ -1612,12 +1668,12 @@ static void should_drop_deleted_declared_root_cache()
 	assert_equal(0, count_search_results(index, "@photo"),
 	             "a deleted online root does not keep cached descendants searchable");
 
-	const auto db_path = _temps.next_path();
+	const auto db_path = test_temps.next_path();
 	{
 		index_state writer_index(as, locations);
 		database db(writer_index);
 		db.open(db_path.folder(), db_path.file_name_without_extension());
-		const auto live_root = _temps.next_folder("deleted-root-db-parent").combine("deleted-root-db");
+		const auto live_root = test_temps.next_folder("deleted-root-db-parent").combine("deleted-root-db");
 		const auto live_leaf = live_root.combine("leaf");
 		platform::create_folder(live_leaf);
 		platform::copy_file(test_files_folder().combine_file("Test.jpg"), live_leaf.combine_file("stale.jpg"), false,
@@ -1638,7 +1694,7 @@ static void should_drop_deleted_declared_root_cache()
 		{
 			const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> raw(handle, sqlite3_close);
 			if (sqlite3_exec(raw.get(), "UPDATE item_properties SET last_indexed = 0", nullptr, nullptr, nullptr) !=
-				SQLITE_OK)
+			    SQLITE_OK)
 			{
 				throw test_assert_exception("Failed to age deleted root database row"s);
 			}
@@ -1664,7 +1720,7 @@ static void should_drop_deleted_declared_root_cache()
 
 static void should_report_incomplete_collection_discovery()
 {
-	const auto root = _temps.next_folder("incomplete-discovery");
+	const auto root = test_temps.next_folder("incomplete-discovery");
 	platform::create_folder(root.combine("child"));
 
 	null_async_strategy as;
@@ -1709,7 +1765,7 @@ static void should_report_incomplete_collection_discovery()
 static void should_admit_a_folder_made_inside_the_collection_after_the_walk()
 {
 	const core::file_path source(test_files_folder(), "Test.jpg");
-	const auto root = _temps.next_folder("late-folder");
+	const auto root = test_temps.next_folder("late-folder");
 	const auto year = root.combine("2026");
 	platform::create_folder(year);
 	assert_equal(true, platform::copy_file(source, year.combine_file("before.jpg"), false, false).success(),
@@ -1757,14 +1813,16 @@ static void should_admit_a_folder_made_inside_the_collection_after_the_walk()
 // duplicate or summary pass that landed in the window published a partial answer.
 static void should_keep_collection_membership_during_a_re_walk()
 {
-	const auto root = _temps.next_folder("re-walk-membership");
+	const auto root = test_temps.next_folder("re-walk-membership");
 
 	for (const auto name : {"a"sv, "b"sv})
 	{
 		const auto folder = root.combine(name);
 		platform::create_folder(folder);
-		assert_equal(true, platform::copy_file(test_files_folder().combine_file("Test.jpg"),
-		                                       folder.combine_file("photo.jpg"), false, false).success(),
+		assert_equal(true,
+		             platform::copy_file(test_files_folder().combine_file("Test.jpg"), folder.combine_file("photo.jpg"),
+		                                 false, false)
+		                 .success(),
 		             "copy fixture");
 	}
 
@@ -1803,7 +1861,7 @@ static void should_keep_collection_membership_during_a_re_walk()
 // completion already offers them as collection folders, and then listed each one twice.
 static void should_not_offer_a_collection_folder_twice_after_a_re_walk()
 {
-	const auto root = _temps.next_folder("re-walk-completion");
+	const auto root = test_temps.next_folder("re-walk-completion");
 	const auto first = root.combine("alpha-one");
 	const auto second = root.combine("alpha-two");
 
@@ -1811,8 +1869,10 @@ static void should_not_offer_a_collection_folder_twice_after_a_re_walk()
 	{
 		platform::create_folder(folder);
 		// A file, so the first walk publishes the folder instead of finding its placeholder unchanged.
-		assert_equal(true, platform::copy_file(test_files_folder().combine_file("Test.jpg"),
-		                                       folder.combine_file("photo.jpg"), false, false).success(),
+		assert_equal(true,
+		             platform::copy_file(test_files_folder().combine_file("Test.jpg"), folder.combine_file("photo.jpg"),
+		                                 false, false)
+		                 .success(),
 		             "copy fixture");
 	}
 
@@ -1838,8 +1898,8 @@ static void should_not_offer_a_collection_folder_twice_after_a_re_walk()
 
 static void should_invalidate_metadata_when_sidecar_identity_changes()
 {
-	const auto temp_folder = _temps.next_folder("sidecar-identity");
-	const auto file_path = _temps.next_path_in(temp_folder, ".jpg");
+	const auto temp_folder = test_temps.next_folder("sidecar-identity");
+	const auto file_path = test_temps.next_path_in(temp_folder, ".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, false);
 	const auto xmp_path = file_path.extension(".xmp");
 	const std::string xmp_packet =
@@ -1923,7 +1983,7 @@ static void should_not_reload_thumb_when_valid()
 
 static void should_reuse_persisted_hover_thumbnail_until_video_changes()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	const auto image_path = test_files_folder().combine_file("Test.jpg");
 	const core::file_path video_path(test_files_folder(), "hover-preview.mp4");
 	const core::date_t modified(2026, 7, 31);
@@ -1965,7 +2025,7 @@ static void should_reuse_persisted_hover_thumbnail_until_video_changes()
 static void should_reload_thumb_after_scan()
 {
 	files ff;
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	null_async_strategy as;
 	const location_cache locations;
 	index_state index(as, locations);
@@ -2039,8 +2099,7 @@ static void should_reload_thumb_after_scan()
 	// exactly one replacement thumbnail through the same conditional scan path.
 	reloaded_item->update(path_test, make_index_file_info(reloaded_item->thumbnail_timestamp().add_day(1)));
 	assert_equal(true, reloaded_item->should_load_thumbnail(), "modified file should make database thumbnail stale");
-	const auto metadata_refreshed_after_modify =
-		index.scan_items(reloaded_items, true, false, true, false, test_token);
+	const auto metadata_refreshed_after_modify = index.scan_items(reloaded_items, true, false, true, false, test_token);
 	db.perform_writes();
 	assert_equal(false, metadata_refreshed_after_modify,
 	             "thumbnail staleness alone should not force regrouping after regeneration");
@@ -2057,8 +2116,8 @@ static void should_not_reread_after_metadata_write()
 {
 	// A private folder: the shared suite temp folder would drag every other test's files into the
 	// scan and make this test's cost depend on test order.
-	const auto temp_folder = _temps.next_folder("write-suppression");
-	const auto file_path = _temps.next_path_in(temp_folder, ".jpg");
+	const auto temp_folder = test_temps.next_folder("write-suppression");
+	const auto file_path = test_temps.next_path_in(temp_folder, ".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, false);
 
 	null_async_strategy as;
@@ -2102,9 +2161,9 @@ static void should_not_reread_after_metadata_write()
 
 static void should_clear_hashes_after_coherent_content_change()
 {
-	const auto index_path = _temps.next_path();
-	const auto temp_folder = _temps.next_folder("coherent-hashes");
-	const auto file_path = _temps.next_path_in(temp_folder, ".jpg");
+	const auto index_path = test_temps.next_path();
+	const auto temp_folder = test_temps.next_folder("coherent-hashes");
+	const auto file_path = test_temps.next_path_in(temp_folder, ".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, false);
 
 	null_async_strategy as;
@@ -2153,8 +2212,8 @@ static void should_clear_hashes_after_coherent_content_change()
 // first release must not open the file up while the second batch's write is still queued.
 static void should_count_overlapping_write_claims()
 {
-	const auto temp_folder = _temps.next_folder("write-claims");
-	const auto file_path = _temps.next_path_in(temp_folder, ".jpg");
+	const auto temp_folder = test_temps.next_folder("write-claims");
+	const auto file_path = test_temps.next_path_in(temp_folder, ".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, false);
 
 	null_async_strategy as;
@@ -2187,11 +2246,11 @@ static void should_count_overlapping_write_claims()
 // The index is a cache, so an in-app change has to both correct it and ask for the search to be run
 // again. Asking unconditionally would re-open the search on every folder walked, so the request is
 // tied to a folder actually differing.
-static void should_request_a_re_query_only_when_a_folder_changed(shared_test_context& stc)
+static void should_request_a_re_query_only_when_a_folder_changed(shared_test_context& /*stc*/)
 {
 	const core::file_path source(test_files_folder(), "Test.jpg");
-	const auto temp_folder = _temps.next_folder("requery");
-	const auto removed = _temps.next_path_in(temp_folder, ".jpg");
+	const auto temp_folder = test_temps.next_folder("requery");
+	const auto removed = test_temps.next_path_in(temp_folder, ".jpg");
 	platform::copy_file(source, removed, false, false);
 
 	deferred_async_strategy as;
@@ -2218,12 +2277,12 @@ static void should_request_a_re_query_only_when_a_folder_changed(shared_test_con
 	assert_equal(true, as.was_invalidated(view_invalid::refresh_items), "a changed folder asks for the re-query");
 }
 
-static void should_drop_deleted_items_from_a_search_with_no_folder(shared_test_context& stc)
+static void should_drop_deleted_items_from_a_search_with_no_folder(shared_test_context& /*stc*/)
 {
 	const core::file_path source(test_files_folder(), "Test.jpg");
-	const auto temp_folder = _temps.next_folder("deleted");
-	const auto kept = _temps.next_path_in(temp_folder, ".jpg");
-	const auto removed = _temps.next_path_in(temp_folder, ".jpg");
+	const auto temp_folder = test_temps.next_folder("deleted");
+	const auto kept = test_temps.next_path_in(temp_folder, ".jpg");
+	const auto removed = test_temps.next_path_in(temp_folder, ".jpg");
 
 	platform::copy_file(source, kept, false, false);
 	platform::copy_file(source, removed, false, false);
@@ -2231,7 +2290,7 @@ static void should_drop_deleted_items_from_a_search_with_no_folder(shared_test_c
 	null_async_strategy as;
 	const location_cache locations;
 	index_state index(as, locations);
-	auto cache_path = _temps.next_path();
+	auto cache_path = test_temps.next_path();
 	database db(index);
 	db.open(cache_path.folder(), cache_path.file_name_without_extension());
 
@@ -2256,10 +2315,10 @@ static void should_drop_deleted_items_from_a_search_with_no_folder(shared_test_c
 
 // The index is flat and keyed by folder path, so erasing a removed folder left everything beneath
 // it indexed: the files of a deleted subtree stayed searchable and counted for the whole session.
-static void should_drop_descendants_of_a_deleted_folder(shared_test_context& stc)
+static void should_drop_descendants_of_a_deleted_folder(shared_test_context& /*stc*/)
 {
 	const core::file_path source(test_files_folder(), "Test.jpg");
-	const auto root = _temps.next_folder("deleted-tree");
+	const auto root = test_temps.next_folder("deleted-tree");
 	const auto branch = root.combine("branch");
 	const auto leaf = branch.combine("leaf");
 	platform::create_folder(leaf);
@@ -2276,7 +2335,7 @@ static void should_drop_descendants_of_a_deleted_folder(shared_test_context& stc
 	null_async_strategy as;
 	const location_cache locations;
 	index_state index(as, locations);
-	auto cache_path = _temps.next_path();
+	auto cache_path = test_temps.next_path();
 	database db(index);
 	db.open(cache_path.folder(), cache_path.file_name_without_extension());
 
@@ -2296,17 +2355,16 @@ static void should_drop_descendants_of_a_deleted_folder(shared_test_context& stc
 	touched.emplace(root);
 	index.queue_validate_changed_folders(std::move(touched));
 
-	assert_equal(1, count_search_results(index, search),
-	             "only the file outside the deleted branch survives");
+	assert_equal(1, count_search_results(index, search), "only the file outside the deleted branch survives");
 }
 
 // The wildcard names the files being looked for, not the folders they are under. Gating the descent
 // on it left a recursive "*.jpg" searching only folders that were themselves called *.jpg, so every
 // nested match was missed.
-static void should_search_a_recursive_wildcard_through_subfolders(shared_test_context& stc)
+static void should_search_a_recursive_wildcard_through_subfolders(shared_test_context& /*stc*/)
 {
 	const core::file_path source(test_files_folder(), "Test.jpg");
-	const auto root = _temps.next_folder("recursive-wildcard");
+	const auto root = test_temps.next_folder("recursive-wildcard");
 	const auto nested = root.combine("pictures");
 	platform::create_folder(nested);
 
@@ -2336,7 +2394,7 @@ static void should_search_a_recursive_wildcard_through_subfolders(shared_test_co
 static void should_search_a_recursive_wildcard_without_following_directory_symlinks(shared_test_context& stc)
 {
 	const core::file_path source_file(test_files_folder(), "Test.jpg");
-	const auto root = _temps.next_folder("recursive-wildcard-symlink");
+	const auto root = test_temps.next_folder("recursive-wildcard-symlink");
 	const auto real = root.combine("real");
 	const auto link = root.combine("link");
 	platform::create_folder(real);
@@ -2355,17 +2413,18 @@ static void should_search_a_recursive_wildcard_without_following_directory_symli
 	index.index_folders(test_token);
 
 	const auto recursive = df::search_t().add_selector(core::item_selector(root, true, "*.jpg"));
-	assert_equal(1, count_search_results(index, recursive), "a recursive wildcard does not descend a directory symlink");
+	assert_equal(1, count_search_results(index, recursive),
+	             "a recursive wildcard does not descend a directory symlink");
 }
 #endif
 
-static void should_detect_duplicates(shared_test_context& stc)
+static void should_detect_duplicates(shared_test_context& /*stc*/)
 {
 	files ff;
 	null_async_strategy as;
 	location_cache locations;
 	index_state index(as, locations);
-	auto cache_path = _temps.next_path();
+	auto cache_path = test_temps.next_path();
 	database db(index);
 	db.open(cache_path.folder(), cache_path.file_name_without_extension());
 	build_index(index, db);
@@ -2428,17 +2487,15 @@ static void should_detect_duplicates(shared_test_context& stc)
 
 	std::string related_summary;
 
-	index.query_items(df::search_t().related(r), [&related_summary, &test_item5](
-		                  const index_state::query_item_results& items, bool)
-	                  {
-		                  for (const auto& i : items)
-		                  {
-			                  if (i.path != test_item5->path()) continue;
-			                  related_summary = df::related_axis_of(i.match.type) == df::related_axis::duplicate
-				                                    ? "duplicate"
-				                                    : "other";
-		                  }
-	                  }, test_token);
+	index.query_items(df::search_t().related(r),
+	                  [&related_summary, &test_item5](const index_state::query_item_results& items, bool)
+	{
+		for (const auto& i : items)
+		{
+			if (i.path != test_item5->path()) continue;
+			related_summary = df::related_axis_of(i.match.type) == df::related_axis::duplicate ? "duplicate" : "other";
+		}
+	}, test_token);
 
 	assert_equal("duplicate", related_summary,
 	             "related reports the resized copy as a possible copy, not a coincidence of time");
@@ -2452,14 +2509,14 @@ static void should_report_a_re_encoded_copy_to_presence()
 	null_async_strategy as;
 	location_cache locations;
 	index_state index(as, locations);
-	const auto cache_path = _temps.next_path();
+	const auto cache_path = test_temps.next_path();
 	database db(index);
 	db.open(cache_path.folder(), cache_path.file_name_without_extension());
 
 	// A collection holding the full-size picture only, so an outside copy of the resized one cannot
 	// match any member by name, size or checksum. The picture is the only evidence left.
-	const auto collection_folder = _temps.next_path().folder().combine("re-encode-collection");
-	const auto outside_folder = _temps.next_path().folder().combine("re-encode-outside");
+	const auto collection_folder = test_temps.next_path().folder().combine("re-encode-collection");
+	const auto outside_folder = test_temps.next_path().folder().combine("re-encode-outside");
 	platform::create_folder(collection_folder);
 	platform::create_folder(outside_folder);
 
@@ -2483,10 +2540,9 @@ static void should_report_a_re_encoded_copy_to_presence()
 
 	assert_equal(true,
 	             presence == item_presence::similar_in || presence == item_presence::newer_in ||
-	             presence == item_presence::older_in,
+	                 presence == item_presence::older_in,
 	             "presence reports a possible copy of a re-encode rather than an absence");
-	assert_equal(static_cast<int>(df::copy_grade::same_picture),
-	             static_cast<int>(outside_item->duplicates().grade),
+	assert_equal(static_cast<int>(df::copy_grade::same_picture), static_cast<int>(outside_item->duplicates().grade),
 	             "presence grades it the same way duplicate search would");
 }
 
@@ -2497,12 +2553,12 @@ static void should_report_a_rotated_copy_to_presence()
 	null_async_strategy as;
 	location_cache locations;
 	index_state index(as, locations);
-	const auto cache_path = _temps.next_path();
+	const auto cache_path = test_temps.next_path();
 	database db(index);
 	db.open(cache_path.folder(), cache_path.file_name_without_extension());
 
-	const auto collection_folder = _temps.next_path().folder().combine("rotate-collection");
-	const auto outside_folder = _temps.next_path().folder().combine("rotate-outside");
+	const auto collection_folder = test_temps.next_path().folder().combine("rotate-collection");
+	const auto outside_folder = test_temps.next_path().folder().combine("rotate-outside");
 	platform::create_folder(collection_folder);
 	platform::create_folder(outside_folder);
 
@@ -2530,10 +2586,9 @@ static void should_report_a_rotated_copy_to_presence()
 
 	assert_equal(true,
 	             presence == item_presence::similar_in || presence == item_presence::newer_in ||
-	             presence == item_presence::older_in,
+	                 presence == item_presence::older_in,
 	             "presence reports a possible copy of a rotation rather than an absence");
-	assert_equal(static_cast<int>(df::copy_grade::same_picture),
-	             static_cast<int>(outside_item->duplicates().grade),
+	assert_equal(static_cast<int>(df::copy_grade::same_picture), static_cast<int>(outside_item->duplicates().grade),
 	             "presence grades a turned copy the same way duplicate search would");
 }
 
@@ -2562,12 +2617,13 @@ static void should_require_equal_size_for_duplicate_crc()
 // @duplicates, and the related search a click on the badge opens.
 static void should_list_duplicates_wherever_the_collection_is()
 {
-	const auto root = _temps.next_folder("listed-duplicates");
+	const auto root = test_temps.next_folder("listed-duplicates");
 	const auto first = root.combine_file("first.jpg");
 	const auto second = root.combine_file("second.jpg");
 	assert_equal(true, platform::copy_file(test_files_folder().combine_file("Test.jpg"), first, false, false).success(),
 	             "the first copy is made");
-	assert_equal(true, platform::copy_file(test_files_folder().combine_file("Test.jpg"), second, false, false).success(),
+	assert_equal(true,
+	             platform::copy_file(test_files_folder().combine_file("Test.jpg"), second, false, false).success(),
 	             "and the second");
 
 	null_async_strategy as;
@@ -2588,17 +2644,17 @@ static void should_list_duplicates_wherever_the_collection_is()
 	related.load(first_item);
 	auto other_copy_listed = false;
 
-	index.query_items(df::search_t().related(related), [&other_copy_listed, &second](
-		                  const index_state::query_item_results& items, bool)
-	                  {
-		                  for (const auto& i : items)
-		                  {
-			                  if (i.path == second && df::related_axis_of(i.match.type) == df::related_axis::duplicate)
-			                  {
-				                  other_copy_listed = true;
-			                  }
-		                  }
-	                  }, test_token);
+	index.query_items(df::search_t().related(related),
+	                  [&other_copy_listed, &second](const index_state::query_item_results& items, bool)
+	{
+		for (const auto& i : items)
+		{
+			if (i.path == second && df::related_axis_of(i.match.type) == df::related_axis::duplicate)
+			{
+				other_copy_listed = true;
+			}
+		}
+	}, test_token);
 
 	assert_equal(true, other_copy_listed, "and the search the badge opens lists the other copy as a duplicate");
 }
@@ -2612,18 +2668,16 @@ static void should_recount_duplicates_when_a_copy_is_deleted()
 	{
 		view_invalid invalids = view_invalid::none;
 
-		void invalidate_view(const view_invalid invalid) override
-		{
-			invalids |= invalid;
-		}
+		void invalidate_view(const view_invalid invalid) override { invalids |= invalid; }
 	};
 
-	const auto root = _temps.next_folder("deleted-copy");
+	const auto root = test_temps.next_folder("deleted-copy");
 	const auto first = root.combine_file("first.jpg");
 	const auto second = root.combine_file("second.jpg");
 	assert_equal(true, platform::copy_file(test_files_folder().combine_file("Test.jpg"), first, false, false).success(),
 	             "the first copy is made");
-	assert_equal(true, platform::copy_file(test_files_folder().combine_file("Test.jpg"), second, false, false).success(),
+	assert_equal(true,
+	             platform::copy_file(test_files_folder().combine_file("Test.jpg"), second, false, false).success(),
 	             "and the second");
 
 	recording_async_strategy as;
@@ -2658,12 +2712,13 @@ static void should_recount_duplicates_when_a_copy_is_deleted()
 // lists copies by - matched nothing after the next pass, and every grouped record was rewritten.
 static void should_keep_duplicate_group_ids_across_passes()
 {
-	const auto root = _temps.next_folder("stable-duplicate-ids");
+	const auto root = test_temps.next_folder("stable-duplicate-ids");
 	const auto first = root.combine_file("first.jpg");
 	const auto second = root.combine_file("second.jpg");
 	assert_equal(true, platform::copy_file(test_files_folder().combine_file("Test.jpg"), first, false, false).success(),
 	             "the first copy is made");
-	assert_equal(true, platform::copy_file(test_files_folder().combine_file("Test.jpg"), second, false, false).success(),
+	assert_equal(true,
+	             platform::copy_file(test_files_folder().combine_file("Test.jpg"), second, false, false).success(),
 	             "and the second");
 
 	null_async_strategy as;
@@ -2682,8 +2737,7 @@ static void should_keep_duplicate_group_ids_across_passes()
 
 	index.update_predictions();
 	assert_equal(group, index.find_item(first).duplicates.load().group, "an unchanged set keeps its id");
-	assert_equal(exact_group, index.find_item(first).exact_duplicate_group.load(),
-	             "and so does its exact subgroup");
+	assert_equal(exact_group, index.find_item(first).exact_duplicate_group.load(), "and so does its exact subgroup");
 	assert_equal(2_z, index.duplicate_list(group).size(), "an id taken before the pass still lists the set");
 }
 
@@ -2692,16 +2746,20 @@ static void should_keep_duplicate_group_ids_across_passes()
 // update_predictions already makes.
 static void should_list_duplicates_without_rewriting_the_index()
 {
-	const auto first_root = _temps.next_folder("listing-first");
-	const auto second_root = _temps.next_folder("listing-second");
+	const auto first_root = test_temps.next_folder("listing-first");
+	const auto second_root = test_temps.next_folder("listing-second");
 	const auto first_a = first_root.combine_file("first-a.jpg");
 	const auto first_b = first_root.combine_file("first-b.jpg");
-	assert_equal(true, platform::copy_file(test_files_folder().combine_file("Test.jpg"), first_a, false, false).success(),
+	assert_equal(true,
+	             platform::copy_file(test_files_folder().combine_file("Test.jpg"), first_a, false, false).success(),
 	             "the first copy is made");
-	assert_equal(true, platform::copy_file(test_files_folder().combine_file("Test.jpg"), first_b, false, false).success(),
+	assert_equal(true,
+	             platform::copy_file(test_files_folder().combine_file("Test.jpg"), first_b, false, false).success(),
 	             "and the second");
-	assert_equal(true, platform::copy_file(test_files_folder().combine_file("Small.jpg"),
-	                                       second_root.combine_file("other.jpg"), false, false).success(),
+	assert_equal(true,
+	             platform::copy_file(test_files_folder().combine_file("Small.jpg"),
+	                                 second_root.combine_file("other.jpg"), false, false)
+	                 .success(),
 	             "and a photo for the second collection");
 
 	null_async_strategy as;
@@ -2731,7 +2789,7 @@ static void should_list_duplicates_without_rewriting_the_index()
 
 static void should_bound_weak_duplicate_buckets()
 {
-	const auto root = _temps.next_folder("weak-duplicates");
+	const auto root = test_temps.next_folder("weak-duplicates");
 
 	for (auto i = 0; i < 160; ++i)
 	{
@@ -2751,7 +2809,7 @@ static void should_bound_weak_duplicate_buckets()
 	assert_equal(true, index.stats.indexed_max_compare_count <= 1,
 	             "weak size or timestamp buckets do not drive all-pairs comparison");
 
-	const auto copy_root = _temps.next_folder("exact-duplicates");
+	const auto copy_root = test_temps.next_folder("exact-duplicates");
 	const auto first = copy_root.combine_file("first.jpg");
 	const auto second = copy_root.combine_file("second.jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), first, false, false);
@@ -2773,7 +2831,7 @@ static void should_bound_weak_duplicate_buckets()
 	assert_equal(static_cast<int>(df::copy_grade::identical), static_cast<int>(first_dups.grade),
 	             "exact duplicates keep the strongest grade");
 
-	const auto cached_root = _temps.folder().combine("case-duplicates");
+	const auto cached_root = test_temps.folder().combine("case-duplicates");
 	const auto cached_leaf = cached_root.combine("offline");
 	db_items_t cached_items;
 	for (const auto name : {"IMG_1.JPG"sv, "img_1.jpg"sv})
@@ -2804,7 +2862,8 @@ static void should_bound_weak_duplicate_buckets()
 	assert_equal(static_cast<int>(item_presence::unknown), static_cast<int>(outside->presence()),
 	             "presence also refuses same-name pairs with no valid date");
 
-	const auto dated_root = _temps.folder().combine("dated-name-duplicates-parent").combine("dated-name-duplicates");
+	const auto dated_root =
+		test_temps.folder().combine("dated-name-duplicates-parent").combine("dated-name-duplicates");
 	const auto dated_left = dated_root.combine("left");
 	const auto dated_right = dated_root.combine("right");
 	const auto dated = core::date_t(2026, 2, 3, 4, 5, 6);
@@ -2836,17 +2895,16 @@ static void should_bound_weak_duplicate_buckets()
 
 	auto dated_outside_info = make_index_file_info(dated);
 	dated_outside_info.safe_ps()->dates.add(prop::date_source::exif_original, dated);
-	const auto dated_outside = std::make_shared<df::item_element>(
-		dated_root.parent().combine_file("img_1.jpg"), dated_outside_info);
+	const auto dated_outside = std::make_shared<df::item_element>(dated_root.parent().combine_file("img_1.jpg"),
+	                                                              dated_outside_info);
 	dated_index.queue_update_presence(df::item_set({dated_outside}));
 	const auto dated_presence = dated_outside->presence();
 	assert_equal(true,
-	             dated_presence == item_presence::similar_in ||
-	             dated_presence == item_presence::newer_in ||
-	             dated_presence == item_presence::older_in,
+	             dated_presence == item_presence::similar_in || dated_presence == item_presence::newer_in ||
+	                 dated_presence == item_presence::older_in,
 	             "same-name rows with a valid equal date still match presence");
 
-	const auto offline_video_root = _temps.folder().combine("offline-video-parent").combine("offline-video");
+	const auto offline_video_root = test_temps.folder().combine("offline-video-parent").combine("offline-video");
 	const auto offline_video_left = offline_video_root.combine("trip-a");
 	const auto offline_video_right = offline_video_root.combine("trip-b");
 	db_items_t offline_video_left_items;
@@ -2870,11 +2928,10 @@ static void should_bound_weak_duplicate_buckets()
 	offline_video_index.update_predictions();
 
 	assert_equal(0u,
-	             offline_video_index.find_item(offline_video_left.combine_file("GOPR0001.MP4")).duplicates.load().
-	                                 group,
+	             offline_video_index.find_item(offline_video_left.combine_file("GOPR0001.MP4")).duplicates.load().group,
 	             "offline same-name videos with unknown size do not group");
 
-	const auto online_video_root = _temps.next_folder("online-video-size");
+	const auto online_video_root = test_temps.next_folder("online-video-size");
 	const auto online_video_left = online_video_root.combine("trip-a");
 	const auto online_video_right = online_video_root.combine("trip-b");
 	platform::create_folder(online_video_left);
@@ -2922,13 +2979,12 @@ static void should_update_collection_presence(shared_test_context& stc)
 
 	const auto source_path = test_files_folder().combine_file("Test.jpg");
 	const auto source_info = stc.test_index.find_item(source_path);
-	const auto external_root = _temps.next_path().folder().combine("presence-test");
+	const auto external_root = test_temps.next_path().folder().combine("presence-test");
 
-	auto make_external = [&](const std::string_view folder_name, df::index_file_item info,
+	auto make_external = [&](const std::string_view folder_name, const df::index_file_item& info,
 	                         const std::string_view file_name = "Test.jpg")
 	{
-		return std::make_shared<df::item_element>(
-			core::file_path(external_root.combine(folder_name), file_name), info);
+		return std::make_shared<df::item_element>(core::file_path(external_root.combine(folder_name), file_name), info);
 	};
 
 	const auto in_collection = std::make_shared<df::item_element>(source_path, source_info);
@@ -2944,8 +3000,8 @@ static void should_update_collection_presence(shared_test_context& stc)
 	older_info.file_modified = core::date_t(1990, 1, 1);
 	const auto possible_newer_copy = make_external("older-outside", older_info);
 
-	const auto absent = load_item(stc.test_index,
-	                              test_files_folder().combine("excluded1").combine_file("document.png"), false);
+	const auto absent = load_item(stc.test_index, test_files_folder().combine("excluded1").combine_file("document.png"),
+	                              false);
 	auto incomplete_info = source_info;
 	incomplete_info.crc32c = 0;
 	const auto incomplete = make_external("incomplete", incomplete_info, "not-present.jpg");
@@ -2955,9 +3011,8 @@ static void should_update_collection_presence(shared_test_context& stc)
 	folder->presence(item_presence::similar_in);
 	folder->duplicates(df::duplicate_info{.group = 42, .count = 2});
 
-	stc.test_index.queue_update_presence(df::item_set({
-		in_collection, possible_copy, possible_older_copy, possible_newer_copy, absent, incomplete, folder
-	}));
+	stc.test_index.queue_update_presence(df::item_set(
+		{in_collection, possible_copy, possible_older_copy, possible_newer_copy, absent, incomplete, folder}));
 
 	assert_equal(static_cast<int>(item_presence::this_in), static_cast<int>(in_collection->presence()),
 	             "collection member presence");
@@ -3020,7 +3075,7 @@ static void should_discard_stale_presence_result()
 
 static void should_discard_stale_scan_item_update()
 {
-	const auto file_path = _temps.next_path(".jpg");
+	const auto file_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
 
 	deferred_async_strategy async;
@@ -3084,7 +3139,7 @@ static void should_discard_stale_crc_result()
 
 static void should_continue_predictions_after_terminal_phash_publication()
 {
-	const auto file_path = _temps.next_path(".jpg");
+	const auto file_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
 
 	deferred_async_strategy async;
@@ -3112,12 +3167,40 @@ static void should_continue_predictions_after_terminal_phash_publication()
 	             "the final terminal publication, including decline, queues one continuation");
 }
 
+// A picture the crash list skips is declined for the run without the refusal being stored, so the
+// release line that drops it from the list decodes it again rather than finding it in the database.
+static void should_publish_a_phash_without_storing_it_when_asked()
+{
+	const auto file_path = test_temps.next_path(".jpg");
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
+
+	deferred_async_strategy async;
+	const location_cache locations;
+	index_state index(async, locations);
+
+	core::index_roots roots;
+	roots.folders.emplace(file_path.folder());
+	index.index_roots(roots);
+	index.index_folders(test_token);
+	index.db_writes().dequeue_all();
+
+	const crypto::phash_rotations declined{crypto::phash_declined, 0, 0, 0};
+	index.save_phash(file_path, revision_of(index.find_item(file_path)), declined, false);
+	assert_equal(true, async.run_next(async_queue::work), "the unstored refusal is published");
+	assert_equal(true, index.find_item(file_path).phash.load() != nullptr, "the index holds it");
+	assert_equal(true, index.db_writes().dequeue_all().empty(), "and the database is not asked to store it");
+
+	index.save_phash(file_path, revision_of(index.find_item(file_path)), declined);
+	assert_equal(true, async.run_next(async_queue::work), "a stored refusal is published");
+	assert_equal(1_z, index.db_writes().dequeue_all().size(), "and written");
+}
+
 // The perceptual walk holds no index lock, so a rescan of an edited picture can clear a record's hash
 // between choosing the anchor and comparing against it. Loading the anchor's hash a second time read
 // that null and crashed; the walk compares against the hash it chose the anchor for.
 static void should_compare_against_the_anchor_hash_it_chose()
 {
-	const auto root = _temps.next_folder("phash-anchor-cleared");
+	const auto root = test_temps.next_folder("phash-anchor-cleared");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), root.combine_file("original.jpg"), false, false);
 	platform::copy_file(test_files_folder().combine_file("Small.jpg"), root.combine_file("resized.jpg"), false, false);
 
@@ -3147,7 +3230,7 @@ static void should_compare_against_the_anchor_hash_it_chose()
 
 static void should_mark_oversized_capture_time_as_crowded()
 {
-	const auto root = _temps.next_folder("crowded-capture-time");
+	const auto root = test_temps.next_folder("crowded-capture-time");
 	for (auto i = 0; i < 9; ++i)
 	{
 		platform::copy_file(test_files_folder().combine_file("Test.jpg"),
@@ -3171,14 +3254,14 @@ static void should_mark_oversized_capture_time_as_crowded()
 
 static void should_not_report_presence_against_crowd_declined_members()
 {
-	const auto root = _temps.next_folder("crowded-presence");
+	const auto root = test_temps.next_folder("crowded-presence");
 	for (auto i = 0; i < 4; ++i)
 	{
 		platform::copy_file(test_files_folder().combine_file("Test.jpg"),
 		                    root.combine_file(std::format("burst-{}.jpg", i)), false, false);
 	}
 
-	const auto outside = _temps.next_folder("crowded-presence-outside").combine_file("turned.jpg");
+	const auto outside = test_temps.next_folder("crowded-presence-outside").combine_file("turned.jpg");
 	platform::copy_file(test_files_folder().combine_file("Test90.jpg"), outside, false, false);
 
 	null_async_strategy as;
@@ -3203,10 +3286,10 @@ static void should_not_report_presence_against_crowd_declined_members()
 	             "presence refuses collection members from a crowd-declined burst");
 }
 
-static void should_detect_rotation(shared_test_context& stc)
+static void should_detect_rotation(shared_test_context& /*stc*/)
 {
 	files ff;
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 	null_async_strategy as;
 	const location_cache locations;
 	index_state index(as, locations);
@@ -3261,7 +3344,7 @@ static void should_detect_rotation(shared_test_context& stc)
 
 static void should_index_concurrently()
 {
-	const auto index_path = _temps.next_path();
+	const auto index_path = test_temps.next_path();
 
 	null_async_strategy as;
 	const location_cache locations;
@@ -3282,6 +3365,7 @@ static void should_index_concurrently()
 	bool writer_active = false;
 	bool stop = false;
 	std::vector<std::thread> readers;
+	readers.reserve(3);
 
 	// Readers hammer the const query methods that share state with index_folders.
 	int readers_ready = 0;
@@ -3350,9 +3434,7 @@ static void should_index_concurrently()
 		{
 			std::unique_lock lock(phase_mutex);
 			phase_changed.wait(lock, [&]
-			{
-				return active_reader_iterations.load(std::memory_order_relaxed) >= static_cast<int>(readers.size());
-			});
+			{ return active_reader_iterations.load(std::memory_order_relaxed) >= static_cast<int>(readers.size()); });
 		}
 	}
 
@@ -3397,8 +3479,8 @@ static void should_not_publish_a_stale_folder_rebuild()
 	items.replace(folder, newer);
 
 	const auto original_snapshot = index_folder_snapshot{original, original->revision_snapshot()};
-	assert_equal(true, items.replace_if(folder, original_snapshot.folder, original_snapshot.content_revision, stale) ==
-	             newer,
+	assert_equal(true,
+	             items.replace_if(folder, original_snapshot.folder, original_snapshot.content_revision, stale) == newer,
 	             "a rebuild built from a superseded node does not publish");
 	assert_equal(true, items.find(folder) == newer, "the newer node is what the folder still holds");
 
@@ -3436,8 +3518,9 @@ static void should_not_publish_a_folder_rebuild_over_in_place_content()
 	const auto rebuilt = std::make_shared<df::index_folder_item>(std::move(rebuilt_files));
 	rebuilt->name = name;
 
-	const auto wrote = items.update_file(core::file_path(folder, file_name), [file_name](const df::index_folder_item_ptr& f,
-	                                                                                  const df::index_file_item& file)
+	const auto wrote = items.update_file(core::file_path(folder, file_name),
+	                                     [file_name](const df::index_folder_item_ptr& f,
+	                                                 const df::index_file_item& file)
 	{
 		auto scanned = std::make_shared<prop::item_metadata>();
 		scanned->file_name = file_name;
@@ -3565,7 +3648,7 @@ static void publish_test_tag_scan(index_state& index, const core::file_path path
 
 static void should_retry_folder_validation_from_current_content()
 {
-	const auto root = _temps.next_folder("validation-current-content");
+	const auto root = test_temps.next_folder("validation-current-content");
 	const auto existing_path = root.combine_file("existing.jpg");
 	const auto added_path = root.combine_file("added.jpg");
 	write_test_file(existing_path, "existing");
@@ -3592,7 +3675,8 @@ static void should_retry_folder_validation_from_current_content()
 
 	assert_equal(false, result.deferred, "one mismatch is retried synchronously");
 	assert_equal(2, static_cast<int>(result.folder->files.size()), "validation's new file is published");
-	const auto existing = std::lower_bound(result.folder->files.begin(), result.folder->files.end(), existing_path.name());
+	const auto existing = std::lower_bound(result.folder->files.begin(), result.folder->files.end(),
+	                                       existing_path.name());
 	assert_equal(true, existing != result.folder->files.end(), "existing file remains indexed");
 	assert_equal(true, existing->metadata_scanned.load().is_valid(), "in-place scan stamp survives retry");
 	assert_equal("hooktag"sv, existing->metadata.load()->tags.sv(), "in-place metadata survives retry");
@@ -3604,7 +3688,7 @@ static void should_retry_folder_validation_from_current_content()
 
 static void should_defer_folder_validation_after_repeated_content_changes()
 {
-	const auto root = _temps.next_folder("validation-deferred");
+	const auto root = test_temps.next_folder("validation-deferred");
 	const auto existing_path = root.combine_file("existing.jpg");
 	const auto added_path = root.combine_file("added.jpg");
 	write_test_file(existing_path, "existing");
@@ -3643,7 +3727,7 @@ static void should_defer_folder_validation_after_repeated_content_changes()
 
 static void should_keep_validation_resets_across_content_retry()
 {
-	const auto root = _temps.next_folder("validation-reset-retry");
+	const auto root = test_temps.next_folder("validation-reset-retry");
 	const auto media_path = root.combine_file("media.jpg");
 	const auto sidecar_path = root.combine_file("media.xmp");
 	const auto other_path = root.combine_file("other.jpg");
@@ -3679,7 +3763,7 @@ static void should_keep_validation_resets_across_content_retry()
 
 static void should_retry_parent_validation_after_child_publication()
 {
-	const auto parent_path = _temps.next_folder("parent-validation-retry");
+	const auto parent_path = test_temps.next_folder("parent-validation-retry");
 	const auto child_path = parent_path.combine("child");
 	platform::create_folder(child_path);
 
@@ -3723,9 +3807,7 @@ struct deferred_folder_fixture
 	bool contended = true;
 
 	explicit deferred_folder_fixture(const std::string_view name) :
-		root(_temps.next_folder(name)),
-		existing_path(root.combine_file("existing.jpg")),
-		sub(root.combine("sub")),
+		root(test_temps.next_folder(name)), existing_path(root.combine_file("existing.jpg")), sub(root.combine("sub")),
 		sub_path(sub.combine_file("inside.jpg"))
 	{
 		write_test_file(existing_path, "existing");
@@ -3826,9 +3908,7 @@ static void should_list_deferred_folder_in_import_analysis()
 	const auto lists = [&listed](const core::file_path path)
 	{
 		return std::ranges::any_of(listed, [path](const folder_scan_item& i)
-		{
-			return core::file_path(i.folder, i.item.name) == path;
-		});
+		{ return core::file_path(i.folder, i.item.name) == path; });
 	};
 
 	assert_equal(2, f.validations, "the deferred source folder is analysed again");
@@ -3838,7 +3918,7 @@ static void should_list_deferred_folder_in_import_analysis()
 
 static void should_scan_forced_item_when_folder_validation_defers()
 {
-	const auto root = _temps.next_folder("deferred-forced-scan");
+	const auto root = test_temps.next_folder("deferred-forced-scan");
 	const auto photo_path = root.combine_file("photo.jpg");
 	const auto other_path = root.combine_file("other.jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), photo_path, false, false);
@@ -3869,7 +3949,7 @@ static void should_scan_forced_item_when_folder_validation_defers()
 
 static void should_bound_tag_companion_recommendations()
 {
-	const auto root = _temps.next_folder("tag-companions");
+	const auto root = test_temps.next_folder("tag-companions");
 
 	null_async_strategy as;
 	const location_cache locations;
@@ -3885,15 +3965,14 @@ static void should_bound_tag_companion_recommendations()
 	items.emplace_back(make_cached_tag_item("normal.jpg", "normal-alpha normal-beta normal-beta normal-gamma"));
 	for (auto i = 0; i < 11050; ++i)
 	{
-		items.emplace_back(make_cached_tag_item(std::format("ordinary-{:05}.jpg", i),
-		                                        std::format("ordinaryanchor ordinarytag{}", i)));
+		items.emplace_back(
+			make_cached_tag_item(std::format("ordinary-{:05}.jpg", i), std::format("ordinaryanchor ordinarytag{}", i)));
 	}
 	index.merge_folder(root, items);
 	index.update_summary();
 
 	const auto companion_entry_count = index.tag_companion_entry_count();
-	assert_equal(true, companion_entry_count > 20000u,
-	             "ordinary companion suggestions are not globally truncated");
+	assert_equal(true, companion_entry_count > 20000u, "ordinary companion suggestions are not globally truncated");
 	assert_equal(true, companion_entry_count <= 128u * 127u + 11050u * 2u + 6u,
 	             "companion storage is bounded by the per-item recommendation budget");
 	assert_equal(1, static_cast<int>(index.tag_summary("pathological-tag-511").total_items().count),
@@ -3905,12 +3984,11 @@ static void should_bound_tag_companion_recommendations()
 	assert_equal(1, static_cast<int>(suggestions.size()), "normal companion suggestions stay deterministic");
 	assert_equal("#normal-beta"s, suggestions[0].text, "normal companion text");
 	assert_equal(1, suggestions[0].occurrences, "repeated tags do not multiply recommendation work");
-
 }
 
 static void should_publish_coherent_indexing_progress()
 {
-	const auto root = _temps.next_folder("index-progress");
+	const auto root = test_temps.next_folder("index-progress");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), root.combine_file("one.jpg"), false, false);
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), root.combine_file("two.jpg"), false, false);
 
@@ -3946,9 +4024,8 @@ static void should_publish_coherent_indexing_progress()
 static void should_find_word_prefix_range()
 {
 	// Sorted by core::icmp: '#' (0x23) < '@' (0x40) < letters (case-folded).
-	const std::vector<std::string_view> terms = {
-		"#dog", "@video", "Amsterdam", "index", "indigo", "industry", "windmill", "window"
-	};
+	const std::vector<std::string_view> terms = {"#dog",   "@video",   "Amsterdam", "index",
+	                                             "indigo", "industry", "windmill",  "window"};
 
 	const auto collect = [&terms](const std::string_view q)
 	{
@@ -4016,11 +4093,8 @@ static void should_encode_postings()
 static void should_query_inverted_index()
 {
 	const std::vector<std::pair<uint32_t, std::vector<std::string_view>>> docs = {
-		{0, {"beach", "sunset", "hawaii"}},
-		{1, {"beach", "surf"}},
-		{2, {"mountain", "sunset"}},
-		{3, {"beach", "sunset", "surf"}},
-		{4, {"portrait"}},
+		{0, {"beach", "sunset", "hawaii"}}, {1, {"beach", "surf"}}, {2, {"mountain", "sunset"}},
+		{3, {"beach", "sunset", "surf"}},   {4, {"portrait"}},
 	};
 
 	df::inverted_index index;
@@ -4043,9 +4117,9 @@ static void should_query_inverted_index()
 	assert_equal(true, index.find("BEACH") == brute("beach"), "case-insensitive term lookup");
 
 	// Boolean composition maps to AND / AND-NOT / OR query semantics.
-	assert_equal(
-		true, (df::postings_intersect(index.find("beach"), index.find("sunset")) == std::vector<uint32_t>{0, 3}),
-		"beach AND sunset");
+	assert_equal(true,
+	             (df::postings_intersect(index.find("beach"), index.find("sunset")) == std::vector<uint32_t>{0, 3}),
+	             "beach AND sunset");
 	assert_equal(true, (df::postings_difference(index.find("beach"), index.find("surf")) == std::vector<uint32_t>{0}),
 	             "beach AND NOT surf");
 	assert_equal(true,
@@ -4059,12 +4133,12 @@ static void should_query_inverted_index()
 static void should_query_trigram_index()
 {
 	const std::vector<std::string_view> corpus = {
-		"beach sunset", // 0
+		"beach sunset",  // 0
 		"bulldog puppy", // 1
-		"my dog photo", // 2
-		"hotdog stand", // 3
+		"my dog photo",  // 2
+		"hotdog stand",  // 3
 		"mountain lake", // 4
-		"DOGMA", // 5 - different case
+		"DOGMA",         // 5 - different case
 		// 6 - UTF-8 for the code points U+65E5 U+672C U+8A9E. Written as escapes so the bytes do not
 		// depend on the source encoding. Above U+3FFF, so these are the only grams here whose top key
 		// bytes are non-zero - the radix passes that an all-Latin corpus lets freeze() skip.
@@ -4083,7 +4157,8 @@ static void should_query_trigram_index()
 		return out;
 	};
 
-	for (const auto* const q : {"dog", "sunset", "mountain", "og p", "xyz", "DOG", "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"})
+	for (const auto* const q :
+	     {"dog", "sunset", "mountain", "og p", "xyz", "DOG", "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e"})
 	{
 		const auto cand = index.candidates(q);
 		assert_equal(true, cand.has_value(), std::format("'{}' produces trigram candidates", q));
@@ -4092,8 +4167,7 @@ static void should_query_trigram_index()
 
 		// No false negatives: every true match is among the candidates.
 		for (const auto id : truth)
-			assert_equal(true, std::ranges::find(*cand, id) != cand->end(),
-			             std::format("'{}' candidate superset", q));
+			assert_equal(true, std::ranges::find(*cand, id) != cand->end(), std::format("'{}' candidate superset", q));
 
 		// Verifying candidates reproduces the brute-force substring result exactly.
 		std::vector<uint32_t> verified;
@@ -4133,39 +4207,36 @@ static void should_hold_document_sets()
 // about any item - any parse of AND, OR and parentheses - would fail.
 static void should_combine_sets_as_the_matcher_combines_answers()
 {
+	// clang-format off
 	for (const auto query : {
 		     "a b c", "a or b c", "(a or b) c", "a or (b c)", "((a b) or c", "a (b or (c d))", "-a or b",
 		     "a or b or c or d", "(a or b) (c or d)", "a b)", "(((a b", "a or b) or c"
 	     })
+	// clang-format on
 	{
 		const auto search = df::search_t::parse(query);
 		const auto& terms = search.terms();
 		const auto items = 1u << terms.size();
 
-		const auto sets = df::combine_search_terms<df::doc_set>(
-			terms,
-			[&terms, items](const df::search_term& term)
-			{
-				const auto bit = static_cast<uint32_t>(&term - terms.data());
-				df::doc_set answers(items);
-				for (uint32_t item = 0; item < items; ++item) if ((item >> bit & 1) != 0) answers.set(item);
-				return answers;
-			},
-			[](df::doc_set& state, const df::doc_set& value) { state.intersect(value); },
-			[](df::doc_set& state, const df::doc_set& value) { state.unite(value); },
-			[items] { return df::doc_set(items, true); });
+		const auto sets = df::combine_search_terms<df::doc_set>(terms,
+		                                                        [&terms, items](const df::search_term& term)
+		{
+			const auto bit = static_cast<uint32_t>(&term - terms.data());
+			df::doc_set answers(items);
+			for (uint32_t item = 0; item < items; ++item)
+				if ((item >> bit & 1) != 0) answers.set(item);
+			return answers;
+		}, [](df::doc_set& state, const df::doc_set& value)
+		{ state.intersect(value); }, [](df::doc_set& state, const df::doc_set& value) { state.unite(value); },
+		                                                        [items] { return df::doc_set(items, true); });
 
 		for (uint32_t item = 0; item < items; ++item)
 		{
-			const auto expected = df::combine_search_terms<bool>(
-				terms,
-				[&terms, item](const df::search_term& term)
-				{
-					return (item >> static_cast<uint32_t>(&term - terms.data()) & 1) != 0;
-				},
-				[](bool& state, const bool value) { state = state && value; },
-				[](bool& state, const bool value) { state = state || value; },
-				[] { return true; });
+			const auto expected = df::combine_search_terms<bool>(terms, [&terms, item](const df::search_term& term) {
+				return (item >> static_cast<uint32_t>(&term - terms.data()) & 1) != 0;
+			}, [](bool& state, const bool value) { state = state && value; }, [](bool& state, const bool value) {
+				state = state || value;
+			}, [] { return true; });
 
 			assert_equal(expected, sets.test(item), std::format("'{}' answers {:b}", query, item));
 		}
@@ -4213,6 +4284,7 @@ static void should_answer_searches_from_the_search_index_as_a_scan_does(shared_t
 	const auto answers_before = df::query_perf.index_answers.load();
 	auto found_something = 0;
 
+	// clang-format off
 	for (const auto query : {
 		     "2012-09-14", "Created:2012-09-14", "2009-11-15", "2014 or 2015", "(2014 or 2015) (May or June)",
 		     "dec-25", "modified:2020-aug", "@video", "@audio", "@commodore", "@archive", "@photo", "key1",
@@ -4234,6 +4306,7 @@ static void should_answer_searches_from_the_search_index_as_a_scan_does(shared_t
 		     "#\"tag with space\"", "\"tag with space\"", "camera:canon", "Canon", "london", "**test**",
 		     "caf\xc3\xa9", "\xed\x95\x9c\xea\xb5\xad", "-\xed\x95\x9c\xea\xb5\xad", "with:tag or @video"
 	     })
+	// clang-format on
 	{
 		const auto search = df::search_t::parse(query);
 		const auto scanned = describe_query_items(index, search, index_state::search_execution::scan);
@@ -4254,7 +4327,8 @@ static void should_answer_searches_from_the_search_index_as_a_scan_does(shared_t
 	assert_equal(true, found_something > 40, "most of the searches find items");
 
 	// A folder whose name a search matches is listed beside the items, through the search index too.
-	const auto retro = describe_query_items(index, df::search_t::parse("retro"), index_state::search_execution::automatic);
+	const auto retro = describe_query_items(index, df::search_t::parse("retro"),
+	                                        index_state::search_execution::automatic);
 	assert_equal(true, retro.find("folder ") != std::string::npos && retro.find("retro") != std::string::npos,
 	             "a folder the search names is listed");
 }
@@ -4280,7 +4354,7 @@ static uint64_t count_found(index_state& index, const std::string_view query)
 // be found by the search index and not by a scan.
 static void should_confirm_what_the_trigram_index_suggests()
 {
-	const auto folder = _temps.next_folder("search-index-trigrams");
+	const auto folder = test_temps.next_folder("search-index-trigrams");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), folder.combine_file("banana.jpg"), false, true);
 
 	null_async_strategy as;
@@ -4297,7 +4371,8 @@ static void should_confirm_what_the_trigram_index_suggests()
 
 	const auto answers_before = df::query_perf.index_answers.load();
 	assert_equal(uint64_t{1}, count("anana", index_state::search_execution::automatic), "what the name holds is found");
-	assert_equal(uint64_t{0}, count("ananan", index_state::search_execution::scan), "a scan finds no item holding the term");
+	assert_equal(uint64_t{0}, count("ananan", index_state::search_execution::scan),
+	             "a scan finds no item holding the term");
 	assert_equal(uint64_t{0}, count("ananan", index_state::search_execution::automatic),
 	             "nor does the search index, though the name holds each of the term's trigrams");
 	assert_equal(true, df::query_perf.index_answers.load() > answers_before, "the search index answered");
@@ -4307,7 +4382,7 @@ static void should_confirm_what_the_trigram_index_suggests()
 // what the folder holds now, without the collection being read again for a change this small.
 static void should_scan_folders_changed_since_the_search_index_was_read()
 {
-	const auto folder = _temps.next_folder("search-index-changed");
+	const auto folder = test_temps.next_folder("search-index-changed");
 	const auto settled = folder.combine("settled");
 	const auto changed = folder.combine("changed");
 	platform::create_folder(settled);
@@ -4354,7 +4429,7 @@ static void should_scan_folders_changed_since_the_search_index_was_read()
 // counts the sidebar and the address box take from it would be gone until the next restart.
 static void should_read_the_search_index_again_once_no_search_would_use_it()
 {
-	const auto folder = _temps.next_folder("search-index-reread");
+	const auto folder = test_temps.next_folder("search-index-reread");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), folder.combine_file("alpha.jpg"), false, true);
 
 	null_async_strategy as;
@@ -4368,7 +4443,8 @@ static void should_read_the_search_index_again_once_no_search_would_use_it()
 
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), folder.combine_file("bravo.jpg"), false, true);
 	index.validate_folder(folder, true, core::utc_now());
-	assert_equal(false, search_counter(index).is_indexed(), "no search uses a snapshot of a collection that mostly changed");
+	assert_equal(false, search_counter(index).is_indexed(),
+	             "no search uses a snapshot of a collection that mostly changed");
 
 	index.update_search_index();
 	assert_equal(true, index.search_index() != read, "so the collection is read again, though only one item changed");
@@ -4382,7 +4458,7 @@ static void should_read_the_search_index_again_once_no_search_would_use_it()
 // is still makes its folder one the index cannot answer for.
 static void should_keep_the_search_index_current_through_derived_changes()
 {
-	const auto folder = _temps.next_folder("search-index-derived");
+	const auto folder = test_temps.next_folder("search-index-derived");
 	const auto first = folder.combine_file("first.jpg");
 	const auto second = folder.combine_file("second.jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), first, false, true);
@@ -4403,7 +4479,8 @@ static void should_keep_the_search_index_current_through_derived_changes()
 	assert_equal(uint64_t{2}, count_found(index, "@duplicates"), "and the set is found through it");
 
 	index.save_crc(first, revision_of(index.find_item(first)), 0x1234u);
-	index.save_phash(first, revision_of(index.find_item(first)), crypto::phash_rotations{crypto::phash_declined, 0, 0, 0});
+	index.save_phash(first, revision_of(index.find_item(first)),
+	                 crypto::phash_rotations{crypto::phash_declined, 0, 0, 0});
 	while (as.run_next(async_queue::work))
 	{
 	}
@@ -4418,7 +4495,7 @@ static void should_keep_the_search_index_current_through_derived_changes()
 // nothing is read while it runs; searches scan meanwhile, as they always have.
 static void should_not_read_the_search_index_while_indexing()
 {
-	const auto folder = _temps.next_folder("search-index-indexing");
+	const auto folder = test_temps.next_folder("search-index-indexing");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), folder.combine_file("alpha.jpg"), false, true);
 
 	null_async_strategy as;
@@ -4451,13 +4528,10 @@ static void should_recount_the_sidebar_when_the_search_index_is_read()
 	public:
 		view_invalid invalids = view_invalid::none;
 
-		void invalidate_view(const view_invalid invalid) override
-		{
-			invalids |= invalid;
-		}
+		void invalidate_view(const view_invalid invalid) override { invalids |= invalid; }
 	};
 
-	const auto folder = _temps.next_folder("search-index-recount");
+	const auto folder = test_temps.next_folder("search-index-recount");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), folder.combine_file("alpha.jpg"), false, true);
 
 	recording_async_strategy as;
@@ -4516,11 +4590,13 @@ static void should_count_searches_with_a_search_counter(shared_test_context& stc
 	// whatever was asked before it. The second pass answers from what the first kept.
 	for (auto pass = 0; pass < 2; ++pass)
 	{
+		// clang-format off
 		for (const auto query : {
 			     "@duplicates", "@photo", "@video", "test", "**test**", "-test", "dog", "dog cat", "-dog",
 			     "dog or cat", "Tag:dog", "#dog", "rating:5", "-rating:5", "label:select", "rating:5 label:select",
 			     "2012", "-2012", "dec-25", "Created:2012-09-14", "with:tag", "without:tag", "@photo dog"
 		     })
+		// clang-format on
 		{
 			const auto search = df::search_t::parse(query);
 			const auto expected = index.count_matches(search, test_token, index_state::search_execution::scan);
@@ -4532,7 +4608,8 @@ static void should_count_searches_with_a_search_counter(shared_test_context& stc
 	std::vector<core::file_path> photos;
 	index.query_items(df::search_t::parse("@photo"), [&photos](const index_state::query_item_results& items, bool)
 	{
-		for (const auto& item : items) if (item.kind == index_state::query_item_kind::file) photos.emplace_back(item.path);
+		for (const auto& item : items)
+			if (item.kind == index_state::query_item_kind::file) photos.emplace_back(item.path);
 	}, test_token);
 
 	const auto kept = counter.make_kept_items(photos);
@@ -4542,13 +4619,12 @@ static void should_count_searches_with_a_search_counter(shared_test_context& stc
 		core::unique_paths found;
 		index.query_items(search, [&found](const index_state::query_item_results& items, bool)
 		{
-			for (const auto& item : items) if (item.kind == index_state::query_item_kind::file) found.emplace(item.path);
+			for (const auto& item : items)
+				if (item.kind == index_state::query_item_kind::file) found.emplace(item.path);
 		}, test_token, index_state::search_execution::scan);
 
-		return static_cast<uint64_t>(std::ranges::count_if(photos, [&found](const core::file_path& path)
-		{
-			return found.contains(path);
-		}));
+		return static_cast<uint64_t>(
+			std::ranges::count_if(photos, [&found](const core::file_path& path) { return found.contains(path); }));
 	};
 
 	for (const auto query : {"key1", "dog", "@video", "-dog", "@photo"})
@@ -4591,8 +4667,7 @@ static void should_materialize_detached_query_item()
 	const auto items = index.materialize_query_items(std::move(query_items), {});
 	assert_equal(1_z, items.size(), "detached query result materialized without an index lookup");
 	assert_equal("Detached snapshot", items.items().front()->title(), "detached metadata snapshot retained");
-	assert_equal(1234, static_cast<int>(items.items().front()->file_size().to_int64()),
-	             "detached file facts retained");
+	assert_equal(1234, static_cast<int>(items.items().front()->file_size().to_int64()), "detached file facts retained");
 }
 
 static void should_batch_thumbnail_publication()
@@ -4633,39 +4708,32 @@ static void should_bound_folder_thumbnail_candidate_visits()
 	std::vector<core::folder_path> wide_visits;
 	auto wide_enumerations = 0;
 
-	database_test_seams::visit_folder_thumbnail_candidates(
-		root,
-		[&](const core::folder_path& folder)
+	database_test_seams::visit_folder_thumbnail_candidates(root,
+	                                                       [&](const core::folder_path& folder)
+	{
+		wide_visits.emplace_back(folder);
+		return true;
+	}, [&](const core::folder_path& folder)
+	{
+		++wide_enumerations;
+		std::vector<core::folder_path> result;
+		result.reserve(budget * 2);
+		for (auto i = 0; i < static_cast<int>(budget * 2); ++i)
 		{
-			wide_visits.emplace_back(folder);
-			return true;
-		},
-		[&](const core::folder_path& folder)
-		{
-			++wide_enumerations;
-			std::vector<core::folder_path> result;
-			for (auto i = 0; i < static_cast<int>(budget * 2); ++i)
-			{
-				result.emplace_back(folder.combine(std::format("child-{}", i)));
-			}
-			return result;
-		});
+			result.emplace_back(folder.combine(std::format("child-{}", i)));
+		}
+		return result;
+	});
 
 	assert_equal(budget, wide_visits.size(), "wide folder traversal stops at the visit budget");
 	assert_equal(1, wide_enumerations, "children after the budget are not enumerated");
 
 	std::vector<core::folder_path> deep_visits;
-	database_test_seams::visit_folder_thumbnail_candidates(
-		root,
-		[&](const core::folder_path& folder)
-		{
-			deep_visits.emplace_back(folder);
-			return true;
-		},
-		[&](const core::folder_path& folder)
-		{
-			return std::vector<core::folder_path>{folder.combine("next"sv)};
-		});
+	database_test_seams::visit_folder_thumbnail_candidates(root, [&](const core::folder_path& folder)
+	{
+		deep_visits.emplace_back(folder);
+		return true;
+	}, [&](const core::folder_path& folder) { return std::vector<core::folder_path>{folder.combine("next"sv)}; });
 
 	assert_equal(budget, deep_visits.size(), "deep folder traversal stops at the same visit budget");
 }
@@ -4797,7 +4865,7 @@ static void should_skip_unneeded_thumbnail_staging()
 
 static void should_reuse_cached_thumbnail_surface()
 {
-	const auto file_path = _temps.next_path(".jpg");
+	const auto file_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
 
 	null_async_strategy scan_async;
@@ -4866,7 +4934,7 @@ static void should_store_only_values_a_file_holds()
 // when its folder is set to hold the user's own recordings, the loaded item is read again with no rescan.
 static void should_derive_names_as_rows_load()
 {
-	const auto root = _temps.next_folder("names-on-load");
+	const auto root = test_temps.next_folder("names-on-load");
 	const auto name = "Dont.Look.Up.2021.1080p.NF.WEBRip.x264-GalaxyRG.mp4"sv;
 	null_async_strategy as;
 	const location_cache locations;
@@ -4913,7 +4981,7 @@ static void should_derive_names_as_rows_load()
 // is read that way: another film's subtitle is never this one's, so deleting a film never takes another's with it.
 static void should_pair_subtitles_named_by_language()
 {
-	const auto root = _temps.next_folder("subtitle-sidecars");
+	const auto root = test_temps.next_folder("subtitle-sidecars");
 	write_test_file(root.combine_file("Movie.mkv"), "video");
 	write_test_file(root.combine_file("Movie.en.srt"), "1");
 	write_test_file(root.combine_file("Movie.English.forced.srt"), "1");
@@ -4959,9 +5027,9 @@ static void should_pair_subtitles_named_by_language()
 
 static void should_not_rescan_unchanged_sidecars_after_reload()
 {
-	const auto db_path = _temps.next_path();
-	const auto temp_folder = _temps.next_folder("sidecar-reload");
-	const auto file_path = _temps.next_path_in(temp_folder, ".jpg");
+	const auto db_path = test_temps.next_path();
+	const auto temp_folder = test_temps.next_folder("sidecar-reload");
+	const auto file_path = test_temps.next_path_in(temp_folder, ".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, false);
 	const auto xmp_path = file_path.extension(".xmp");
 	const std::string xmp_packet =
@@ -5006,8 +5074,8 @@ static void should_not_rescan_unchanged_sidecars_after_reload()
 // and (3) once hydrated (online) they are re-scanned to get a content hash and thumbnail.
 static void should_index_offline_placeholder()
 {
-	const auto index_path = _temps.next_path();
-	const auto file_path = _temps.next_path(".jpg");
+	const auto index_path = test_temps.next_path();
+	const auto file_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
 
 	null_async_strategy as;
@@ -5018,7 +5086,10 @@ static void should_index_offline_placeholder()
 	db.open(index_path.folder(), index_path.file_name_without_extension());
 
 	// --- Phase 1: the file is an online-only cloud placeholder ---
-	platform::test_offline_predicate = [file_path](const core::file_path& p) { return p == file_path; };
+	platform::test_offline_predicate = [file_path](const core::file_path& p)
+	{
+		return p == file_path;
+	};
 	const core::scope_exit clear_offline([] { platform::test_offline_predicate = nullptr; });
 
 	core::index_roots roots;
@@ -5031,16 +5102,16 @@ static void should_index_offline_placeholder()
 	const auto offline_status = offline_item->online_status();
 	const auto offline_md = offline_item->metadata();
 	const auto offline_crc = offline_item->crc32c();
-	const auto offline_tag_search = count_search_results(index, "key1");
-	const auto offline_tag_mask =
-		(index.find_item(file_path).search_presence.load().types & search_presence_mask::tag) != 0;
+	[[maybe_unused]] const auto offline_tag_search = count_search_results(index, "key1");
+	[[maybe_unused]] const auto offline_tag_mask = (index.find_item(file_path).search_presence.load().types &
+	                                                search_presence_mask::tag) != 0;
 	// The shell property store also surfaces keywords and GPS for a placeholder (no hydration), which
 	// the offline scan reads for free to help index non-downloaded files.
 	const std::string offline_tags(offline_md ? offline_md->tags.sv() : std::string_view{});
 	const auto offline_has_gps = offline_md && offline_md->coordinate.is_valid();
 	[[maybe_unused]] const auto offline_gps_ok = offline_has_gps &&
-		std::abs(offline_md->coordinate.latitude() - 50.08806) < 0.01 &&
-		std::abs(offline_md->coordinate.longitude() - 14.42083) < 0.01;
+	                                             std::abs(offline_md->coordinate.latitude() - 50.08806) < 0.01 &&
+	                                             std::abs(offline_md->coordinate.longitude() - 14.42083) < 0.01;
 	// Guards against re-indexing every startup: a scanned placeholder must not report that it
 	// still needs a metadata scan, nor keep requesting a (shell) thumbnail every session.
 	const auto offline_needs_scan = index.needs_scan(offline_item);
@@ -5108,7 +5179,7 @@ static void should_index_offline_placeholder()
 // reported identical to its untouched copy.
 static void should_keep_a_cached_checksum_the_bytes_still_describe()
 {
-	const auto file_path = _temps.next_path(".jpg");
+	const auto file_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
 
 	const auto file_modified = platform::file_attributes(file_path).modified;
@@ -5134,7 +5205,7 @@ static void should_keep_a_cached_checksum_the_bytes_still_describe()
 	// in the node, and in the row a later launch reads back.
 	const auto after_validation = [&](const core::date_t scanned) -> surviving
 	{
-		const auto db_name = _temps.next_path();
+		const auto db_name = test_temps.next_path();
 
 		{
 			index_state index(as, locations);
@@ -5249,8 +5320,8 @@ static void should_clear_failed_thumbnail_on_hydration()
 // without re-selecting the photo.
 static void should_refresh_same_item_metadata_after_hydration()
 {
-	const auto index_path = _temps.next_path();
-	const auto file_path = _temps.next_path(".jpg");
+	const auto index_path = test_temps.next_path();
+	const auto file_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
 
 	null_async_strategy as;
@@ -5261,7 +5332,10 @@ static void should_refresh_same_item_metadata_after_hydration()
 	db.open(index_path.folder(), index_path.file_name_without_extension());
 
 	// Phase 1: the file is an online-only placeholder; scan it and keep the displayed item.
-	platform::test_offline_predicate = [file_path](const core::file_path& p) { return p == file_path; };
+	platform::test_offline_predicate = [file_path](const core::file_path& p)
+	{
+		return p == file_path;
+	};
 	const core::scope_exit clear_offline([] { platform::test_offline_predicate = nullptr; });
 
 	const auto item = load_item(index, file_path, true);
@@ -5299,7 +5373,7 @@ static void should_refresh_same_item_metadata_after_hydration()
 // re-index and the item gains its tags.
 static void should_trigger_rescan_only_after_full_metadata_load()
 {
-	const auto file_path = _temps.next_path(".jpg");
+	const auto file_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
 
 	null_state_strategy ss;
@@ -5310,7 +5384,10 @@ static void should_trigger_rescan_only_after_full_metadata_load()
 	view_state s(ss, as, index, make_test_player());
 
 	// Phase 1: index the file as an online-only placeholder.
-	platform::test_offline_predicate = [file_path](const core::file_path& p) { return p == file_path; };
+	platform::test_offline_predicate = [file_path](const core::file_path& p)
+	{
+		return p == file_path;
+	};
 	const core::scope_exit clear_offline([] { platform::test_offline_predicate = nullptr; });
 	const auto item = load_item(index, file_path, true);
 
@@ -5371,8 +5448,8 @@ static void should_trigger_rescan_only_after_full_metadata_load()
 // thumbnail standing in for it for as long as the texture stayed cached.
 static void should_retry_after_failed_load()
 {
-	const auto good_path = _temps.next_path(".jpg");
-	const auto missing_path = _temps.next_path(".jpg");
+	const auto good_path = test_temps.next_path(".jpg");
+	const auto missing_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), good_path, false, true);
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), missing_path, false, true);
 
@@ -5416,7 +5493,7 @@ static void should_report_exhausted_image_loads()
 {
 	for (const auto seeded : {false, true})
 	{
-		const auto path = _temps.next_path(".jpg");
+		const auto path = test_temps.next_path(".jpg");
 		platform::copy_file(test_files_folder().combine_file("Test.jpg"), path, false, true);
 		null_async_strategy as;
 		const location_cache locations;
@@ -5463,7 +5540,7 @@ static void should_report_exhausted_image_loads()
 // representation, so returning to a cached item needs the same seed or it waits out a full decode.
 static void should_seed_placeholder_from_staged_thumbnail()
 {
-	const auto file_path = _temps.next_path(".jpg");
+	const auto file_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
 
 	null_async_strategy as;
@@ -5507,7 +5584,7 @@ static void should_trim_thumbnail_blobs_by_distance()
 
 	for (auto i = 0; i < 4; ++i)
 	{
-		const auto path = _temps.next_path(".jpg");
+		const auto path = test_temps.next_path(".jpg");
 		platform::copy_file(test_files_folder().combine_file("Test.jpg"), path, false, true);
 		items.emplace_back(load_item(index, path, true));
 	}
@@ -5534,8 +5611,8 @@ static void should_trim_thumbnail_blobs_by_distance()
 	             "trim thumbnails");
 
 	// Items is not always the laid-out view, and ranking by distance from nothing would dump the set.
-	assert_equal(0, static_cast<int>(df::trim_thumbnail_blobs(items, recti{}, 1)),
-	             "an empty viewport releases nothing", "trim thumbnails");
+	assert_equal(0, static_cast<int>(df::trim_thumbnail_blobs(items, recti{}, 1)), "an empty viewport releases nothing",
+	             "trim thumbnails");
 	assert_equal(true, items[3]->has_thumb(), "an empty viewport keeps every thumbnail", "trim thumbnails");
 
 	const auto dims_before = items[3]->layout_dims();
@@ -5565,8 +5642,8 @@ static void should_retain_undisplayed_images_by_form()
 	const location_cache locations;
 	index_state index(as, locations);
 
-	const auto jpeg_path = _temps.next_path(".jpg");
-	const auto heif_path = _temps.next_path(".heic");
+	const auto jpeg_path = test_temps.next_path(".jpg");
+	const auto heif_path = test_temps.next_path(".heic");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), jpeg_path, false, true);
 	platform::copy_file(test_files_folder().combine("excluded1").combine_file("melnik-rotated.heic"), heif_path, false,
 	                    true);
@@ -5582,8 +5659,7 @@ static void should_retain_undisplayed_images_by_form()
 	assert_equal(0, static_cast<int>(encoded->retained_decoded_bytes()),
 	             "a jpeg holds no decoded pixels before it is drawn", "retain by form");
 	assert_equal(true, surface_only->retained_decoded_bytes() > 0,
-	             "a heif decodes straight to a surface, so its pixels are its only representation",
-	             "retain by form");
+	             "a heif decodes straight to a surface, so its pixels are its only representation", "retain by form");
 
 	encoded->release_decoded_surfaces();
 	surface_only->release_decoded_surfaces();
@@ -5606,7 +5682,7 @@ static void should_retain_undisplayed_images_by_form()
 // indexed metadata (tags) and content hash rather than losing them to the shell-only offline scan.
 static void should_preserve_metadata_when_dehydrated()
 {
-	const auto file_path = _temps.next_path(".jpg");
+	const auto file_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
 
 	null_async_strategy as;
@@ -5621,7 +5697,10 @@ static void should_preserve_metadata_when_dehydrated()
 	const auto online_has_crc = item->crc32c() != 0;
 
 	// Dehydrated: the file becomes a cloud placeholder again. Re-scan the same item element.
-	platform::test_offline_predicate = [file_path](const core::file_path& p) { return p == file_path; };
+	platform::test_offline_predicate = [file_path](const core::file_path& p)
+	{
+		return p == file_path;
+	};
 	const core::scope_exit clear_offline([] { platform::test_offline_predicate = nullptr; });
 	df::item_set to_rescan;
 	item->add_to(to_rescan);
@@ -5655,9 +5734,9 @@ static void should_preserve_metadata_when_dehydrated()
 // placeholders; under null_async_strategy queue_scan_offline_thumbnails runs synchronously.
 static void should_fetch_shell_thumbnail_only_for_offline_visible()
 {
-	const auto file_path = _temps.next_path(".jpg");
+	const auto file_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
-	const auto hidden_path = _temps.next_path(".jpg");
+	const auto hidden_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), hidden_path, false, true);
 
 	null_async_strategy as;
@@ -5720,14 +5799,17 @@ static void should_fetch_shell_thumbnail_only_for_offline_visible()
 // must not spend an attempt.
 static void should_bound_shell_thumbnail_retries()
 {
-	const auto file_path = _temps.next_path(".jpg");
+	const auto file_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
 
 	null_async_strategy as;
 	const location_cache locations;
 	index_state index(as, locations);
 
-	platform::test_offline_predicate = [file_path](const core::file_path& p) { return p == file_path; };
+	platform::test_offline_predicate = [file_path](const core::file_path& p)
+	{
+		return p == file_path;
+	};
 	const core::scope_exit clear_offline([] { platform::test_offline_predicate = nullptr; });
 	const auto item = load_item(index, file_path, true);
 	item->begin_db_thumbnail_query();
@@ -5765,7 +5847,7 @@ static void should_bound_shell_thumbnail_retries()
 
 static void should_discard_stale_thumbnail_surface()
 {
-	const auto file_path = _temps.next_path(".jpg");
+	const auto file_path = test_temps.next_path(".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
 
 	null_async_strategy scan_async;
@@ -5789,8 +5871,8 @@ static void should_discard_stale_thumbnail_surface()
 
 static void should_rescan_collection_after_forgetting_cache()
 {
-	const auto folder = _temps.next_folder("rebuild");
-	const auto file_path = _temps.next_path_in(folder, ".jpg");
+	const auto folder = test_temps.next_folder("rebuild");
+	const auto file_path = test_temps.next_path_in(folder, ".jpg");
 	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, true);
 
 	null_async_strategy as;
@@ -5820,7 +5902,7 @@ static void should_rescan_collection_after_forgetting_cache()
 	assert_equal(true, rescanned.metadata_scanned.load().is_valid(), "the collection is re-read after a reset");
 }
 
-void register_index_tests(view_state& state, test_registry& tests)
+void register_index_tests(view_state& /*state*/, test_registry& tests)
 {
 	//
 	// Index
@@ -5830,7 +5912,8 @@ void register_index_tests(view_state& state, test_registry& tests)
 	tests.add("Should query inverted index"s, should_query_inverted_index);
 	tests.add("Should query trigram index"s, should_query_trigram_index);
 	tests.add("Should hold document sets"s, should_hold_document_sets);
-	tests.add("Should combine sets as the matcher combines answers"s, should_combine_sets_as_the_matcher_combines_answers);
+	tests.add("Should combine sets as the matcher combines answers"s,
+	          should_combine_sets_as_the_matcher_combines_answers);
 	tests.add("Should answer searches from the search index as a scan does"s,
 	          should_answer_searches_from_the_search_index_as_a_scan_does);
 	tests.add("Should confirm what the trigram index suggests"s, should_confirm_what_the_trigram_index_suggests);
@@ -5885,8 +5968,9 @@ void register_index_tests(view_state& state, test_registry& tests)
 	          [] { should_keep_answering_while_upgrading_audio_metadata(4); });
 	tests.add("Should keep answering while upgrading to names read on load"s,
 	          [] { should_keep_answering_while_upgrading_audio_metadata(5); });
-	tests.add("Should reclaim a cache written by a newer build"s,
-	          should_reclaim_a_cache_written_by_a_newer_build);
+	tests.add("Should keep answering while upgrading tracker comments"s,
+	          should_keep_answering_while_upgrading_tracker_comments);
+	tests.add("Should reclaim a cache written by a newer build"s, should_reclaim_a_cache_written_by_a_newer_build);
 	tests.add("Should replace an unreadable database"s, should_replace_an_unreadable_database);
 	tests.add("Should run without a database"s, should_run_without_a_database);
 	tests.add("Should hand scan results to the database in groups"s,
@@ -5894,8 +5978,7 @@ void register_index_tests(view_state& state, test_registry& tests)
 	// SRC-038/MOD-013/SRC-054 - cache serialization keeps channels, high rates, and bounded ratings.
 	tests.add("Should store pack properties"s, should_pack_item_properties);
 	// MOD-013 - rollback builds must still read fields around widened sample-rate records.
-	tests.add("Should write pack rows a rollback build can read"s,
-	          should_write_pack_rows_a_rollback_build_can_read);
+	tests.add("Should write pack rows a rollback build can read"s, should_write_pack_rows_a_rollback_build_can_read);
 	tests.add("Should write dates an older build can read"s, should_write_dates_an_older_build_can_read);
 	tests.add("Should read a date pack written by a later release"s,
 	          should_read_a_date_pack_written_by_a_later_release);
@@ -5937,10 +6020,11 @@ void register_index_tests(view_state& state, test_registry& tests)
 	tests.add("Should discard stale CRC result"s, should_discard_stale_crc_result);
 	tests.add("Should continue predictions after terminal phash publication"s,
 	          should_continue_predictions_after_terminal_phash_publication);
+	tests.add("Should publish a phash without storing it when asked"s,
+	          should_publish_a_phash_without_storing_it_when_asked);
 	// Concurrency review #2 - a rescan clearing the anchor's hash mid-walk crashed the comparison.
 	tests.add("Should compare against the anchor hash it chose"s, should_compare_against_the_anchor_hash_it_chose);
-	tests.add("Should mark oversized capture time as crowded"s,
-	          should_mark_oversized_capture_time_as_crowded);
+	tests.add("Should mark oversized capture time as crowded"s, should_mark_oversized_capture_time_as_crowded);
 	tests.add("Should not report presence against crowd declined members"s,
 	          should_not_report_presence_against_crowd_declined_members);
 	tests.add("Should not reload thumb when valid"s, should_not_reload_thumb_when_valid);
@@ -5963,10 +6047,8 @@ void register_index_tests(view_state& state, test_registry& tests)
 	// Concurrency review #9 - the startup query validated a folder before the cache merged into it.
 	tests.add("Should not adopt cached hashes older than the file"s,
 	          should_not_adopt_cached_hashes_older_than_the_file);
-	tests.add("Should drop deleted declared root cache"s,
-	          should_drop_deleted_declared_root_cache);
-	tests.add("Should report incomplete collection discovery"s,
-	          should_report_incomplete_collection_discovery);
+	tests.add("Should drop deleted declared root cache"s, should_drop_deleted_declared_root_cache);
+	tests.add("Should report incomplete collection discovery"s, should_report_incomplete_collection_discovery);
 	// Index review #55 - folders made after the walk stayed outside the collection until the next walk.
 	tests.add("Should admit a folder made inside the collection after the walk"s,
 	          should_admit_a_folder_made_inside_the_collection_after_the_walk);
@@ -5982,8 +6064,7 @@ void register_index_tests(view_state& state, test_registry& tests)
 	tests.add("Should invalidate metadata when sidecar identity changes"s,
 	          should_invalidate_metadata_when_sidecar_identity_changes);
 	// G07a review - unchanged sidecar associations loaded from the database must stay cache-current.
-	tests.add("Should not rescan unchanged sidecars after reload"s,
-	          should_not_rescan_unchanged_sidecars_after_reload);
+	tests.add("Should not rescan unchanged sidecars after reload"s, should_not_rescan_unchanged_sidecars_after_reload);
 	tests.add("Should store only values a file holds"s, should_store_only_values_a_file_holds);
 	tests.add("Should derive names as rows load"s, should_derive_names_as_rows_load);
 	tests.add("Should pair subtitles named by language"s, should_pair_subtitles_named_by_language);
@@ -6005,7 +6086,8 @@ void register_index_tests(view_state& state, test_registry& tests)
 	          should_retry_parent_validation_after_child_publication);
 	// SRC-048 - a validation deferred to concurrent writers neither drops the folder from a walk or
 	// a scan nor queues more than one follow-up for it.
-	tests.add("Should rescan index folder after deferred folder scan"s, should_rescan_folder_after_deferred_folder_scan);
+	tests.add("Should rescan index folder after deferred folder scan"s,
+	          should_rescan_folder_after_deferred_folder_scan);
 	tests.add("Should revisit deferred folder during index walk"s, should_revisit_deferred_folder_during_index_walk);
 	tests.add("Should list deferred index folder in import analysis"s, should_list_deferred_folder_in_import_analysis);
 	tests.add("Should scan forced index item when folder validation defers"s,

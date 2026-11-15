@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Main application frame and view management. Contains the app_frame class which
 // orchestrates the UI, handles commands, manages views, and coordinates background tasks.
@@ -14,6 +13,8 @@
 #include "model_display.h"
 #include "model_tile_cache.h"
 #include "app_commands.h"
+#include "app_record.h"
+#include "app_tutorial.h"
 #include "app_search.h"
 
 class sidebar_host;
@@ -72,6 +73,29 @@ inline status_repaint status_repaints(const bool progress_active, const int64_t 
 	return {command_progress_needs_animation(progress_active, progress_total), show_debug_info};
 }
 
+struct tooltip_dwell
+{
+	static constexpr uint64_t delay_ms = 500;
+	pointi origin;
+	uint64_t since = 0;
+	bool armed = false;
+
+	void reset() { armed = false; }
+
+	bool ready(const uint64_t now, const pointi position, const int tolerance, const uint32_t requested_delay)
+	{
+		const auto moved = std::abs(static_cast<int64_t>(position.x) - origin.x) > tolerance ||
+		                   std::abs(static_cast<int64_t>(position.y) - origin.y) > tolerance;
+		if (!armed || now < since || moved)
+		{
+			origin = position;
+			since = now;
+			armed = true;
+		}
+		return now - since >= std::max(delay_ms, static_cast<uint64_t>(requested_delay));
+	}
+};
+
 // One part of a bar as arrange_bar sees it.
 struct bar_slot
 {
@@ -106,11 +130,15 @@ enum class bar_alignment
 bar_arrangement arrange_bar(recti bounds, const std::vector<bar_slot>& slots, int gap,
                             bar_alignment alignment = bar_alignment::trailing);
 
-// Defined in app.cpp so callers do not need the whole sidebar header for the logo lockup.
-view_element_ptr create_app_logo_element(view_state& s, render::font_face font, bool interactive,
-                                         bool show_plasma, double logo_scale,
-                                         const view_element_options& options);
+// Whether a focused control is worked by key, which is then the control's before any meaning the view gives it:
+// Enter for a button or a toolbar, Space for any control, and the arrows, Home, End, Page Up and Page Down a
+// toolbar, slider or radio group moves by. Enter on any other control still submits a task, as Enter in a dialog
+// presses its default button, and a control that takes typing has had every key it edits with already.
+bool control_takes_key(const ui::control& c, char32_t key, platform::key_state keys);
 
+// Defined in app.cpp so callers do not need the whole sidebar header for the logo lockup.
+view_element_ptr create_app_logo_element(view_state& s, render::font_face font, bool interactive, bool show_plasma,
+                                         double logo_scale, const view_element_options& options);
 
 class view_frame;
 
@@ -146,12 +174,32 @@ public:
 	view_controls_host_ptr _panel;
 	bool _panel_fills = false;
 
-	// The strip of thumbnails under the view, a frame of its own, shown where wanted.
+	// The strip of thumbnails under the view, composed into its surface where wanted.
 	std::shared_ptr<ui::frame_element> _strip = std::make_shared<ui::frame_element>();
 	bool _strip_wanted = false;
 
 	// Told as the keyboard comes to or leaves the view or a control of its panel.
 	std::function<void(bool, const ui::control_ptr&)> focus_listener;
+
+	// Whether a press gives the frame the keyboard. The strip's does not: a press there picks an item and leaves
+	// the keyboard where it was, as a press on a toolbar does.
+	bool _press_takes_keyboard = true;
+
+	// The drawn part the keyboard is on, when it is on neither the view's own content nor a control of the panel:
+	// the area that holds it, which part of which element, and where it was last found. A part that has gone is
+	// followed to the part now nearest where it was, unless pressing it took it away, which leaves the keyboard on
+	// the view.
+	struct keyboard_focus
+	{
+		keyboard_area area = keyboard_area::view;
+		std::weak_ptr<view_element> element;
+		int index = 0;
+		recti bounds;
+		bool pressed = false;
+	} _keyboard;
+
+	// Whether the keyboard has moved since the pointer last pressed, so the view's own content shows the ring too.
+	bool _keyboard_cues = false;
 
 	// The strip between the view and the panel, dragged to share the width between them. Written only by
 	// layout, so a drag can map a pointer back to the proportion stored for the view.
@@ -178,34 +226,28 @@ public:
 	wheel_accumulator _wheel_horizontal;
 	double _wheel_pending_pinch = 0.0;
 
-	view_frame(view_state& s) : _state(s)
-	{
-	}
+	view_frame(view_state& s) : _state(s) {}
 
 	// A device reporting whole detents and one reporting fractions of them reach the view as the same
 	// thing: both remainders are carried, so a touchpad accumulates instead of being divided to
 	// nothing, and neither answer can be rounded away twice on the way through.
-	bool dispatch_wheel(const pointi loc, const int delta, const platform::key_state keys, const platform::wheel_axis axis,
-	                    wheel_accumulator& pending)
+	bool dispatch_wheel(const pointi loc, const int delta, const platform::key_state keys,
+	                    const platform::wheel_axis axis, wheel_accumulator& pending)
 	{
-		const platform::wheel_notch notch{
-			axis,
-			platform::accumulate_wheel_steps(pending.steps, delta),
-			platform::accumulate_wheel_steps(pending.scroll, delta / 2.0, 1.0),
-			keys
-		};
+		const platform::wheel_notch notch{axis, platform::accumulate_wheel_steps(pending.steps, delta),
+		                                  platform::accumulate_wheel_steps(pending.scroll, delta / 2.0, 1.0), keys};
 
 		if (notch.steps == 0 && notch.delta == 0) return false;
 		return _view->mouse_wheel(loc, notch);
 	}
 
-	void init(const ui::frame_ptr& owner)
+	void init(const ui::frame_ptr& owner, const bool embedded = false)
 	{
 		ui::frame_style fs;
 		fs.hardware_accelerated = true;
-		fs.colors = {
-			ui::style::colors.view_background, ui::style::colors.view_text, ui::style::colors.view_selected_background
-		};
+		fs.embedded = embedded;
+		fs.colors = {ui::style::colors.view_background, ui::style::colors.view_text,
+		             ui::style::colors.view_selected_background};
 		fs.can_focus = true;
 		fs.can_drop = true;
 		_frame = owner->create_frame(weak_from_this(), fs);
@@ -242,10 +284,7 @@ public:
 		if (v) _view = std::move(v);
 	}
 
-	bool is_occluded() const
-	{
-		return frame()->is_occluded();
-	}
+	bool is_occluded() const { return frame()->is_occluded(); }
 
 	void invalidate_controller()
 	{
@@ -253,9 +292,7 @@ public:
 		update_controller(frame()->cursor_location());
 	}
 
-	void on_window_destroy() override
-	{
-	}
+	void on_window_destroy() override {}
 
 	// Shows a panel of the view's controls beside it, or none.
 	void panel(view_controls_host_ptr panel, bool fills);
@@ -263,11 +300,26 @@ public:
 	bool in_view(const pointi loc) const { return _view_bounds.contains(loc); }
 	void drag_splitter(pointi loc);
 
+	// The groups of drawn parts in the frame - the view's, then its panel's - and those of one area, where they are
+	// drawn now.
+	std::vector<keyboard_region> keyboard_regions() const;
+	std::optional<keyboard_region> keyboard_region_of(keyboard_area area) const;
+	std::vector<keyboard_part> keyboard_parts(keyboard_area area) const;
+	// The part the keyboard is on, where it is drawn now; none while the keyboard is on the view's own content.
+	std::optional<keyboard_part> focused_part();
+	// Puts the keyboard on a part, brought into view, or with none on the view's own content.
+	void keyboard_to(keyboard_area area, const keyboard_part* part);
+	// The keys of the part the keyboard is on: the arrows, Home and End move it among its group, Enter and Space
+	// press it, and Escape takes the keyboard back to the view - except from the panel, a task's dialog, where
+	// Escape keeps its meaning for the task.
+	bool keyboard_part_key_down(char32_t key, platform::key_state keys);
+	void draw_keyboard_focus(render::draw_context& dc);
+
 	// A press on the view gives it the keyboard; one between the panel's controls, or on the splitter beside
 	// them, leaves the keyboard where it was, as it did when the panel was a window of its own.
 	bool takes_keyboard_at(const pointi loc) const override
 	{
-		return !in_panel(loc) && !_splitter.bounds.contains(loc);
+		return _press_takes_keyboard && !in_panel(loc) && !_splitter.bounds.contains(loc);
 	}
 
 	void on_window_layout(render::measure_context& mc, sizei extent, bool is_minimized) override;
@@ -278,7 +330,8 @@ public:
 
 	void on_mouse_hwheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled) override
 	{
-		if (in_view(loc)) was_handled = dispatch_wheel(loc, delta, keys, platform::wheel_axis::horizontal, _wheel_horizontal);
+		if (in_view(loc))
+			was_handled = dispatch_wheel(loc, delta, keys, platform::wheel_axis::horizontal, _wheel_horizontal);
 		update_controller(loc);
 	}
 
@@ -291,22 +344,19 @@ public:
 	}
 
 	// The view sees the press before the controller does, so it can release text focus the press
-	// did not land in. A rendered edit that kept focus would swallow every keyboard command.
+	// did not land in. A rendered edit that kept focus would swallow every keyboard command. A press
+	// also takes the keyboard off any drawn part, as it takes it off the panel's controls.
 	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
+		_keyboard_cues = false;
+		if (_keyboard.area != keyboard_area::view) keyboard_to(keyboard_area::view, nullptr);
 		if (in_view(loc)) _view->mouse_down(loc);
 		view_host::on_mouse_left_button_down(loc, keys);
 	}
 
-	bool key_down(const int c, const platform::key_state keys) override
-	{
-		return false;
-	}
+	bool key_down(const char32_t /*c*/, const platform::key_state /*keys*/) override { return false; }
 
-	bool is_caption_area(const pointi loc) const override
-	{
-		return in_view(loc) && _view->is_caption_area(loc);
-	}
+	bool is_caption_area(const pointi loc) const override { return in_view(loc) && _view->is_caption_area(loc); }
 
 	void pan_start(const pointi start_loc) override
 	{
@@ -314,12 +364,12 @@ public:
 		if (in_view(start_loc)) _view->pan_start(_pan_start_loc);
 	}
 
-	void pan(const pointi start_loc, const pointi current_loc) override
+	void pan(const pointi /*start_loc*/, const pointi current_loc) override
 	{
 		if (in_view(_pan_start_loc)) _view->pan(_pan_start_loc, current_loc);
 	}
 
-	void pan_end(const pointi start_loc, const pointi final_loc) override
+	void pan_end(const pointi /*start_loc*/, const pointi final_loc) override
 	{
 		if (in_view(_pan_start_loc)) _view->pan_end(_pan_start_loc, final_loc);
 	}
@@ -329,68 +379,44 @@ public:
 		return in_view(location) && _view->touch_double_tap(location);
 	}
 
-	void on_mouse_other_button_up(const platform::other_mouse_button& button, const pointi loc,
-	                              const platform::key_state keys) override
+	void on_mouse_other_button_up(const platform::other_mouse_button& button, const pointi /*loc*/,
+	                              const platform::key_state /*keys*/) override
 	{
 		switch (button)
 		{
-		case platform::other_mouse_button::xb1:
-			_state.browse_back(shared_from_this());
-			break;
-		case platform::other_mouse_button::xb2:
-			_state.browse_forward(shared_from_this());
-			break;
-		default:
-			break;
+		case platform::other_mouse_button::xb1: _state.browse_back(shared_from_this()); break;
+		case platform::other_mouse_button::xb2: _state.browse_forward(shared_from_this()); break;
+		default: break;
 		}
 	}
 
 	// The view has the keyboard while the frame does and none of the panel's controls holds it.
 	void focus_changed(bool has_focus, const ui::control_ptr& child) override;
 
-	const ui::frame_ptr frame() const override
-	{
-		return _frame ? _frame : ui::no_frame();
-	}
+	const ui::frame_ptr frame() const override { return _frame ? _frame : ui::no_frame(); }
 
-	const ui::frame_ptr owner() override
-	{
-		return _owner;
-	}
+	const ui::frame_ptr owner() override { return _owner; }
 
-	void controller_changed() override
-	{
-		_state.invalidate_view(view_invalid::tooltip);
-	}
+	void controller_changed() override { _state.invalidate_view(view_invalid::tooltip); }
 
 	// The splitter, the panel or the view, whichever holds loc; each answers within its own region.
 	view_controller_ptr controller_from_location(pointi loc, hit_test_context& ctx) override;
 
-	void invoke(const commands cmd) override
-	{
-		_state.invoke(cmd);
-	}
+	void invoke(const commands cmd) override { _state.invoke(cmd); }
 
-	bool is_command_checked(const commands cmd) override
-	{
-		return _state.is_command_checked(cmd);
-	}
+	bool is_command_checked(const commands cmd) override { return _state.is_command_checked(cmd); }
 
+	// bounds are this frame's; the menu opens where they are on the screen. On Windows the frame is a child
+	// window, whose window bounds are its parent's coordinates, not the screen's.
 	void track_menu(const recti bounds, const std::vector<ui::command_ptr>& commands) override
 	{
 		const auto f = frame();
-		_state.track_menu(f, bounds.offset(f->window_bounds().top_left()), commands);
+		_state.track_menu(f, bounds.offset(f->client_to_screen({})), commands);
 	}
 
-	void layout() const
-	{
-		frame()->layout();
-	}
+	void layout() const { frame()->layout(); }
 
-	void invalidate_element(const view_element_ptr& e) override
-	{
-		frame()->invalidate();
-	}
+	void invalidate_element(const view_element_ptr& /*e*/) override { frame()->invalidate(); }
 
 	std::string _status_title;
 	std::string _status_text;
@@ -437,8 +463,8 @@ public:
 					{
 						const auto dest_path = _state.save_path();
 						const auto desc = data.files_description();
-						const auto is_copy = !keys.shift && (keys.control || desc.preferred_drop_effect ==
-							platform::drop_effect::copy);
+						const auto is_copy = !keys.shift && (keys.control ||
+						                                     desc.preferred_drop_effect == platform::drop_effect::copy);
 
 						update_status(is_copy ? tt.platform_text.menu_copy : tt.menu_move,
 						              std::format("{}\n{}\n{}", desc.first_name, tt.copy_to_join, dest_path.text()));
@@ -462,7 +488,8 @@ public:
 		return result;
 	}
 
-	platform::drop_effect drag_drop(platform::clipboard_data& data, const platform::key_state keys, const pointi loc) override
+	platform::drop_effect drag_drop(platform::clipboard_data& data, const platform::key_state keys,
+	                                const pointi loc) override
 	{
 		auto result = platform::drop_effect::none;
 
@@ -489,8 +516,8 @@ public:
 					{
 						const auto save_path = _state.save_path();
 						const auto desc = data.files_description();
-						const auto is_copy = !keys.shift && (keys.control || desc.preferred_drop_effect ==
-							platform::drop_effect::copy);
+						const auto is_copy = !keys.shift && (keys.control ||
+						                                     desc.preferred_drop_effect == platform::drop_effect::copy);
 						const auto drop_action = is_copy ? platform::drop_effect::copy : platform::drop_effect::move;
 
 						detach_file_handles detach(_state);
@@ -537,10 +564,7 @@ public:
 		if (_view) _view->drag_paths_over(std::nullopt);
 	}
 
-	void invalidate_view(const view_invalid invalid) override
-	{
-		_state.invalidate_view(invalid);
-	}
+	void invalidate_view(const view_invalid invalid) override { _state.invalidate_view(invalid); }
 };
 
 class app_frame;
@@ -564,17 +588,14 @@ public:
 	sizei _extent;
 	// What the bar shows now, in the order Tab visits it.
 	std::vector<ui::control_ptr> _controls;
+	// Whether the title saw the press its next release ends.
+	bool _title_pressed = false;
 
-	bar_frame(app_frame& app, const kind k) : _app(app), _kind(k)
-	{
-	}
+	bar_frame(app_frame& app, const kind k) : _app(app), _kind(k) {}
 
 	void init(const ui::frame_ptr& owner);
 
-	const ui::frame_ptr frame() const
-	{
-		return _frame ? _frame : ui::no_frame();
-	}
+	const ui::frame_ptr frame() const { return _frame ? _frame : ui::no_frame(); }
 
 	void on_window_layout(render::measure_context& mc, sizei extent, bool is_minimized) override;
 	void on_window_paint(render::draw_context& dc) override;
@@ -582,6 +603,7 @@ public:
 	bool is_caption_area(pointi loc) const override;
 	void on_mouse_move(pointi loc, bool is_tracking) override;
 	void on_mouse_leave(pointi loc) override;
+	void on_mouse_left_button_down(pointi loc, platform::key_state keys) override;
 	void on_mouse_left_button_up(pointi loc, platform::key_state keys) override;
 	void focus_changed(bool has_focus, const ui::control_ptr& child) override;
 	void command_hover(const ui::command_ptr& c, recti window_bounds) override;
@@ -610,7 +632,6 @@ struct lerp_animate
 		return val == 0 ? c1 : core::lerp(c1, c2, val);
 	}
 };
-
 
 class app_frame final :
 	public state_strategy,
@@ -660,6 +681,8 @@ public:
 	platform::task_queue scan_displayed_items_task_queue;
 	platform::task_queue crc_task_queue;
 	platform::task_queue work_task_queue;
+	// A running Commodore 64 holds this queue's thread for as long as it runs, so nothing else queues here.
+	platform::task_queue emulator_task_queue;
 	platform::threads _threads;
 
 	// UI-thread owned. The database-open completion and every collection walk ask to bring the index
@@ -676,6 +699,7 @@ public:
 	std::atomic_bool _map_tile_workers_started = false;
 	std::atomic_bool _tile_db_worker_started = false;
 	std::atomic_bool _media_preview_worker_started = false;
+	std::atomic_bool _emulator_worker_started = false;
 
 	ui::frame_ptr _app_frame;
 	std::shared_ptr<app_logo_element> _app_logo;
@@ -692,6 +716,8 @@ public:
 	{
 		ui::toolbar_ptr toolbar;
 		bar_control control = bar_control::item_filter;
+		// The commands the toolbar shows, in order.
+		std::vector<commands> run;
 	};
 
 	using frame_bar = std::vector<frame_bar_part>;
@@ -700,6 +726,10 @@ public:
 	// - share one set of controls. Built before the first layout and never rebuilt: the commands they
 	// show update in place, and a view switch only shows and hides what already exists.
 	std::map<std::vector<bar_entry>, frame_bar> _bars;
+
+	// What the status bar had no room for: the leading commands of a run it shows in part, which the More
+	// button that stands in for them lists.
+	std::vector<ui::command_ptr> _bar_overflow;
 
 	// The bar controls that are not toolbar buttons, one of each whichever views declare them.
 	ui::edit_ptr _filter_edit;
@@ -749,6 +779,8 @@ public:
 	std::shared_ptr<view_base> _view;
 
 	ui::bubble_window_ptr _bubble;
+	tooltip_dwell _tooltip_dwell;
+	bool _tooltip_content_dirty = false;
 
 	int _frame_delay = 0;
 	// Previous frame_tick timestamp, for the elapsed time alpha fades advance by.
@@ -780,7 +812,6 @@ public:
 	// Whether the last paint had to cut the status short, which is when hovering it says the rest.
 	bool _status_text_clipped = false;
 
-
 	// Time of the most recent folder-watch notification that has not yet produced a response, and the
 	// folders that signalled during that burst. UI thread only.
 	double _folder_change_time = 0.0;
@@ -810,6 +841,15 @@ public:
 #ifdef _DEBUG
 	double _screenshot_ready_time = 0;
 	int _screenshot_stage = 0;
+	// A scene named with "-play" starts its media once there is a session to start.
+	bool _screenshot_play = false;
+	// One ending "-end" scrolls the media column to its end before it is captured.
+	bool _screenshot_end = false;
+	// -record: 0 until the window shows, 1 once its size is set, 2 while it records, 3 once it has ended.
+	int _record_stage = 0;
+	std::unique_ptr<screen_recording> _recording;
+	// -tutorial: the script being acted out, which starts and ends the recording itself.
+	std::unique_ptr<tutorial_player> _tutorial;
 #endif
 
 	commands_map _commands;
@@ -848,6 +888,9 @@ public:
 
 	// The bar the frame shows for a view's declared entries, built on first use.
 	const frame_bar& bar(const std::vector<bar_entry>& entries);
+	// The toolbar a run of commands shows when the bar has room for only its last `keep`: the More button, whose
+	// menu holds the rest, then those. Built once for each length and kept, as every bar is.
+	const ui::toolbar_ptr& trimmed_run(const std::vector<commands>& run, size_t keep);
 	// What a running task's status bar offers in place of its view's own commands.
 	static const std::vector<bar_entry>& running_task_bar();
 	std::vector<bar_slot> measure_bar(render::measure_context& mc, const frame_bar& b, int control_height) const;
@@ -860,6 +903,30 @@ public:
 	void focus_filter(bool has_focus);
 	void focus_filter_edit();
 	void cancel_filter_edit();
+
+	// One place Tab stops at, in the window's order: a control, which takes the focus itself; a group of drawn parts
+	// in the view's frame, entered at its checked part or else its first; the strip; or, with none of these, the
+	// view's own content.
+	struct keyboard_stop
+	{
+		ui::control_ptr control;
+		std::vector<keyboard_part> parts;
+		keyboard_area area = keyboard_area::view;
+		bool strip = false;
+	};
+
+	// Where Tab stops, in order: the title bar's controls; the view's sidebar, its own content, the links of its
+	// listing and its media pane, the strip, and each control and link of its panel; then the status bar's controls.
+	std::vector<keyboard_stop> keyboard_stops() const;
+	// The one of them that has the keyboard, or -1.
+	int current_keyboard_stop(const std::vector<keyboard_stop>& stops);
+	// Tab and Shift+Tab: the keyboard to the next stop or the one before, round the window.
+	void move_keyboard(bool forward);
+	void keyboard_to(const keyboard_stop& stop);
+	// The control that has the keyboard, in whichever of the window's frames holds it.
+	ui::control_ptr keyboard_control() const;
+	// Apps and Shift+F10: the menu a right-click on what has the keyboard opens, beside it.
+	void open_keyboard_menu();
 	void item_size_changed(int pos, bool tracking);
 	void update_item_size_slider() const;
 	void crash(core::file_path dump_file_path) override;
@@ -894,9 +961,18 @@ public:
 #ifdef _DEBUG
 	void run_test_action(std::string_view action);
 	void tick_screenshot();
+	void tick_recording();
+	// -profile's and -collection's settings, put over what was read: after each read of the settings.
+	void apply_run_settings();
+	// Starts -record's recording, saying so: drawing the system's pointer or not, and presenting the window for it or
+	// not. False where nothing can be recorded.
+	bool start_recording(bool draw_pointer, bool present_window);
+	// Ends a recording and finishes its file, saying what was written.
+	void finish_recording();
 #endif
 	void frame_tick() override;
 	void update_tooltip();
+	void update_tooltip_visibility(uint64_t now_ms, pointi screen_position, double scale_factor);
 	void item_focus_changed(const df::item_element_ptr& focus, const df::item_element_ptr& previous) override;
 
 	// One test decides whether a view shows the selector strip, what it offers and what a click on it
@@ -973,7 +1049,8 @@ public:
 	void start_workers();
 	void start_index_workers();
 	bool claim_worker_start(std::atomic_bool& started);
-	void ensure_worker(std::atomic_bool& started, platform::task_queue& q, std::string_view name);
+	void ensure_worker(std::atomic_bool& started, platform::task_queue& q, std::string_view name,
+	                   bool background_work = true);
 	void update_font_size() const;
 	bool init(std::string_view command_line) override;
 	void init_search();
@@ -984,44 +1061,39 @@ public:
 	void cancel_search_edit();
 	bool search_accept_selected();
 
-	void on_mouse_wheel(const pointi loc, const int delta, const platform::key_state keys, bool& was_handled) override
+	void on_mouse_wheel(const pointi /*loc*/, const int /*delta*/, const platform::key_state /*keys*/,
+	                    bool& /*was_handled*/) override
 	{
 	}
 
-	void on_mouse_left_button_double_click(const pointi loc, const platform::key_state keys) override
+	void on_mouse_left_button_double_click(const pointi /*loc*/, const platform::key_state /*keys*/) override {}
+
+	void on_mouse_other_button_up(const platform::other_mouse_button& /*button*/, const pointi /*loc*/,
+	                              const platform::key_state /*keys*/) override
 	{
 	}
 
-	void on_mouse_other_button_up(const platform::other_mouse_button& button, const pointi loc,
-	                              const platform::key_state keys) override
-	{
-	}
+	void pan_start(const pointi /*start_loc*/) override {}
 
-	void pan_start(const pointi start_loc) override
-	{
-	}
+	void pan(const pointi /*start_loc*/, const pointi /*current_loc*/) override {}
 
-	void pan(const pointi start_loc, const pointi current_loc) override
-	{
-	}
-
-	void pan_end(const pointi start_loc, const pointi final_loc) override
-	{
-	}
+	void pan_end(const pointi /*start_loc*/, const pointi /*final_loc*/) override {}
 
 	void focus_search(bool has_focus);
 	void focus_changed(bool has_focus, const ui::control_ptr& child) override;
 	void on_window_destroy() override;
 	void command_hover(const ui::command_ptr& c, recti window_bounds) override;
 
+	// loc is a point on the screen, as every frame's menu is asked for.
 	std::vector<ui::command_ptr> menu(pointi loc) override;
+	// What a right-click at a point on the screen offers, before it is built.
+	view_menu menu_at(pointi screen);
 
-	// The context menu of a kind of view: a row of the commonest commands as buttons, then the rest.
-	std::vector<ui::command_ptr> context_menu(menu_type type) const;
+	// A menu a view names, built: its row of buttons, then the rest.
+	std::vector<ui::command_ptr> context_menu(const view_menu& menu) const;
 };
 
 using app_frame_ptr = std::shared_ptr<app_frame>;
-
 
 class pause_media
 {

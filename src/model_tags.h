@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Tag management utilities. Provides tag_set class for managing keyword
 // collections with add/remove operations and string formatting.
@@ -12,7 +11,6 @@
 #pragma once
 
 #include "libdesktop/core/util.h"
-
 
 using float_counts_type = core::hash_map<double, core::int_counter>;
 using id_counts_type = core::hash_map<int, core::int_counter>;
@@ -28,29 +26,15 @@ public:
 	tag_set(tag_set&&) noexcept = default;
 	tag_set& operator=(tag_set&&) noexcept = default;
 
-	tag_set(const std::string_view tags)
-	{
-		append(core::split(tags, true));
-	}
+	tag_set(const std::string_view tags) { append(core::split(tags, true)); }
 
-	tag_set(const std::vector<std::string_view>& tags)
-	{
-		append(tags);
-	}
+	tag_set(const std::vector<std::string_view>& tags) { append(tags); }
 
-	tag_set(std::vector<std::string> tags) : _tags(std::move(tags))
-	{
-	}
+	tag_set(std::vector<std::string> tags) : _tags(std::move(tags)) {}
 
-	friend bool operator==(const tag_set& lhs, const tag_set& rhs)
-	{
-		return lhs._tags == rhs._tags;
-	}
+	friend bool operator==(const tag_set& lhs, const tag_set& rhs) { return lhs._tags == rhs._tags; }
 
-	friend bool operator!=(const tag_set& lhs, const tag_set& rhs)
-	{
-		return !(lhs == rhs);
-	}
+	friend bool operator!=(const tag_set& lhs, const tag_set& rhs) { return !(lhs == rhs); }
 
 	void append(const std::vector<std::string_view>& tags)
 	{
@@ -58,35 +42,20 @@ public:
 		std::ranges::sort(_tags, core::path_iless());
 	}
 
-	size_t size() const
-	{
-		return _tags.size();
-	}
+	size_t size() const { return _tags.size(); }
 
-	bool is_empty() const
-	{
-		return _tags.empty();
-	}
+	bool is_empty() const { return _tags.empty(); }
 
-	void clear()
-	{
-		_tags.clear();
-	}
+	void clear() { _tags.clear(); }
 
 	std::string to_string(const std::string_view join = " ", const bool quote = true) const
 	{
 		return core::combine(_tags, join, quote);
 	}
 
-	const std::string& operator[](const int i) const
-	{
-		return _tags[i];
-	}
+	const std::string& operator[](const int i) const { return _tags[i]; }
 
-	void add_one(const std::string_view tag)
-	{
-		_tags.emplace_back(tag);
-	};
+	void add_one(const std::string_view tag) { _tags.emplace_back(tag); };
 
 	void make_unique();
 	void add(const tag_set& other);

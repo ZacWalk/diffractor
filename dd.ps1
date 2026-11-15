@@ -290,7 +290,7 @@ function Show-Usage {
     Write-Host "  run32        Run the recently built diffractor32.exe (32-bit)"
     Write-Host "  cpu          Run diffractor64.exe using CPU software rendering"
     Write-Host "  build        Bump the build number and build Release x64 (diffractor64.exe)"
-    Write-Host "  test         Lint, run unit tests and validate translation (.po) files"
+    Write-Host "  test [--label headless]  Lint, run windowless unit tests and validate translations"
     Write-Host "  bean         Run unit tests with the temp folder on the bean NAS (\\bean.local\home\tmp)"
     Write-Host "  code         Open VS Code with Developer Command Prompt environment"
     Write-Host "  vs           Build Debug x64 and open it in the Visual Studio debugger (F5 starts it)"
@@ -320,7 +320,7 @@ function Show-Usage {
     Write-Host "  .\dd.ps1 cpu          Run diffractor64.exe using CPU software rendering"
     Write-Host "  .\dd.ps1 vs           Debug diffractor64-d.exe in Visual Studio and read a crash's call stack"
     Write-Host "  .\dd.ps1 linux        Build and run the Linux build in WSL (Release; --config Debug for Debug)"
-    Write-Host "  .\dd.ps1 test         Lint, run unit tests and validate .po files"
+    Write-Host "  .\dd.ps1 test --label headless   No visible UI; detailed console results"
     Write-Host ""
 }
 
@@ -545,15 +545,18 @@ function Clear-IncrementalLink {
 }
 
 function Copy-LicenceTexts {
-    # The released binary is LGPL-3.0-or-later, which must travel with every copy alongside the
-    # GPL-3.0 it incorporates by reference - so the installer, the zip and the Store package each
-    # carry both, renamed .txt so they open from Explorer.
+    # Diffractor is MPL-2.0, and the binary statically links LGPL libraries - libheif and libde265
+    # (LGPL-3.0-or-later, which incorporates the GPL-3.0) and FFmpeg (LGPL-2.1-or-later) - whose texts
+    # must travel with every copy. The installer, the zip and the Store package each carry all four,
+    # renamed .txt so they open from Explorer.
     param(
         [string]$Destination
     )
 
     Copy-Item (Join-Path $ScriptDir "LICENSE") (Join-Path $Destination "LICENSE.txt") -Force
-    Copy-Item (Join-Path $ScriptDir "COPYING.GPLv3") (Join-Path $Destination "COPYING.GPLv3.txt") -Force
+    Copy-Item (Join-Path $ScriptDir "licences/LGPL-3.0.txt") (Join-Path $Destination "COPYING.LGPLv3.txt") -Force
+    Copy-Item (Join-Path $ScriptDir "licences/GPL-3.0.txt") (Join-Path $Destination "COPYING.GPLv3.txt") -Force
+    Copy-Item (Join-Path $ScriptDir "licences/LGPL-2.1.txt") (Join-Path $Destination "COPYING.LGPLv2.1.txt") -Force
 }
 
 function Build-Desktop {
@@ -645,7 +648,9 @@ function Build-Desktop {
         "diffractor64.exe",
         "diffractor-tools.json",
         "LICENSE.txt",
+        "COPYING.LGPLv3.txt",
         "COPYING.GPLv3.txt",
+        "COPYING.LGPLv2.1.txt",
         "location-countries.txt",
         "location-places.txt",
         "location-states.txt",
@@ -1008,6 +1013,21 @@ function Build-App {
     return $exe
 }
 
+function Assert-HeadlessTestSelection {
+    param([string[]]$Arguments = @(), [switch]$VerboseRequested)
+
+    if ($VerboseRequested) {
+        throw 'test prints detailed console output by default; --verbose is not a test option.'
+    }
+    if ($Arguments.Count -eq 0) { return }
+    if ($Arguments.Count -ne 2 -or $Arguments[0] -ne '--label') {
+        throw 'test accepts --label <regex>; use the executable /test:<pattern> for individual cases.'
+    }
+    if ('headless' -cnotmatch $Arguments[1]) {
+        throw "No tests selected by label '$($Arguments[1])'. Available label: headless."
+    }
+}
+
 function Invoke-Tests {
     param(
         [string]$TempPath,
@@ -1031,6 +1051,8 @@ function Invoke-Tests {
 
     & pwsh -NoProfile -File (Join-Path $ToolsDir "test_release_tools.ps1") | Out-Host
     $toolsResult = $LASTEXITCODE
+    & pwsh -NoProfile -File (Join-Path $ToolsDir "test_headless_cli.ps1") | Out-Host
+    $headlessCliResult = $LASTEXITCODE
 
     # Release builds gate on the exe they are about to ship; plain `dd test` builds one.
     $testExe = if ($Exe) { $Exe } else { Build-App }
@@ -1067,11 +1089,14 @@ function Invoke-Tests {
     $checkScript = Join-Path $ToolsDir "check_translations.py"
     & $python -m unittest discover -s $ToolsDir -p "test_check_translations.py" | Out-Host
     $translationChecksResult = $LASTEXITCODE
+    & $python -B -m unittest discover -s $ToolsDir -p "test_dd_headless.py" | Out-Host
+    $pythonHeadlessResult = $LASTEXITCODE
     & $python $checkScript | Out-Host
     $transResult = $LASTEXITCODE
 
     Write-Host ""
-    if ($lintResult -eq 0 -and $toolsResult -eq 0 -and $testResult -eq 0 -and $poResult -eq 0 -and
+    if ($lintResult -eq 0 -and $toolsResult -eq 0 -and $headlessCliResult -eq 0 -and
+        $pythonHeadlessResult -eq 0 -and $testResult -eq 0 -and $poResult -eq 0 -and
         $translationChecksResult -eq 0 -and $transResult -eq 0) {
         Write-Host "============================================================================" -ForegroundColor Green
         Write-Host "Lint is clean, all tests passed and .po files are valid!" -ForegroundColor Green
@@ -1085,6 +1110,9 @@ function Invoke-Tests {
         }
         if ($toolsResult -ne 0) {
             Write-Host "Release tool checks FAILED (exit code $toolsResult)." -ForegroundColor Red
+        }
+        if ($headlessCliResult -ne 0 -or $pythonHeadlessResult -ne 0) {
+            Write-Host "Headless CLI checks FAILED." -ForegroundColor Red
         }
         if ($testResult -ne 0) {
             Write-Host "Unit tests FAILED (exit code $testResult)." -ForegroundColor Red
@@ -1362,7 +1390,7 @@ function Open-VisualStudio {
         return
     }
 
-    # The build is incremental, and it sees edits to the sibling libdesktop, libfiles and lib8bit
+    # The build is incremental, and it sees edits to the sibling libdesktop, libfiles and lib64
     # checkouts as well as Diffractor's own, which a timestamp check on src/ would not.
     if ($build) { Invoke-CMakeBuild -Configuration $configuration -Arch "x64" }
 
@@ -1545,6 +1573,13 @@ switch ($Command) {
         else { Invoke-BumpBuild; Build-App | Out-Null }
     }
     "test" {
+        try {
+            Assert-HeadlessTestSelection -Arguments $Rest -VerboseRequested:($PSBoundParameters.ContainsKey('Verbose'))
+        }
+        catch {
+            [Console]::Error.WriteLine($_.Exception.Message)
+            exit 2
+        }
         if ($IsLinuxHost) { Invoke-DdPython -Action "test" -Arguments $Rest }
         else { Invoke-Tests }
     }

@@ -147,6 +147,7 @@ static const FFInputFormat * const demuxer_list[] = {
     &ff_laf_demuxer,
     &ff_lc3_demuxer,
     &ff_libopenmpt_demuxer,
+    &ff_lcevc_demuxer,
     &ff_lmlm4_demuxer,
     &ff_loas_demuxer,
     &ff_luodat_demuxer,

@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Search query tests. Verifies search parsing, term matching, date matching,
 // selectors, file selection, related results, search navigation and prediction.
@@ -21,26 +20,31 @@
 // drive root becomes the filesystem root and separators follow suit.
 static std::string as_platform_path(std::string_view windows_form)
 {
-	if constexpr (core::windows_path_semantics) return std::string(windows_form);
-
-	std::string result;
-
-	// A drive letter names nothing here, so the filesystem root stands in for the drive root.
-	if (windows_form.size() >= 2 && windows_form[1] == ':' &&
-		(windows_form[0] | 0x20) >= 'a' && (windows_form[0] | 0x20) <= 'z')
+	if constexpr (core::windows_path_semantics)
 	{
-		result = "/";
-		windows_form.remove_prefix(2);
-
-		if (!windows_form.empty() && (windows_form.front() == '\\' || windows_form.front() == '/'))
-		{
-			windows_form.remove_prefix(1);
-		}
+		return std::string(windows_form);
 	}
+	else
+	{
+		std::string result;
 
-	for (const auto c : windows_form) result += c == '\\' ? '/' : c;
+		// A drive letter names nothing here, so the filesystem root stands in for the drive root.
+		if (windows_form.size() >= 2 && windows_form[1] == ':' && (windows_form[0] | 0x20) >= 'a' &&
+		    (windows_form[0] | 0x20) <= 'z')
+		{
+			result = "/";
+			windows_form.remove_prefix(2);
 
-	return result;
+			if (!windows_form.empty() && (windows_form.front() == '\\' || windows_form.front() == '/'))
+			{
+				windows_form.remove_prefix(1);
+			}
+		}
+
+		for (const auto c : windows_form) result += c == '\\' ? '/' : c;
+
+		return result;
+	}
 }
 
 static void should_parse_searches()
@@ -81,21 +85,26 @@ static void should_answer_a_date_group_header_with_its_own_items()
 		return df::search_t().day(0, month, year, target);
 	};
 
-	assert_equal(true, df::search_matcher(header(5, 2019, df::date_parts_prop::original))
-	             .match_item({}, info).is_match(), "the Original header lists it");
-	assert_equal(true, df::search_matcher(header(8, 2026, df::date_parts_prop::created))
-	             .match_item({}, info).is_match(), "the Created header lists it");
+	assert_equal(true,
+	             df::search_matcher(header(5, 2019, df::date_parts_prop::original)).match_item({}, info).is_match(),
+	             "the Original header lists it");
+	assert_equal(true,
+	             df::search_matcher(header(8, 2026, df::date_parts_prop::created)).match_item({}, info).is_match(),
+	             "the Created header lists it");
 
 	// The two probes that pin the split. While the targets were one word both of these matched, so
 	// each header listed the other's items and the two orders were the same order.
-	assert_equal(false, df::search_matcher(header(8, 2026, df::date_parts_prop::original))
-	             .match_item({}, info).is_match(), "the Original header does not list the export month");
-	assert_equal(false, df::search_matcher(header(5, 2019, df::date_parts_prop::created))
-	             .match_item({}, info).is_match(), "the Created header does not list the shutter month");
+	assert_equal(false,
+	             df::search_matcher(header(8, 2026, df::date_parts_prop::original)).match_item({}, info).is_match(),
+	             "the Original header does not list the export month");
+	assert_equal(false,
+	             df::search_matcher(header(5, 2019, df::date_parts_prop::created)).match_item({}, info).is_match(),
+	             "the Created header does not list the shutter month");
 
 	// Still a date test, not a date-shaped wildcard.
-	assert_equal(false, df::search_matcher(header(7, 2022, df::date_parts_prop::original))
-	             .match_item({}, info).is_match(), "a month neither date names lists nothing");
+	assert_equal(false,
+	             df::search_matcher(header(7, 2022, df::date_parts_prop::original)).match_item({}, info).is_match(),
+	             "a month neither date names lists nothing");
 
 	// Where the concept has no tag the header is drawn from the filesystem stamp, so the stamp has
 	// to answer that order - and only that order, or Created reaches back into the shutter time.
@@ -110,13 +119,17 @@ static void should_answer_a_date_group_header_with_its_own_items()
 	// header carries depends on the machine and hard-coding one would pin nothing off UTC.
 	const auto stamp_parts = platform::utc_to_local(stamped.file_created).date();
 
-	assert_equal(true, df::search_matcher(header(stamp_parts.month, stamp_parts.year,
-	                                             df::date_parts_prop::created))
-	             .match_item({}, stamped).is_match(), "the Created header drawn from the stamp lists it");
-	assert_equal(true, df::search_matcher(header(5, 2019, df::date_parts_prop::original))
-	             .match_item({}, stamped).is_match(), "and its Original header lists it too");
-	assert_equal(false, df::search_matcher(header(5, 2019, df::date_parts_prop::created))
-	             .match_item({}, stamped).is_match(), "while Created still does not reach the shutter time");
+	assert_equal(true,
+	             df::search_matcher(header(stamp_parts.month, stamp_parts.year, df::date_parts_prop::created))
+	                 .match_item({}, stamped)
+	                 .is_match(),
+	             "the Created header drawn from the stamp lists it");
+	assert_equal(true,
+	             df::search_matcher(header(5, 2019, df::date_parts_prop::original)).match_item({}, stamped).is_match(),
+	             "and its Original header lists it too");
+	assert_equal(false,
+	             df::search_matcher(header(5, 2019, df::date_parts_prop::created)).match_item({}, stamped).is_match(),
+	             "while Created still does not reach the shutter time");
 }
 
 static void should_calculate_safe_presence_requirements()
@@ -170,10 +183,8 @@ static void should_search_boolean_presence_terms(shared_test_context& stc)
 	// The positive media term keeps these comparisons file-only (a bare negative term
 	// can also match folders). These identities verify that the bitmap prefilter does
 	// not discard files before the exact Boolean matcher sees them.
-	assert_equal(photos, count_search_results(stc.test_index, "@photo -@video"),
-	             "negated media search");
-	assert_equal(photos + videos, count_search_results(stc.test_index, "@photo or @video"),
-	             "OR media search");
+	assert_equal(photos, count_search_results(stc.test_index, "@photo -@video"), "negated media search");
+	assert_equal(photos + videos, count_search_results(stc.test_index, "@photo or @video"), "OR media search");
 
 	const auto duplicate_photos = count_search_results(stc.test_index, "@photo @duplicates");
 	assert_equal(photos - duplicate_photos, count_search_results(stc.test_index, "@photo -@duplicates"),
@@ -182,26 +193,21 @@ static void should_search_boolean_presence_terms(shared_test_context& stc)
 
 static void should_match_terms()
 {
-	prop_test().tag("aaa")
-	           .is_match("#aaa")
-	           .is_not_match("#bbb")
-	           .is_match("-#bbb")
-	           .is_match("!#bbb")
-	           .is_not_match("-#aaa")
-	           .is_not_match("!#aaa")
-	           .is_match("#aaa or #bbb")
-	           .is_not_match("#aaa and #bbb")
-	           .is_not_match("#aaa #bbb");
+	prop_test()
+		.tag("aaa")
+		.is_match("#aaa")
+		.is_not_match("#bbb")
+		.is_match("-#bbb")
+		.is_match("!#bbb")
+		.is_not_match("-#aaa")
+		.is_not_match("!#aaa")
+		.is_match("#aaa or #bbb")
+		.is_not_match("#aaa and #bbb")
+		.is_not_match("#aaa #bbb");
 
-	prop_test().tag("bbb")
-	           .is_not_match("#aaa")
-	           .is_match("#bbb")
-	           .is_match("#aaa or #bbb");
+	prop_test().tag("bbb").is_not_match("#aaa").is_match("#bbb").is_match("#aaa or #bbb");
 
-	prop_test().tag("'aa bb'")
-	           .is_not_match("#aaa")
-	           .is_not_match("#bb")
-	           .is_match("#'aa bb'");
+	prop_test().tag("'aa bb'").is_not_match("#aaa").is_not_match("#bb").is_match("#'aa bb'");
 
 	prop_test()
 		.tag("aaa bbb")
@@ -212,58 +218,57 @@ static void should_match_terms()
 		.is_match("#aaa #bbb")
 		.is_not_match("#aaa !#bbb");
 
-	prop_test().rate(4)
-	           .is_match("rate:4")
-	           .is_match("4")
-	           .is_match(">= 4")
-	           .is_not_match("> 4")
-	           .is_match(">3")
-	           .is_match("3 | 4")
-	           .is_match("3 or 4")
-	           .is_not_match("3 and 4");
+	prop_test()
+		.rate(4)
+		.is_match("rate:4")
+		.is_match("4")
+		.is_match(">= 4")
+		.is_not_match("> 4")
+		.is_match(">3")
+		.is_match("3 | 4")
+		.is_match("3 or 4")
+		.is_not_match("3 and 4");
 
-	prop_test().desc("one two three")
-	           .is_match("two")
-	           .is_match("one two")
-	           .is_match("two three")
-	           .is_match("'two three'")
-	           .is_not_match("'one three'");
+	prop_test()
+		.desc("one two three")
+		.is_match("two")
+		.is_match("one two")
+		.is_match("two three")
+		.is_match("'two three'")
+		.is_not_match("'one three'");
 
-	prop_test().date(1999, 12, 27)
-	           .is_match("age:5")
-	           .is_match("age:10")
-	           .is_not_match("age:1")
-	           .is_not_match("age:2");
+	prop_test().date(1999, 12, 27).is_match("age:5").is_match("age:10").is_not_match("age:1").is_not_match("age:2");
 
-	prop_test().date(2000, 1, 1)
-	           .is_match("age:1")
-	           .is_match("age:5")
-	           .is_not_match("-age:5")
-	           .is_not_match("!age:5");
+	prop_test().date(2000, 1, 1).is_match("age:1").is_match("age:5").is_not_match("-age:5").is_not_match("!age:5");
 
 	// original: is the capture-first ladder the tile shows and Group by Date Original keys on;
 	// created: is the Created concept alone. A file carrying only a shutter time answers the first
 	// and not the second, which is what stops the two words being synonyms.
-	prop_test().tag("aaa").date(2000, 1, 1)
-	           .is_match("#aaa age:1")
-	           .is_match("#aaa original:2000-jan")
-	           .is_not_match("original:2000-feb")
-	           .is_not_match("#bbb original:2000-jan")
-	           .is_not_match("created:2000-jan");
+	prop_test()
+		.tag("aaa")
+		.date(2000, 1, 1)
+		.is_match("#aaa age:1")
+		.is_match("#aaa original:2000-jan")
+		.is_not_match("original:2000-feb")
+		.is_not_match("#bbb original:2000-jan")
+		.is_not_match("created:2000-jan");
 
 	// The reverse asymmetry: the shutter time answers original: and the filesystem stamp behind it
 	// answers created:, so neither word reaches the other's date.
-	prop_test().file_created_date(2000, 1, 1).date(1999, 5, 25)
-	           .is_match("original:1999-may")
-	           .is_not_match("original:1998-mar")
-	           .is_not_match("created:1999-may");
+	prop_test()
+		.file_created_date(2000, 1, 1)
+		.date(1999, 5, 25)
+		.is_match("original:1999-may")
+		.is_not_match("original:1998-mar")
+		.is_not_match("created:1999-may");
 
 	// With no metadata date at all both ladders fall back to the same stamp, which is what keeps a
 	// header drawn from it clickable under either order.
-	prop_test().file_created_date(2000, 1, 1)
-	           .is_match("age:10")
-	           .is_match("created:2000-jan")
-	           .is_match("original:2000-jan");
+	prop_test()
+		.file_created_date(2000, 1, 1)
+		.is_match("age:10")
+		.is_match("created:2000-jan")
+		.is_match("original:2000-jan");
 }
 
 // A query the user is midway through typing has an unbalanced '(' on almost every
@@ -272,35 +277,32 @@ static void should_match_terms()
 // matches every item in scope.
 static void should_match_unbalanced_groups()
 {
-	prop_test().tag("aaa")
-	           .is_match("(#aaa")
-	           .is_match("(#aaa)")
-	           .is_not_match("(#bbb")
-	           .is_not_match("(#bbb)")
-	           .is_match("#aaa (#bbb or #aaa")
-	           .is_not_match("#aaa (#bbb")
-	           .is_match("((#aaa")
-	           .is_not_match("((#bbb");
+	prop_test()
+		.tag("aaa")
+		.is_match("(#aaa")
+		.is_match("(#aaa)")
+		.is_not_match("(#bbb")
+		.is_not_match("(#bbb)")
+		.is_match("#aaa (#bbb or #aaa")
+		.is_not_match("#aaa (#bbb")
+		.is_match("((#aaa")
+		.is_not_match("((#bbb");
 
-	prop_test().tag("bbb")
-	           .is_not_match("(#aaa")
-	           .is_match("(#aaa or #bbb")
-	           .is_not_match("(#aaa #bbb");
+	prop_test().tag("bbb").is_not_match("(#aaa").is_match("(#aaa or #bbb").is_not_match("(#aaa #bbb");
 }
 
 // An unknown property name after with:/without: used to build a null-key term, which
 // inverted into "match everything" for without: and "match nothing" for with:.
 static void should_ignore_unknown_property_scopes()
 {
-	prop_test().tag("aaa")
-	           .is_match("without:rating")
-	           .is_not_match("with:rating")
-	           .is_not_match("without:not-a-property #bbb")
-	           .is_match("with:tag");
+	prop_test()
+		.tag("aaa")
+		.is_match("without:rating")
+		.is_not_match("with:rating")
+		.is_not_match("without:not-a-property #bbb")
+		.is_match("with:tag");
 
-	prop_test().rate(4)
-	           .is_match("with:rating")
-	           .is_not_match("without:rating");
+	prop_test().rate(4).is_match("with:rating").is_not_match("without:rating");
 }
 
 // Property kinds that the parser used to drop entirely, leaving an empty term list and
@@ -308,52 +310,31 @@ static void should_ignore_unknown_property_scopes()
 static void should_match_parsed_property_values()
 {
 	// int_pair: "N" matches that number of any total, "N/M" must match both parts.
-	prop_test().track(3, 12)
-	           .is_match("track:3")
-	           .is_match("track:3/12")
-	           .is_not_match("track:4")
-	           .is_not_match("track:3/11");
-	prop_test().track(4, 12)
-	           .is_match(">track:3")
-	           .is_match(">=track:3")
-	           .is_not_match("<track:3");
-	prop_test().track(2, 12)
-	           .is_match("<track:3")
-	           .is_match("<=track:3")
-	           .is_not_match(">track:3");
-	prop_test().track(3, 13)
-	           .is_match("track:3")
-	           .is_match(">track:3/12")
-	           .is_not_match("=track:3/12");
-	prop_test().disk(4, 12)
-	           .is_match(">disk:3")
-	           .is_not_match("<disk:3");
-	prop_test().disk(3, 13)
-	           .is_match("disk:3")
-	           .is_match(">disk:3/12");
-	prop_test().episode(4, 12)
-	           .is_match(">episode:3")
-	           .is_not_match("<episode:3");
-	prop_test().episode(3, 13)
-	           .is_match("episode:3")
-	           .is_match(">episode:3/12");
+	prop_test()
+		.track(3, 12)
+		.is_match("track:3")
+		.is_match("track:3/12")
+		.is_not_match("track:4")
+		.is_not_match("track:3/11");
+	prop_test().track(4, 12).is_match(">track:3").is_match(">=track:3").is_not_match("<track:3");
+	prop_test().track(2, 12).is_match("<track:3").is_match("<=track:3").is_not_match(">track:3");
+	prop_test().track(3, 13).is_match("track:3").is_match(">track:3/12").is_not_match("=track:3/12");
+	prop_test().disk(4, 12).is_match(">disk:3").is_not_match("<disk:3");
+	prop_test().disk(3, 13).is_match("disk:3").is_match(">disk:3/12");
+	prop_test().episode(4, 12).is_match(">episode:3").is_not_match("<episode:3");
+	prop_test().episode(3, 13).is_match("episode:3").is_match(">episode:3/12");
 	// A number with no total is still that number.
-	prop_test().episode(5)
-	           .is_match("episode:5")
-	           .is_not_match("episode:6");
-	prop_test().track(7)
-	           .is_match("track:7");
+	prop_test().episode(5).is_match("episode:5").is_not_match("episode:6");
+	prop_test().track(7).is_match("track:7");
 
 	// What a library of films and television says an item is.
-	prop_test().kind(prop::media_kind::film)
-	           .is_match("@movie")
-	           .is_match("@film")
-	           .is_not_match("@episode")
-	           .is_match("-@episode");
-	prop_test().kind(prop::media_kind::episode)
-	           .is_match("@episode")
-	           .is_match("@tv")
-	           .is_not_match("@movie");
+	prop_test()
+		.kind(prop::media_kind::film)
+		.is_match("@movie")
+		.is_match("@film")
+		.is_not_match("@episode")
+		.is_match("-@episode");
+	prop_test().kind(prop::media_kind::episode).is_match("@episode").is_match("@tv").is_not_match("@movie");
 	prop_test().is_not_match("@movie").is_not_match("@episode");
 
 	// Started and not finished; neither just opened nor played to the credits.
@@ -361,46 +342,37 @@ static void should_match_parsed_property_values()
 	prop_test().duration(3600).media_position(10).is_not_match("@inprogress");
 	prop_test().duration(3600).media_position(3500).is_not_match("@inprogress");
 	prop_test().duration(3600).is_not_match("@inprogress");
-	prop_test().dimensions(4000, 3000)
-	           .is_match(">dimensions:3000x2000")
-	           .is_not_match("<dimensions:3000x2000")
-	           .is_match("dimensions:4000");
-	prop_test().dimensions(3000, 2200)
-	           .is_match(">dimensions:3000x2000")
-	           .is_not_match("=dimensions:3000x2000");
+	prop_test()
+		.dimensions(4000, 3000)
+		.is_match(">dimensions:3000x2000")
+		.is_not_match("<dimensions:3000x2000")
+		.is_match("dimensions:4000");
+	prop_test().dimensions(3000, 2200).is_match(">dimensions:3000x2000").is_not_match("=dimensions:3000x2000");
 
 	// a date property other than created/modified reached a poisoned comparison
-	prop_test().digitized(2000, 1, 1)
-	           .is_match("digitized:2000-jan")
-	           .is_not_match("digitized:2000-feb");
+	prop_test().digitized(2000, 1, 1).is_match("digitized:2000-jan").is_not_match("digitized:2000-feb");
 
 	// "ISO400" parsed the number but then matched against zero
-	prop_test().iso(400)
-	           .is_match("iso:ISO400")
-	           .is_match("iso:400")
-	           .is_not_match("iso:800");
+	prop_test().iso(400).is_match("iso:ISO400").is_match("iso:400").is_not_match("iso:800");
 
 	// "%d:%d" also matches the prefix of "1:02:03", so H:MM:SS must be tried first
-	prop_test().duration(3723)
-	           .is_match("duration:1:02:03")
-	           .is_not_match("duration:1:02");
+	prop_test().duration(3723).is_match("duration:1:02:03").is_not_match("duration:1:02");
 }
 
 static void should_match_multi_value_genre()
 {
 	// A single ';'-separated genre field should match a query for any one of its values.
-	prop_test().genre("Rock; Pop; Hip Hop")
-	           .is_match("genre:Rock")
-	           .is_match("genre:Pop")
-	           .is_match("genre:'Hip Hop'")
-	           .is_not_match("genre:Jazz")
-	           .is_match("genre:Rock or genre:Jazz")
-	           .is_not_match("-genre:Rock");
+	prop_test()
+		.genre("Rock; Pop; Hip Hop")
+		.is_match("genre:Rock")
+		.is_match("genre:Pop")
+		.is_match("genre:'Hip Hop'")
+		.is_not_match("genre:Jazz")
+		.is_match("genre:Rock or genre:Jazz")
+		.is_not_match("-genre:Rock");
 
 	// A single-value genre still matches exactly.
-	prop_test().genre("Jazz")
-	           .is_match("genre:Jazz")
-	           .is_not_match("genre:Rock");
+	prop_test().genre("Jazz").is_match("genre:Jazz").is_not_match("genre:Rock");
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -415,20 +387,13 @@ static void should_match_multi_value_genre()
 static void should_match_quoted_terms()
 {
 	// A multi-word tag is kept whole when quoted and does not match its parts.
-	prop_test().tag("'holiday photos'")
-	           .is_match("#'holiday photos'")
-	           .is_not_match("#holiday")
-	           .is_not_match("#photos");
+	prop_test().tag("'holiday photos'").is_match("#'holiday photos'").is_not_match("#holiday").is_not_match("#photos");
 
 	// A quoted phrase matches a contiguous substring only.
-	prop_test().desc("new york city")
-	           .is_match("'new york'")
-	           .is_not_match("'york new'");
+	prop_test().desc("new york city").is_match("'new york'").is_not_match("'york new'");
 
 	// A path-like value with spaces round-trips through parse + match.
-	prop_test().desc("C:/My Photos/trip")
-	           .is_match("'My Photos'")
-	           .is_not_match("'Your Photos'");
+	prop_test().desc("C:/My Photos/trip").is_match("'My Photos'").is_not_match("'Your Photos'");
 }
 
 // Issue #178 - the search bar must echo exactly what the user typed instead of
@@ -439,19 +404,15 @@ static void should_preserve_and_auto_quote_search_input()
 	const df::search_t base;
 
 	// #178: user text is preserved, not reverted to a normalized reconstruction.
-	assert_equal("#a #b #a"s, base.parse_from_input("#a #b #a").text(),
-	             "duplicate tags preserved in search bar text");
-	assert_equal("\"aaa\""s, base.parse_from_input("\"aaa\"").text(),
-	             "quotes preserved in search bar text");
+	assert_equal("#a #b #a"s, base.parse_from_input("#a #b #a").text(), "duplicate tags preserved in search bar text");
+	assert_equal("\"aaa\""s, base.parse_from_input("\"aaa\"").text(), "quotes preserved in search bar text");
 
 	// #139: a bare path containing spaces is auto-quoted.
 	const auto my_photos = as_platform_path("C:\\My Photos");
 	const auto photos = as_platform_path("C:\\Photos");
 
-	assert_equal("\"" + my_photos + "\"", base.parse_from_input(my_photos).text(),
-	             "path with spaces auto-quoted");
-	assert_equal(photos, base.parse_from_input(photos).text(),
-	             "path without spaces left unquoted");
+	assert_equal("\"" + my_photos + "\"", base.parse_from_input(my_photos).text(), "path with spaces auto-quoted");
+	assert_equal(photos, base.parse_from_input(photos).text(), "path without spaces left unquoted");
 	assert_equal("\"" + my_photos + "\"", base.parse_from_input("\"" + my_photos + "\"").text(),
 	             "already-quoted path not double-quoted");
 
@@ -478,7 +439,7 @@ static void should_preserve_unavailable_path_scopes()
 	index_state index(as, locations);
 	view_state state(ss, as, index, make_test_player());
 	const view_host_base_ptr view;
-	const auto root = _temps.next_folder("unavailable-scope");
+	const auto root = test_temps.next_folder("unavailable-scope");
 	const auto current = df::search_t().add_selector(root);
 	state.view_mode(view_type::items);
 	assert_equal(true, state.open(view, current, {}), "the starting scope is available");
@@ -492,7 +453,8 @@ static void should_preserve_unavailable_path_scopes()
 			for (const auto& search : {df::search_t::parse(text), current.parse_from_input(text)})
 			{
 				assert_equal(1_z, search.selectors().size(), "an unavailable absolute path retains its scope");
-				assert_equal(missing.text(), search.selectors().front().folder().text(), "the intended folder is retained");
+				assert_equal(missing.text(), search.selectors().front().folder().text(),
+				             "the intended folder is retained");
 				assert_equal(true, search.terms().empty(), "a missing path is not a collection text term");
 				const auto before = ss.unavailable;
 				assert_equal(false, state.open(view, search, {}), "unavailable navigation is refused");
@@ -612,14 +574,15 @@ class null_complete_strategy final : public ui::complete_strategy_t
 {
 public:
 	std::string no_results_message() override { return {}; }
-	void selected(const ui::auto_complete_match_ptr& i, select_type st) override {}
+	void selected(const ui::auto_complete_match_ptr& /*i*/, select_type /*st*/) override {}
 	ui::auto_complete_match_ptr selected() const override { return nullptr; }
 
-	void search(const std::string& query, std::function<void(const ui::auto_complete_results&)> complete) override
+	void search(const std::string& /*query*/,
+	            std::function<void(const ui::auto_complete_results&)> /*complete*/) override
 	{
 	}
 
-	void initialise(std::function<void(const ui::auto_complete_results&)> complete) override {}
+	void initialise(std::function<void(const ui::auto_complete_results&)> /*complete*/) override {}
 };
 
 static void should_format_search_predictions()
@@ -636,8 +599,7 @@ static void should_format_search_predictions()
 	const auto my_photos = as_platform_path("C:\\My Photos");
 	const auto photos = as_platform_path("C:\\Photos");
 
-	assert_equal("\"" + my_photos + "\"",
-	             folder_match(strategy, core::folder_path(my_photos)).edit_text(),
+	assert_equal("\"" + my_photos + "\"", folder_match(strategy, core::folder_path(my_photos)).edit_text(),
 	             "completed path with spaces is quoted");
 	assert_equal(photos, folder_match(strategy, core::folder_path(photos)).edit_text(),
 	             "completed path without spaces is left alone");
@@ -723,10 +685,8 @@ static void should_group_search_terms()
 	// The regression: the same expression with the group nested one deeper.
 	assert_equal(false, matches("alpha or ((beta gamma))", "delta.jpg"),
 	             "a nested group after or does not match everything");
-	assert_equal(false, matches("alpha or ((beta gamma))", "beta.jpg"),
-	             "and still binds inside the nested group");
-	assert_equal(true, matches("alpha or ((beta gamma))", "alpha.jpg"),
-	             "and the or still matches its left side");
+	assert_equal(false, matches("alpha or ((beta gamma))", "beta.jpg"), "and still binds inside the nested group");
+	assert_equal(true, matches("alpha or ((beta gamma))", "alpha.jpg"), "and the or still matches its left side");
 
 	assert_equal(false, matches("(alpha) (beta)", "alpha.jpg"), "two and-groups both have to match");
 	assert_equal(true, matches("(alpha) or (beta)", "beta.jpg"), "either or-group may match");
@@ -735,8 +695,8 @@ static void should_group_search_terms()
 	// A bare f/N reads as text or as an aperture, a pair that stands where the term stood. The
 	// aperture arm took the group's closing bracket with it, so it was ored in a level outside the
 	// group - and an f/2.8 from any camera answered "(camera:canon f/2.8)".
-	const auto shot = [](const std::string_view query, const std::string_view camera, const float aperture,
-	                     const uint16_t iso)
+	const auto shot =
+		[](const std::string_view query, const std::string_view camera, const float aperture, const uint16_t iso)
 	{
 		df::index_file_item file;
 		file.name = "shot.jpg"_c;
@@ -758,8 +718,7 @@ static void should_group_search_terms()
 	assert_equal(false, shot(grouped, "Canon", 4.0f, 200), "a group with its aperture unmet does not");
 	assert_equal(true, shot("(f/2.8 camera:canon) or iso:100"sv, "Canon", 2.8f, 200),
 	             "an f/N that opens a group keeps the group's and");
-	assert_equal(false, shot("(f/2.8 camera:canon) or iso:100"sv, "Nikon", 2.8f, 200),
-	             "with the rest of its group");
+	assert_equal(false, shot("(f/2.8 camera:canon) or iso:100"sv, "Nikon", 2.8f, 200), "with the rest of its group");
 }
 
 // Four ways a query came back as a different question from the one that was asked. Each is a silent
@@ -782,8 +741,7 @@ static void should_read_a_query_back_as_it_was_asked()
 	}
 
 	// Every delimiter the tokenizer would otherwise split is quoted when it is data, not grammar.
-	for (const auto value : {"Part(1)"sv, "a,b"sv, "a;b"sv, "a|b"sv, "a#b"sv, "<3"sv, ">x"sv, "=x"sv,
-		     "&ME"sv})
+	for (const auto value : {"Part(1)"sv, "a,b"sv, "a;b"sv, "a|b"sv, "a#b"sv, "<3"sv, ">x"sv, "=x"sv, "&ME"sv})
 	{
 		auto query = df::search_t().with(prop::title, value);
 		const auto text = query.format_terms();
@@ -877,7 +835,7 @@ static void should_not_call_a_cancelled_query_complete(shared_test_context& stc)
 	auto complete_runs = 0;
 	auto partial_runs = 0;
 
-	auto cb = [&complete_runs, &partial_runs](const index_state::query_item_results& items, const bool is_complete)
+	auto cb = [&complete_runs, &partial_runs](const index_state::query_item_results& /*items*/, const bool is_complete)
 	{
 		if (is_complete) ++complete_runs;
 		else ++partial_runs;
@@ -940,8 +898,7 @@ static void should_match_date(const std::string_view query, const core::date_t d
 	assert_equal(false, matcher.match_all_terms(test_files_folder().text(), props_without_val).is_match(), query);
 }
 
-static void assert_parse(const std::string_view selector, const std::string_view display,
-                         const std::string_view folder,
+static void assert_parse(const std::string_view selector, const std::string_view display, const std::string_view folder,
                          const bool is_recursive, const std::string_view wildcard)
 {
 	const core::item_selector sel(selector);
@@ -952,8 +909,8 @@ static void assert_parse(const std::string_view selector, const std::string_view
 	assert_equal(wildcard, sel.wildcard(), "item_selector.wildcard");
 }
 
-static void assert_parse(const std::string_view selector, const std::string_view folder,
-                         const bool is_recursive, const std::string_view wildcard)
+static void assert_parse(const std::string_view selector, const std::string_view folder, const bool is_recursive,
+                         const std::string_view wildcard)
 {
 	assert_parse(selector, selector, folder, is_recursive, wildcard);
 }
@@ -1015,8 +972,8 @@ static void should_read_a_favourite_without_the_file_system()
 	const std::string folder(test_files_folder().text());
 	const auto quoted = df::quote_path_term(folder);
 	const std::string sep(1, core::preferred_path_sep);
-	const auto plain = _temps.next_folder("favourite");
-	const std::string spaced(_temps.next_folder("favourite place").text());
+	const auto plain = test_temps.next_folder("favourite");
+	const std::string spaced(test_temps.next_folder("favourite place").text());
 
 	for (const auto& typed : {folder, spaced, folder + sep + "**", folder + sep + "*.jpg", quoted + " @photo",
 	                          quoted + " 2019", df::quote_path_term(spaced) + " 2019", "dog"s, "@photo"s})
@@ -1068,10 +1025,10 @@ static void should_star_a_favourite_search_in_view()
 	const auto saved = setting.search;
 	const core::scope_exit restore([saved] { setting.search = saved; });
 
-	const auto starred = _temps.next_folder("starred");
+	const auto starred = test_temps.next_folder("starred");
 	const auto folder = df::search_t().add_selector(starred);
 	const auto filtered = df::search_t::parse(df::quote_path_term(starred.text()) + " 2019");
-	const auto other = df::search_t().add_selector(_temps.next_folder("unstarred"));
+	const auto other = df::search_t().add_selector(test_temps.next_folder("unstarred"));
 
 	setting.search = {};
 	setting.search.path[3] = folder.text();
@@ -1119,8 +1076,7 @@ static bool contains(const std::vector<platform::folder_info>& files, const std:
 static void should_select_files()
 {
 	const auto recursive = core::item_selector(test_files_folder(), true);
-	assert_equal(true, contains(platform::select_files(recursive, true), "Screws.CR2"),
-	             "files from sub folders");
+	assert_equal(true, contains(platform::select_files(recursive, true), "Screws.CR2"), "files from sub folders");
 	assert_equal(true, contains(platform::select_files(recursive, true), "Cube.png"), "files from sub folders");
 	assert_equal(true, contains(platform::select_files(recursive, true), "Test.jpg"), "files from sub folders");
 	assert_equal(false, contains(platform::select_folders(recursive, true), "raw"), "no folders");
@@ -1128,19 +1084,15 @@ static void should_select_files()
 	const auto not_recursive = core::item_selector(test_files_folder(), false);
 	assert_equal(false, contains(platform::select_files(not_recursive, true), "Screws.CR2"),
 	             "no files from sub folder");
-	assert_equal(true, contains(platform::select_files(not_recursive, true), "Cube.png"),
-	             "files from sub folders");
-	assert_equal(true, contains(platform::select_files(not_recursive, true), "Test.jpg"),
-	             "files from sub folders");
+	assert_equal(true, contains(platform::select_files(not_recursive, true), "Cube.png"), "files from sub folders");
+	assert_equal(true, contains(platform::select_files(not_recursive, true), "Test.jpg"), "files from sub folders");
 	assert_equal(true, contains(platform::select_folders(not_recursive, true), "raw"), "include folders");
 
 	const auto recursive_png = core::item_selector(test_files_folder(), true, "*.png");
 	assert_equal(false, contains(platform::select_files(recursive_png, true), "Screws.CR2"),
 	             "no files from sub folder");
-	assert_equal(true, contains(platform::select_files(recursive_png, true), "Cube.png"),
-	             "files from sub folders");
-	assert_equal(false, contains(platform::select_files(recursive_png, true), "Test.jpg"),
-	             "files from sub folders");
+	assert_equal(true, contains(platform::select_files(recursive_png, true), "Cube.png"), "files from sub folders");
+	assert_equal(false, contains(platform::select_files(recursive_png, true), "Test.jpg"), "files from sub folders");
 	assert_equal(false, contains(platform::select_folders(recursive_png, true), "raw"), "include folders");
 
 	const auto not_recursive_cr2 = core::item_selector(test_files_folder(), false, "*.cr2");
@@ -1153,12 +1105,9 @@ static void should_select_files()
 	assert_equal(true, contains(platform::select_folders(not_recursive_cr2, true), "raw"), "include folders");
 
 	const auto recursive_cr2 = core::item_selector(test_files_folder(), true, "*.cr2");
-	assert_equal(true, contains(platform::select_files(recursive_cr2, true), "Screws.CR2"),
-	             "no files from sub folder");
-	assert_equal(false, contains(platform::select_files(recursive_cr2, true), "Cube.png"),
-	             "files from sub folders");
-	assert_equal(false, contains(platform::select_files(recursive_cr2, true), "Test.jpg"),
-	             "files from sub folders");
+	assert_equal(true, contains(platform::select_files(recursive_cr2, true), "Screws.CR2"), "no files from sub folder");
+	assert_equal(false, contains(platform::select_files(recursive_cr2, true), "Cube.png"), "files from sub folders");
+	assert_equal(false, contains(platform::select_files(recursive_cr2, true), "Test.jpg"), "files from sub folders");
 	assert_equal(false, contains(platform::select_folders(recursive_cr2, true), "raw"), "include folders");
 }
 
@@ -1485,8 +1434,7 @@ static void should_report_the_strongest_related_axis()
 	             "album outranks time and place");
 
 	candidate.safe_ps()->album.clear();
-	assert_equal("time", matched_axis(match_related(anchor, "everything.jpg", candidate)),
-	             "time outranks place");
+	assert_equal("time", matched_axis(match_related(anchor, "everything.jpg", candidate)), "time outranks place");
 
 	candidate.safe_ps()->dates.clear();
 	assert_equal("location", matched_axis(match_related(anchor, "everything.jpg", candidate)),
@@ -1521,8 +1469,9 @@ static void should_match_related(shared_test_context& stc)
 	r.load(i);
 
 	// The item the search started at, then the perceptual copies that duplicate search can also see.
-	assert_equal("duplicate:Small.jpg duplicate:Test.jpg duplicate:Test180.jpg duplicate:Test270.jpg duplicate:Test90.jpg",
-	             related_result_summary(stc.test_index, df::search_t().related(r)), "Related");
+	assert_equal(
+		"duplicate:Small.jpg duplicate:Test.jpg duplicate:Test180.jpg duplicate:Test270.jpg duplicate:Test90.jpg",
+		related_result_summary(stc.test_index, df::search_t().related(r)), "Related");
 
 	r.group = 0;
 	df::index_file_item different_size = stc.test_index.find_item(path);
@@ -1533,8 +1482,7 @@ static void should_match_related(shared_test_context& stc)
 
 	// Equal CRC is evidence of a copy only when the sizes agree, so a bumped size has to fall through
 	// the duplicate rules. It is still the same photo, so capture time catches it.
-	assert_equal("time", matched_axis(matcher.match_item({}, different_size)),
-	             "Related CRC requires equal size");
+	assert_equal("time", matched_axis(matcher.match_item({}, different_size)), "Related CRC requires equal size");
 }
 
 static uint64_t phash_bits(const std::initializer_list<int> bits)
@@ -1551,16 +1499,16 @@ static uint64_t phash_bits(const std::initializer_list<int> bits)
 
 static void should_not_treat_anchored_perceptual_group_as_pairwise_duplicate()
 {
+	// clang-format off
 	const auto base = phash_bits({
 		1, 2, 3, 4, 5, 6, 7, 8,
 		9, 10, 11, 12, 13, 14, 15, 16,
 		17, 18, 19, 20, 21, 22, 23, 24,
 		25, 26, 27, 28, 29, 30, 31
 	});
-	const auto left = (base & ~(1ull << 1) & ~(1ull << 2) & ~(1ull << 3)) |
-		(1ull << 32) | (1ull << 33) | (1ull << 34);
-	const auto right = (base & ~(1ull << 4) & ~(1ull << 5) & ~(1ull << 6)) |
-		(1ull << 35) | (1ull << 36) | (1ull << 37);
+	// clang-format on
+	const auto left = (base & ~(1ull << 1) & ~(1ull << 2) & ~(1ull << 3)) | (1ull << 32) | (1ull << 33) | (1ull << 34);
+	const auto right = (base & ~(1ull << 4) & ~(1ull << 5) & ~(1ull << 6)) | (1ull << 35) | (1ull << 36) | (1ull << 37);
 
 	df::related_info related;
 	related.path = core::file_path("c:\\photos\\left.jpg");
@@ -1589,31 +1537,33 @@ static void should_not_treat_anchored_perceptual_group_as_pairwise_duplicate()
 	             "sharing an anchored perceptual group is not pairwise duplicate evidence");
 
 	candidate.phash = df::make_picture_hashes({base, 0, 0, 0});
-	assert_equal(static_cast<int>(df::copy_grade::same_picture),
-	             static_cast<int>(dup_match(related, candidate).grade),
+	assert_equal(static_cast<int>(df::copy_grade::same_picture), static_cast<int>(dup_match(related, candidate).grade),
 	             "direct perceptual evidence against the queried item still matches");
 
 	related.duplicate_crowded = true;
 	assert_equal(false, dup_match(related, candidate).matched(),
 	             "a crowd-declined burst frame is not a related duplicate");
 	related.duplicate_crowded = false;
-	candidate.duplicates = df::duplicate_info{
-		.group = 7, .count = 3, .same_picture_crowded = 1, .grade = df::copy_grade::same_picture
-	};
+	candidate.duplicates = df::duplicate_info{.group = 7,
+	                                          .count = 3,
+	                                          .same_picture_crowded = 1,
+	                                          .grade = df::copy_grade::same_picture};
 	assert_equal(false, dup_match(related, candidate).matched(),
 	             "a candidate from a crowd-declined burst is not a related duplicate");
 }
 
 static void should_use_only_exact_groups_for_related_duplicate_shortcut()
 {
+	// clang-format off
 	const auto base = phash_bits({
 		1, 2, 3, 4, 5, 6, 7, 8,
 		9, 10, 11, 12, 13, 14, 15, 16,
 		17, 18, 19, 20, 21, 22, 23, 24,
 		25, 26, 27, 28, 29, 30, 31
 	});
-	const auto turned = (base & ~(1ull << 1) & ~(1ull << 2) & ~(1ull << 3)) |
-		(1ull << 32) | (1ull << 33) | (1ull << 34);
+	// clang-format on
+	const auto turned = (base & ~(1ull << 1) & ~(1ull << 2) & ~(1ull << 3)) | (1ull << 32) | (1ull << 33) |
+	                    (1ull << 34);
 
 	df::related_info related;
 	related.path = core::file_path("c:\\photos\\original.jpg");
@@ -1640,20 +1590,18 @@ static void should_use_only_exact_groups_for_related_duplicate_shortcut()
 	candidate.duplicates = df::duplicate_info{.group = 11, .count = 4, .grade = df::copy_grade::identical};
 	candidate.exact_duplicate_group = 2;
 
-	assert_equal(static_cast<int>(df::copy_grade::same_picture),
-	             static_cast<int>(dup_match(related, candidate).grade),
+	assert_equal(static_cast<int>(df::copy_grade::same_picture), static_cast<int>(dup_match(related, candidate).grade),
 	             "a mixed group does not reuse another exact pair's grade");
 
 	candidate.exact_duplicate_group = related.exact_group;
-	assert_equal(static_cast<int>(df::copy_grade::identical),
-	             static_cast<int>(dup_match(related, candidate).grade),
+	assert_equal(static_cast<int>(df::copy_grade::identical), static_cast<int>(dup_match(related, candidate).grade),
 	             "the exact shortcut still applies within the same exact subgroup");
 }
 
 static void should_clear_exact_duplicate_shortcut_outside_collection()
 {
-	const auto first_root = _temps.next_folder("outside-exact-first");
-	const auto second_root = _temps.next_folder("outside-exact-second");
+	const auto first_root = test_temps.next_folder("outside-exact-first");
+	const auto second_root = test_temps.next_folder("outside-exact-second");
 	const auto first_a = first_root.combine_file("first-a.jpg");
 	const auto first_b = first_root.combine_file("first-b.jpg");
 	const auto second_a = second_root.combine_file("second-a.jpg");
@@ -1830,8 +1778,7 @@ static void should_next_date_search()
 
 	assert_date_shift(df::search_t().day(1, 1, 2020, df::date_parts_prop::modified), "modified:2019-dec-31",
 	                  "modified:2020-jan-1");
-	assert_date_shift(df::search_t().day(1, 1, 0, df::date_parts_prop::modified), "modified:dec-31",
-	                  "modified:jan-1");
+	assert_date_shift(df::search_t().day(1, 1, 0, df::date_parts_prop::modified), "modified:dec-31", "modified:jan-1");
 	assert_date_shift(df::search_t().year(2010, df::date_parts_prop::created), "created:2009", "created:2010");
 	assert_date_shift(df::search_t().month(1, df::date_parts_prop::created).year(2010, df::date_parts_prop::created),
 	                  "created:2009-dec", "created:2010-jan");
@@ -1952,8 +1899,7 @@ static void should_parent()
 	             "parent of root **");
 
 	// Terms are dropped one at a time, dates first, whether or not a folder selector is present.
-	const auto folder_photo_date = find_parent_search(
-		df::search_t::parse(scope_folder + " @photo 1972-may")).parent;
+	const auto folder_photo_date = find_parent_search(df::search_t::parse(scope_folder + " @photo 1972-may")).parent;
 	assert_equal(true, folder_photo_date.has_media_type(), "parent keeps the media type");
 	assert_equal(true, folder_photo_date.has_selector(), "parent keeps the folder scope");
 	assert_equal(1972, folder_photo_date.find_date_parts().year, "parent steps the date first");
@@ -1965,9 +1911,9 @@ static void should_parent()
 	// A place inside a state inside a country steps straight out to the country. Location terms are
 	// written most specific first, so dropping the last term would widen the broadest end instead.
 	const auto place = df::search_t()
-	                   .location("London", df::location_level::place)
-	                   .location("England", df::location_level::state)
-	                   .location("United Kingdom", df::location_level::country);
+	                       .location("London", df::location_level::place)
+	                       .location("England", df::location_level::state)
+	                       .location("United Kingdom", df::location_level::country);
 	const auto place_parent = find_parent_search(place).parent;
 	assert_equal(1, static_cast<int>(place_parent.terms().size()), "parent keeps one location term");
 	assert_equal("United Kingdom", place_parent.terms().front().text, "parent keeps the country");
@@ -2012,8 +1958,7 @@ static void should_select_remote_items()
 	assert_equal("@remote", df::search_t::parse("loc:remote").format_terms(),
 	             "the guessable spelling canonicalizes to the class");
 	assert_equal("-@remote", df::search_t::parse("-@remote").format_terms(), "negation");
-	assert_equal(search_presence_mask::location,
-	             df::search_t::parse("@remote").calc_required_presence().types,
+	assert_equal(search_presence_mask::location, df::search_t::parse("@remote").calc_required_presence().types,
 	             "only a coordinate can be remote");
 
 	auto& locations = test_locations();
@@ -2070,49 +2015,38 @@ static void should_search_cyrillic_text()
 static void should_negate_search_terms()
 {
 	// Item with tag "aaa" should NOT match "-#aaa" (negated tag search)
-	prop_test().tag("aaa")
-	           .is_not_match("-#aaa")
-	           .is_not_match("!#aaa");
+	prop_test().tag("aaa").is_not_match("-#aaa").is_not_match("!#aaa");
 
 	// Item with tag "aaa" SHOULD match "-#bbb" (negated search for a different tag)
-	prop_test().tag("aaa")
-	           .is_match("-#bbb")
-	           .is_match("!#bbb");
+	prop_test().tag("aaa").is_match("-#bbb").is_match("!#bbb");
 }
 
 static void should_negate_text_search()
 {
 	// Item with description "hello world" should NOT match when "hello" is negated
-	prop_test().desc("hello world")
-	           .is_not_match("-hello");
+	prop_test().desc("hello world").is_not_match("-hello");
 
 	// Item with description "hello world" SHOULD match when "goodbye" is negated
-	prop_test().desc("hello world")
-	           .is_match("-goodbye");
+	prop_test().desc("hello world").is_match("-goodbye");
 }
 
 static void should_combine_positive_and_negative_terms()
 {
 	// Positive + negative: find items with "aaa" but NOT "bbb"
-	prop_test().tag("aaa bbb")
-	           .is_not_match("#aaa !#bbb");
+	prop_test().tag("aaa bbb").is_not_match("#aaa !#bbb");
 
-	prop_test().tag("aaa")
-	           .is_match("#aaa !#bbb");
+	prop_test().tag("aaa").is_match("#aaa !#bbb");
 
-	prop_test().tag("bbb")
-	           .is_not_match("#aaa !#bbb");
+	prop_test().tag("bbb").is_not_match("#aaa !#bbb");
 }
 
 static void should_negate_rating_search()
 {
 	// Item with rating 5 should NOT match "-rate:5"
-	prop_test().rate(5)
-	           .is_not_match("-rate:5");
+	prop_test().rate(5).is_not_match("-rate:5");
 
 	// Item with rating 3 SHOULD match "-rate:5" (it's not rating 5)
-	prop_test().rate(3)
-	           .is_match("-rate:5");
+	prop_test().rate(3).is_match("-rate:5");
 }
 
 static void should_evaluate_folder_wildcards_inside_boolean_search()
@@ -2132,8 +2066,7 @@ static void should_evaluate_folder_wildcards_inside_boolean_search()
 
 	assert_equal(false, matches("-**Private**", "c:\\photos\\Private", {}),
 	             "a negated folder wildcard excludes its folder");
-	assert_equal(true, matches("-**Private**", "c:\\photos\\Public", {}),
-	             "and leaves unrelated folders alone");
+	assert_equal(true, matches("-**Private**", "c:\\photos\\Public", {}), "and leaves unrelated folders alone");
 	assert_equal(false, matches("**Private** -#hidden", "c:\\photos\\Private", "hidden"),
 	             "a positive folder wildcard does not bypass a later exclusion");
 	assert_equal(true, matches("**Private** -#hidden", "c:\\photos\\Private", "shown"),
@@ -2155,18 +2088,13 @@ static void should_exclude_dot_folders_with_wildcard()
 	roots.exclude_wildcards.emplace(".*"_c); // pattern to match any dot-prefixed folder
 
 	// Folder names starting with '.' should be excluded
-	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\.git")),
-	             ".git excluded");
-	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\.thumbnails")),
-	             ".thumbnails excluded");
-	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\.hidden")),
-	             ".hidden excluded");
+	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\.git")), ".git excluded");
+	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\.thumbnails")), ".thumbnails excluded");
+	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\.hidden")), ".hidden excluded");
 
 	// Folder names NOT starting with '.' should NOT be excluded
-	assert_equal(false, core::is_excluded(roots, core::folder_path("c:\\photos\\vacation")),
-	             "vacation not excluded");
-	assert_equal(false, core::is_excluded(roots, core::folder_path("c:\\photos\\2024")),
-	             "2024 not excluded");
+	assert_equal(false, core::is_excluded(roots, core::folder_path("c:\\photos\\vacation")), "vacation not excluded");
+	assert_equal(false, core::is_excluded(roots, core::folder_path("c:\\photos\\2024")), "2024 not excluded");
 }
 
 static void should_exclude_specific_folder_name()
@@ -2174,12 +2102,10 @@ static void should_exclude_specific_folder_name()
 	core::index_roots roots;
 	roots.exclude_wildcards.emplace("Proxy"_c);
 
-	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\Proxy")),
-	             "Proxy excluded");
+	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\Proxy")), "Proxy excluded");
 	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\videos\\Proxy")),
 	             "Proxy in different parent excluded");
-	assert_equal(false, core::is_excluded(roots, core::folder_path("c:\\photos\\originals")),
-	             "originals not excluded");
+	assert_equal(false, core::is_excluded(roots, core::folder_path("c:\\photos\\originals")), "originals not excluded");
 }
 
 // Reproduces the follow-up report on #174: excluding a dot-folder by NAME
@@ -2209,8 +2135,7 @@ static void should_parse_exclude_dot_folder_by_name()
 	parse_more_folders(by_path, "-" + dtrash);
 
 	assert_equal(1_z, by_path.excludes.size(), "full path stored as exclude");
-	assert_equal(true, core::is_excluded(by_path, core::folder_path(dtrash)),
-	             ".dtrash excluded by full path");
+	assert_equal(true, core::is_excluded(by_path, core::folder_path(dtrash)), ".dtrash excluded by full path");
 }
 
 // A dot-prefixed wildcard ("-.*") entered in the collection box should also
@@ -2223,8 +2148,7 @@ static void should_parse_exclude_dot_wildcard()
 	assert_equal(1_z, roots.exclude_wildcards.size(), "dot wildcard stored");
 	assert_equal(".*", *roots.exclude_wildcards.begin(), "wildcard text preserved");
 
-	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\.git")),
-	             ".git excluded by .* wildcard");
+	assert_equal(true, core::is_excluded(roots, core::folder_path("c:\\photos\\.git")), ".git excluded by .* wildcard");
 	assert_equal(false, core::is_excluded(roots, core::folder_path("c:\\photos\\normal")),
 	             "normal folder not excluded by .* wildcard");
 }
@@ -2243,17 +2167,17 @@ static void should_search_korean_tags()
 {
 	constexpr auto family = "\uAC00\uC871"; // 가족
 	constexpr auto travel = "\uC5EC\uD589"; // 여행
-	constexpr auto photo = "\uC0AC\uC9C4"; // 사진
+	constexpr auto photo = "\uC0AC\uC9C4";  // 사진
 
 	// A file tagged with Korean words matches a #tag search for those words.
-	prop_test().tag(std::format("{} {}", family, travel))
-	           .is_match(std::format("#{}", family))
-	           .is_match(std::format("#{}", travel))
-	           .is_not_match(std::format("#{}", photo));
+	prop_test()
+		.tag(std::format("{} {}", family, travel))
+		.is_match(std::format("#{}", family))
+		.is_match(std::format("#{}", travel))
+		.is_not_match(std::format("#{}", photo));
 
 	// Bare (non-scoped) text search across metadata finds the Korean tag too.
-	prop_test().tag(family)
-	           .is_match(std::string(family));
+	prop_test().tag(family).is_match(std::string(family));
 }
 
 static void should_search_korean_description()
@@ -2280,7 +2204,7 @@ static void should_search_korean_description()
 // and search as equal, otherwise a Korean tag "cannot be found / deleted".
 static void should_match_korean_nfc_nfd()
 {
-	constexpr auto nfc = "\uAC00"; // 가 precomposed syllable
+	constexpr auto nfc = "\uAC00";       // 가 precomposed syllable
 	constexpr auto nfd = "\u1100\u1161"; // 가 decomposed conjoining jamo
 
 	// Canonical equivalence: normalising both forms to NFC yields identical bytes.
@@ -2315,7 +2239,7 @@ static void should_match_korean_nfc_nfd()
 static void should_handle_emoji_tags()
 {
 	constexpr auto party = "\U0001F389"; // 🎉
-	constexpr auto cat = "\U0001F431"; // 🐱
+	constexpr auto cat = "\U0001F431";   // 🐱
 
 	// Space-separated emoji split into individual tags.
 	tag_set tags(std::format("{} {}", party, cat));
@@ -2333,9 +2257,7 @@ static void should_handle_emoji_tags()
 	assert_equal(true, tags.to_string().find(party) != std::string::npos, "party emoji remains");
 
 	// An emoji tag is searchable via a #tag query.
-	prop_test().tag(party)
-	           .is_match(std::format("#{}", party))
-	           .is_not_match(std::format("#{}", cat));
+	prop_test().tag(party).is_match(std::format("#{}", party)).is_not_match(std::format("#{}", cat));
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2348,24 +2270,16 @@ static void should_handle_emoji_tags()
 static void should_distinguish_with_without_scope()
 {
 	// An item that HAS a genre matches with:genre and must NOT match without:genre.
-	prop_test().genre("Rock")
-	           .is_match("with:genre")
-	           .is_not_match("without:genre");
+	prop_test().genre("Rock").is_match("with:genre").is_not_match("without:genre");
 
 	// An item that LACKS a genre matches without:genre and must NOT match with:genre.
 	// (rating is set only so the item still carries metadata; genre stays empty.)
-	prop_test().rate(3)
-	           .is_match("without:genre")
-	           .is_not_match("with:genre");
+	prop_test().rate(3).is_match("without:genre").is_not_match("with:genre");
 
 	// The same complementary behaviour must hold for another property (rating).
-	prop_test().rate(5)
-	           .is_match("with:rating")
-	           .is_not_match("without:rating");
+	prop_test().rate(5).is_match("with:rating").is_not_match("without:rating");
 
-	prop_test().genre("Jazz")
-	           .is_match("without:rating")
-	           .is_not_match("with:rating");
+	prop_test().genre("Jazz").is_match("without:rating").is_not_match("with:rating");
 }
 
 // The scope spells the polarity, but everything else the tokenizer read belongs to the term. A
@@ -2374,56 +2288,47 @@ static void should_distinguish_with_without_scope()
 static void should_carry_modifiers_through_with_and_without()
 {
 	// `-with:` is the same question as `without:`, and `-without:` the same as `with:`.
-	prop_test().rate(5)
-	           .is_not_match("-with:rating")
-	           .is_match("-without:rating");
+	prop_test().rate(5).is_not_match("-with:rating").is_match("-without:rating");
 
-	prop_test().genre("Jazz")
-	           .is_match("-with:rating")
-	           .is_not_match("-without:rating");
+	prop_test().genre("Jazz").is_match("-with:rating").is_not_match("-without:rating");
 
 	// `or` must union the two, not intersect them: an item carrying only one of the pair matches.
-	prop_test().genre("Jazz")
-	           .is_match("with:genre or with:rating");
+	prop_test().genre("Jazz").is_match("with:genre or with:rating");
 
-	prop_test().rate(5)
-	           .is_match("with:genre or with:rating");
+	prop_test().rate(5).is_match("with:genre or with:rating");
 
 	// And the same for a location term, which takes its own arm.
-	prop_test().rate(5)
-	           .is_match("-with:location")
-	           .is_not_match("-without:location");
+	prop_test().rate(5).is_match("-with:location").is_not_match("-without:location");
 }
 
 // `with:` completes from prop::key_scopes(), so a name on that list is a promise that asking for it
 // answers. These are the arms that were missing, and the names that had no stored value behind them.
 static void should_answer_every_offered_with_scope()
 {
-	prop_test().orientation(core::orientation::left_top)
-	           .is_match("with:orientation")
-	           .is_not_match("without:orientation");
+	prop_test()
+		.orientation(core::orientation::left_top)
+		.is_match("with:orientation")
+		.is_not_match("without:orientation");
 
 	// top_left is the default and none means nothing was recorded, so neither is an orientation
 	// anyone asked for - the test that answered `!= left_top` had these exactly backwards.
-	prop_test().orientation(core::orientation::top_left).rate(3)
-	           .is_not_match("with:orientation")
-	           .is_match("without:orientation");
+	prop_test()
+		.orientation(core::orientation::top_left)
+		.rate(3)
+		.is_not_match("with:orientation")
+		.is_match("without:orientation");
 
-	prop_test().orientation(core::orientation::none).rate(3)
-	           .is_not_match("with:orientation")
-	           .is_match("without:orientation");
+	prop_test()
+		.orientation(core::orientation::none)
+		.rate(3)
+		.is_not_match("with:orientation")
+		.is_match("without:orientation");
 
-	prop_test().dimensions(4000, 3000)
-	           .is_match("with:megapixels")
-	           .is_not_match("without:megapixels");
+	prop_test().dimensions(4000, 3000).is_match("with:megapixels").is_not_match("without:megapixels");
 
-	prop_test().rate(3)
-	           .is_not_match("with:megapixels")
-	           .is_match("without:megapixels");
+	prop_test().rate(3).is_not_match("with:megapixels").is_match("without:megapixels");
 
-	prop_test().audio_channels(2)
-	           .is_match("with:audio.channels")
-	           .is_not_match("without:audio.channels");
+	prop_test().audio_channels(2).is_match("with:audio.channels").is_not_match("without:audio.channels");
 
 	const auto scopes = prop::key_scopes();
 	const auto offered = [&scopes](const std::string_view name)
@@ -2459,8 +2364,7 @@ static void should_read_back_a_media_type_term()
 	assert_equal(true, parse_file_group("photos") == photo, "the plural the vocabulary offers parses");
 	assert_equal(true, parse_file_group(photo->display_name(false)) == photo,
 	             "the display name format_term writes parses");
-	assert_equal(true, parse_file_group(photo->display_name(true)) == photo,
-	             "the plural display name parses");
+	assert_equal(true, parse_file_group(photo->display_name(true)) == photo, "the plural display name parses");
 	assert_equal(true, parse_file_group("PHOTOS") == photo, "the match does not depend on case");
 	assert_equal(true, parse_file_group("") == nullptr, "an empty term names no group");
 	assert_equal(true, parse_file_group("not-a-group") == nullptr, "an unknown term names no group");
@@ -2506,8 +2410,7 @@ static void should_complete_on_every_word()
 	             "one word absent is not a match");
 
 	const std::vector<std::string_view> one = {"pictures"};
-	assert_equal(true, find_auto_complete(one, "c:\\users\\zac\\my pictures", true, m),
-	             "a single word still matches");
+	assert_equal(true, find_auto_complete(one, "c:\\users\\zac\\my pictures", true, m), "a single word still matches");
 }
 
 static void should_highlight_the_actual_auto_complete_match_text()
@@ -2515,19 +2418,31 @@ static void should_highlight_the_actual_auto_complete_match_text()
 	ui::match_highlights m;
 
 	const std::vector<std::string_view> accented = {"cafe"};
-	assert_equal(true, find_auto_complete(accented, "caf\xc3\xa9" "X", false, m),
+	assert_equal(true,
+	             find_auto_complete(accented,
+	                                "caf\xc3\xa9"
+	                                "X",
+	                                false, m),
 	             "normalized query matches accented text");
 	assert_equal(1_z, m.size(), "one accented highlight");
 	assert_equal(0u, m[0].offset, "accented match starts at the first byte");
 	assert_equal(5u, m[0].length, "accented highlight consumes the matched UTF-8 text, not the query bytes");
 
 	const std::vector<std::string_view> decomposed = {"cafe"};
-	assert_equal(true, find_auto_complete(decomposed, "cafe\xcc\x81" "X", false, m),
+	assert_equal(true,
+	             find_auto_complete(decomposed,
+	                                "cafe\xcc\x81"
+	                                "X",
+	                                false, m),
 	             "normalized query matches decomposed text");
 	assert_equal(4u, m[0].length, "the complete matched base text is highlighted without the suffix");
 
 	const std::vector<std::string_view> emoji = {"\xf0\x9f\x98\x80"};
-	assert_equal(true, find_auto_complete(emoji, "A\xf0\x9f\x98\x80" "B", false, m),
+	assert_equal(true,
+	             find_auto_complete(emoji,
+	                                "A\xf0\x9f\x98\x80"
+	                                "B",
+	                                false, m),
 	             "supplementary characters match");
 	assert_equal(1u, m[0].offset, "emoji match begins after the ASCII prefix");
 	assert_equal(4u, m[0].length, "emoji highlight remains a UTF-8 byte span for the renderer to translate");
@@ -2556,9 +2471,8 @@ static void should_measure_search_highlights_as_text_bytes()
 // the vocabulary exactly (the correctness guarantee behind the per-keystroke acceleration).
 static void should_accelerate_substring_prediction()
 {
-	const std::vector<std::string_view> words = {
-		"amsterdam", "index", "indigo", "industry", "reindex", "window", "windmill", "grind", "din"
-	};
+	const std::vector<std::string_view> words = {"amsterdam", "index",    "indigo", "industry", "reindex",
+	                                             "window",    "windmill", "grind",  "din"};
 
 	df::trigram_index tri;
 	for (uint32_t i = 0; i < words.size(); ++i) tri.add(i, words[i]);
@@ -2673,7 +2587,7 @@ static void should_broaden_one_narrowing_at_a_time()
 	assert_equal(true, find_parent_search(root).parent.is_empty(), "a drive root has no parent");
 }
 
-void register_search_tests(view_state& state, test_registry& tests)
+void register_search_tests(view_state& /*state*/, test_registry& tests)
 {
 	//
 	// Search parsing
@@ -2732,8 +2646,7 @@ void register_search_tests(view_state& state, test_registry& tests)
 	// Issue #139/#178 - quoted search terms
 	tests.add("Should match quoted terms"s, should_match_quoted_terms);
 	// Issue #139/#178 - quoted search terms
-	tests.add("Should preserve and auto-quote search input"s,
-	          should_preserve_and_auto_quote_search_input);
+	tests.add("Should preserve and auto-quote search input"s, should_preserve_and_auto_quote_search_input);
 	// Missing absolute paths must reach unavailable-scope handling, not collection search.
 	tests.add("Should preserve unavailable path scopes"s, should_preserve_unavailable_path_scopes);
 	// Issue #157 - search scope classification
@@ -2813,7 +2726,7 @@ void register_search_tests(view_state& state, test_registry& tests)
 
 	auto register_assert_format = [&tests](const df::search_t& query)
 	{
-		tests.add(std::format("Should format {}", query.text()), [query](shared_test_context& stc)
+		tests.add(std::format("Should format {}", query.text()), [query](shared_test_context& /*stc*/)
 		{
 			const auto text = query.format_terms();
 			const auto parsed = df::search_t::parse(text).format_terms();
@@ -2856,7 +2769,7 @@ void register_search_tests(view_state& state, test_registry& tests)
 
 	auto register_assert_parse = [&tests](const std::string& query, const std::string& expected = {})
 	{
-		tests.add(std::format("Should parse {}", query), [query, expected](shared_test_context& stc)
+		tests.add(std::format("Should parse {}", query), [query, expected](shared_test_context& /*stc*/)
 		{
 			const auto formatted = df::search_t::parse(query).format_terms();
 			assert_equal(core::is_empty(expected) ? query : expected, formatted, "parse query");
@@ -2936,24 +2849,23 @@ void register_search_tests(view_state& state, test_registry& tests)
 	//
 	// Search execution
 	//
-	auto register_should_search = [&tests](const std::string_view query, int expected_index, int expected_recurse,
-	                                       int expected_folder)
+	auto register_should_search =
+		[&tests](const std::string_view query, int expected_index, int expected_recurse, int expected_folder)
 	{
 		tests.add(std::format("Should search {}", query),
 		          [query, expected_index, expected_recurse, expected_folder](shared_test_context& stc)
-		          {
-			          stc.lazy_load_index();
-			          assert_equal(expected_index, count_search_results(stc.test_index, query), query);
+		{
+			stc.lazy_load_index();
+			assert_equal(expected_index, count_search_results(stc.test_index, query), query);
 
-			          const auto query_recurse_test_folder = std::format(
-				          "\"{}\\**\" {} -excluded", test_files_folder(), query);
-			          assert_equal(expected_recurse, count_search_results(stc.empty_index, query_recurse_test_folder),
-			                       std::format("recurse {}", query));
+			const auto query_recurse_test_folder = std::format("\"{}\\**\" {} -excluded", test_files_folder(), query);
+			assert_equal(expected_recurse, count_search_results(stc.empty_index, query_recurse_test_folder),
+			             std::format("recurse {}", query));
 
-			          const auto query_test_folder = std::format("\"{}\" {}", test_files_folder(), query);
-			          assert_equal(expected_folder, count_search_results(stc.empty_index, query_test_folder),
-			                       std::format("folder {}", query));
-		          });
+			const auto query_test_folder = std::format("\"{}\" {}", test_files_folder(), query);
+			assert_equal(expected_folder, count_search_results(stc.empty_index, query_test_folder),
+			             std::format("folder {}", query));
+		});
 	};
 
 	register_should_search("2012-09-14", 5, 5, 5);

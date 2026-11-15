@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Compressed posting lists and the trigram index. Encodes a strictly increasing list of
 // document (item) ids as delta + variable-byte (VByte) bytes; the trigram index built on top of it
@@ -106,8 +105,7 @@ namespace df
 		}
 
 		// Invoke `fn(id)` for each posting in ascending order without materialising a vector.
-		template <typename Fn>
-		void for_each(Fn&& fn) const
+		template <typename Fn> void for_each(Fn&& fn) const
 		{
 			size_t pos = 0;
 			uint32_t prev = 0;
@@ -208,8 +206,7 @@ namespace df
 	// if `q` is a (case-insensitive) substring of `text` then every trigram of `q` is also a
 	// trigram of `text` - the property that lets the trigram index generate substring-match
 	// candidates with no false negatives.
-	template <typename Fn>
-	void for_each_trigram(const std::string_view text, Fn&& fn)
+	template <typename Fn> void for_each_trigram(const std::string_view text, Fn&& fn)
 	{
 		char32_t a = 0;
 		char32_t b = 0;
@@ -219,7 +216,8 @@ namespace df
 
 		while (p < end)
 		{
-			const auto c = static_cast<char32_t>(core::normalize_for_compare(static_cast<int>(core::pop_utf8_char(p, end))));
+			const auto c = static_cast<char32_t>(
+				core::normalize_for_compare(static_cast<int>(core::pop_utf8_char(p, end))));
 
 			if (filled >= 2)
 			{
@@ -252,7 +250,7 @@ namespace df
 		{
 			uint64_t gram;
 			uint32_t offset; // start of this gram's postings within _postings
-			uint32_t count; // ids encoded there
+			uint32_t count;  // ids encoded there
 		};
 
 #pragma pack(push, 4)
@@ -319,8 +317,7 @@ namespace df
 			}
 		}
 
-		template <typename Fn>
-		void for_each_posting(const gram_entry& entry, Fn&& fn) const
+		template <typename Fn> void for_each_posting(const gram_entry& entry, Fn&& fn) const
 		{
 			size_t pos = entry.offset;
 			uint32_t prev = 0;
@@ -354,7 +351,7 @@ namespace df
 		size_t byte_size() const
 		{
 			return _pending.capacity() * sizeof(pending_t) + _grams.capacity() * sizeof(gram_entry) +
-				_postings.capacity();
+			       _postings.capacity();
 		}
 
 		// Collapse everything added so far into the queryable form. Call once, after the last add().

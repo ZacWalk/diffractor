@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Implements the /dup-report command line option. Measures, over a real library, what the
 // perceptual-hash stage of index_state::update_predictions would group together: capture-time bucket
@@ -94,10 +93,7 @@ namespace
 		std::vector<size_t> parents;
 		std::vector<uint8_t> ranks;
 
-		explicit union_find(const size_t n) : parents(n), ranks(n, 0)
-		{
-			std::iota(parents.begin(), parents.end(), 0u);
-		}
+		explicit union_find(const size_t n) : parents(n), ranks(n, 0) { std::iota(parents.begin(), parents.end(), 0u); }
 
 		size_t root(size_t item)
 		{
@@ -213,8 +209,8 @@ namespace
 				for (size_t b = a + 1; b < matched.size(); ++b)
 				{
 					result.worst_diameter = std::max(result.worst_diameter,
-					                                crypto::phash_distance(photos[matched[a]].phash[0],
-					                                                       photos[matched[b]].phash));
+					                                 crypto::phash_distance(photos[matched[a]].phash[0],
+					                                                        photos[matched[b]].phash));
 				}
 			}
 		}
@@ -262,8 +258,8 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 	if (!output_text.empty())
 	{
 		const auto output_path = core::find_last_slash(output_text) == std::string_view::npos
-			                         ? core::file_path(core::folder_path("."), output_text)
-			                         : core::file_path(output_text);
+		                             ? core::file_path(core::folder_path("."), output_text)
+		                             : core::file_path(output_text);
 		out.file = platform::open_file(output_path, platform::file_open_mode::create);
 		if (!out.file)
 		{
@@ -345,7 +341,8 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 	std::vector<const std::vector<size_t>*> oversized_buckets;
 	size_t exif_dated = 0;
 
-	for (const auto& p : photos) if (p.created_from_exif) ++exif_dated;
+	for (const auto& p : photos)
+		if (p.created_from_exif) ++exif_dated;
 
 	for (const auto& [key, members] : buckets)
 	{
@@ -490,9 +487,8 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 			{
 				for (size_t b = a + 1; b < members.size(); ++b)
 				{
-					worst_diameter = std::max(worst_diameter,
-					                          crypto::phash_distance(photos[members[a]].phash[0],
-					                                                 photos[members[b]].phash));
+					worst_diameter = std::max(worst_diameter, crypto::phash_distance(photos[members[a]].phash[0],
+					                                                                 photos[members[b]].phash));
 				}
 			}
 		}
@@ -522,15 +518,15 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 					for (size_t b = a + 1; b < members.size(); ++b)
 					{
 						diameter = std::max(diameter, crypto::phash_distance(photos[members[a]].phash[0],
-						                                                    photos[members[b]].phash));
+						                                                     photos[members[b]].phash));
 					}
 				}
 
 				if (diameter <= threshold) continue;
 				if (++listed > 40) break;
 
-				out.line(std::format("        {} photos, diameter {}, captured {}",
-				                     members.size(), diameter, photos[members.front()].created));
+				out.line(std::format("        {} photos, diameter {}, captured {}", members.size(), diameter,
+				                     photos[members.front()].created));
 
 				for (const auto member : members)
 				{
@@ -546,8 +542,8 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 	if (!oversized_buckets.empty())
 	{
 		out.line("");
-		out.line(std::format("Skipped {} capture times holding more than {} photos each:",
-		                     oversized_buckets.size(), max_bucket_for_pairs));
+		out.line(std::format("Skipped {} capture times holding more than {} photos each:", oversized_buckets.size(),
+		                     max_bucket_for_pairs));
 
 		for (const auto* const members : oversized_buckets)
 		{
@@ -594,9 +590,8 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 			{
 				for (size_t b = a + 1; b < members.size(); ++b)
 				{
-					worst_diameter = std::max(worst_diameter,
-					                          crypto::phash_distance(photos[members[a]].phash[0],
-					                                                 photos[members[b]].phash));
+					worst_diameter = std::max(worst_diameter, crypto::phash_distance(photos[members[a]].phash[0],
+					                                                                 photos[members[b]].phash));
 				}
 			}
 		}
@@ -611,8 +606,8 @@ int run_duplicate_report(const std::string_view folder_text, const std::string_v
 	// The shipped model: sets are anchored on one item rather than closed over transitively, and a
 	// capture time whose anchor answers with a crowd is declined in full.
 	out.line("");
-	out.line(std::format("Anchored sets with the crowd rule (threshold {}, crowd limit {})",
-	                     shipped_threshold, max_similar_pictures_at_one_capture_time));
+	out.line(std::format("Anchored sets with the crowd rule (threshold {}, crowd limit {})", shipped_threshold,
+	                     max_similar_pictures_at_one_capture_time));
 
 	{
 		const auto stats = calc_anchor_stats(photos, buckets);

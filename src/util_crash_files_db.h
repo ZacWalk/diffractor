@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Crash-loop protection. Records which media files were open when the process faulted so
 // the next launch does not scan them again, and keeps that list bounded, attributed and recoverable.
@@ -89,22 +88,13 @@ public:
 		}
 	}
 
-	bool is_known_crash_file(const core::file_path path) const
-	{
-		return _crash_files.contains(path);
-	}
+	bool is_known_crash_file(const core::file_path path) const { return _crash_files.contains(path); }
 
 	// A skipped file is silently left without metadata or a thumbnail, so the count is reported at
 	// startup rather than left for the user to deduce.
-	size_t skipped_file_count() const
-	{
-		return _crash_files.size();
-	}
+	size_t skipped_file_count() const { return _crash_files.size(); }
 
-	bool is_full() const
-	{
-		return _lines_on_disk >= max_entries;
-	}
+	bool is_full() const { return _lines_on_disk >= max_entries; }
 
 	open_file_id add_open(const core::file_path path, const std::string_view context)
 	{
@@ -145,9 +135,7 @@ public:
 		// callback runs on its own thread and matches nothing, which falls back to recording them all.
 		const auto faulting_thread = core::current_thread_id();
 		const auto attributed = std::ranges::any_of(_open_files, [faulting_thread](const auto& i)
-		{
-			return i.second.thread_id == faulting_thread;
-		});
+		{ return i.second.thread_id == faulting_thread; });
 
 		auto room = max_entries - _lines_on_disk;
 		std::string appended;
@@ -196,11 +184,10 @@ public:
 			// and the stage that had it open - rather than by name. The full path is recorded locally
 			// in the crash-files list, which stays on the machine.
 			core::log(__FUNCTION__, std::format("Open file {} in {}{}", open.path.extension(), open.context,
-			                                  open.thread_id == faulting_thread ? " (faulting thread)" : ""));
+			                                    open.thread_id == faulting_thread ? " (faulting thread)" : ""));
 		}
 	}
 };
-
 
 struct record_open_path
 {
@@ -213,10 +200,7 @@ struct record_open_path
 		_id = files_that_crash_diffractor_.add_open(path, context);
 	}
 
-	~record_open_path()
-	{
-		files_that_crash_diffractor_.remove_open(_id);
-	}
+	~record_open_path() { files_that_crash_diffractor_.remove_open(_id); }
 };
 
 // Constructed on first use rather than as a global: the constructor resolves known folders and reads

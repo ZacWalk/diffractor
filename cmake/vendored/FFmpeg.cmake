@@ -68,7 +68,7 @@ set(_ff_openmpt "")
 
 if (TARGET diffractor_openmpt)
     set(_ff_openmpt --enable-libopenmpt)
-    _ff_describe_vendored(libopenmpt diffractor_openmpt 0.8.9
+    _ff_describe_vendored(libopenmpt diffractor_openmpt 0.8.10
             "${openmpt_SOURCE_DIR}" "-lstdc++ -lm")
 endif ()
 

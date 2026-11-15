@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Generates the "Formats and Codecs" wiki page from the live file type
 // and codec tables the application itself dispatches on. Invoked from the command
@@ -85,8 +84,9 @@ namespace
 			printf("  wrote %s (new page with markers)\n", std::string(path.str()).c_str());
 		}
 
-		const auto saved = platform::blob_save_to_file(
-			core::cspan(reinterpret_cast<const uint8_t*>(out.data()), out.size()), path);
+		const auto saved = platform::blob_save_to_file(core::cspan(reinterpret_cast<const uint8_t*>(out.data()),
+		                                                           out.size()),
+		                                               path);
 
 		if (!saved)
 		{
@@ -99,8 +99,8 @@ namespace
 	// Emits a markdown table of file types belonging to the given group, with an
 	// optional raw-trait filter, including only types with a description.
 	void write_format_table(std::string& md, const std::string_view section_title,
-	                        const std::vector<file_type_ref>& types, const file_group_ref group,
-	                        const bool require_raw, const bool exclude_raw)
+	                        const std::vector<file_type_ref>& types, const file_group_ref group, const bool require_raw,
+	                        const bool exclude_raw)
 	{
 		md += "## ";
 		md += section_title;
@@ -180,8 +180,8 @@ int generate_wiki_docs(const std::string_view output_folder)
 	load_file_types();
 
 	const core::folder_path folder = output_folder.empty()
-		                               ? platform::known_path(platform::known_folder::running_app_folder)
-		                               : core::folder_path(output_folder);
+	                                     ? platform::known_path(platform::known_folder::running_app_folder)
+	                                     : core::folder_path(output_folder);
 
 	if (!platform::exists(folder))
 	{

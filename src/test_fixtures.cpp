@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Shared test fixture implementations -- scanning helpers, metadata comparison, index building, the shared gazetteer and the null av host used across every test file.
 
@@ -48,8 +47,7 @@ file_scan_result ff_scan_after_update(files& ff, file_update_result& result, con
 	return ff.scan_file(path, false, ft, xmp_sidecar, {}, libfiles::scan_intent::inspect);
 }
 
-file_scan_result ff_scan_and_load_thumb(files& ff, const core::file_path path,
-                                        const std::string_view xmp_sidecar)
+file_scan_result ff_scan_and_load_thumb(files& ff, const core::file_path path, const std::string_view xmp_sidecar)
 {
 	const auto* const ft = files::file_type_from_name(path);
 	return ff.scan_file(path, true, ft, xmp_sidecar, thumbnail_max_dimension);
@@ -119,11 +117,9 @@ prop::item_metadata_ptr metadata_from_cache(index_state& index, const core::file
 {
 	const auto node = index.validate_folder(path.folder(), true, core::utc_now());
 	node.folder->is_in_collection = true;
-	index.scan_item(node.folder, path, false, false, false, false, {}, false,
-	                files::file_type_from_name(path.name()));
+	index.scan_item(node.folder, path, false, false, false, false, {}, false, files::file_type_from_name(path.name()));
 	return index.find_item(path).metadata;
 }
-
 
 prop::item_metadata_ptr extract_properties(const core::file_path path, const uint32_t t)
 {
@@ -168,7 +164,6 @@ prop::item_metadata_ptr extract_properties(const core::file_path path, const uin
 	return result;
 }
 
-
 prop::item_metadata_ptr expected_test_jpg()
 {
 	auto result = std::make_shared<prop::item_metadata>();
@@ -198,7 +193,6 @@ prop::item_metadata_ptr expected_test_jpg()
 	return result;
 }
 
-
 df::index_file_item make_index_file_info(const core::date_t date)
 {
 	df::index_file_item result;
@@ -208,7 +202,6 @@ df::index_file_item make_index_file_info(const core::date_t date)
 	result.safe_ps();
 	return result;
 }
-
 
 df::item_element_ptr load_item(index_state& index, const core::file_path path, const bool load_thumb)
 {
@@ -227,7 +220,7 @@ int count_search_results(index_state& index, const df::search_t& search)
 {
 	int result = 0;
 
-	auto cb = [&result](const index_state::query_item_results& items, const bool completed)
+	auto cb = [&result](const index_state::query_item_results& items, const bool /*completed*/)
 	{
 		result += static_cast<int>(items.size());
 	};
@@ -260,12 +253,11 @@ void build_index(index_state& index, database& db)
 	assert_equal(true, index.is_init_complete(), "index reports init complete", "cached item count");
 }
 
-
 void shared_test_context::lazy_load_index()
 {
 	if (!loaded)
 	{
-		const auto cache_path1 = _temps.next_path();
+		const auto cache_path1 = test_temps.next_path();
 
 		database db1(test_index);
 
@@ -276,7 +268,7 @@ void shared_test_context::lazy_load_index()
 		const core::item_selector selector(test_files_folder(), true);
 		df::item_set items1;
 
-		auto cb1 = [this, &items1](index_state::query_item_results items, const bool completed)
+		auto cb1 = [this, &items1](index_state::query_item_results items, const bool /*completed*/)
 		{
 			items1.append(test_index.materialize_query_items(std::move(items), {}));
 		};
@@ -301,14 +293,9 @@ void shared_test_context::lazy_load_index()
 
 struct null_av_host final : av_host
 {
-	void invalidate_view(const view_invalid invalid) override
-	{
-	}
+	void invalidate_view(const view_invalid /*invalid*/) override {}
 
-	void queue_ui(const std::function<void()> f) override
-	{
-		f();
-	}
+	void queue_ui(const std::function<void()> f) override { f(); }
 };
 
 location_cache& test_locations()

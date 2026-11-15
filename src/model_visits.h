@@ -1,9 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: locations.md 6 -- derives visit nodes from a result set. A visit is a run of items
 // close together in space whose gaps in time are all short, which is the shape of a trip. The
@@ -89,7 +89,7 @@ namespace df
 	struct visit_request
 	{
 		visit_request() = default;
-		explicit visit_request(core::cancel_token value) : token(std::move(value)) {}
+		explicit visit_request(core::cancel_token value) : token(value) {}
 
 		std::vector<visit_sample> samples;
 		core::cancel_token token;
@@ -100,7 +100,7 @@ namespace df
 	};
 
 	// locations.md 6.2: cluster, segment, score, then select. Runs on the location worker.
-	visit_timeline compute_visits(visit_request request, const location_cache& locations);
+	visit_timeline compute_visits(const visit_request& request, const location_cache& locations);
 
 	// locations.md 6.3: the coarsest label that still says which visit this is -- `Jun 2019`,
 	// `2019`, `2000-2010`.

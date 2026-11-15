@@ -1,13 +1,13 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Item representation and selection. Defines item_element for files/folders,
-// item_set for collections, item_group for grouping, and thumbnail management.
+// item_set for collections, item_group for grouping - its detail form headed by columns that sort and size
+// the group - and thumbnail management.
 
 #pragma once
 
@@ -49,8 +49,7 @@ enum class group_by
 // users onto is the one order missing the affordance.
 constexpr bool is_date_group_order(const group_by order)
 {
-	return order == group_by::date_created || order == group_by::date_modified || order ==
-		group_by::date_original;
+	return order == group_by::date_created || order == group_by::date_modified || order == group_by::date_original;
 }
 
 enum class sort_by
@@ -137,7 +136,6 @@ inline double calc_thumb_scale(const sizei dimensions, const sizei limit, const 
 	return zoom ? std::max(sx, sy) : std::min(sx, sy);
 }
 
-
 std::string format_invalid_name_message(std::string_view name);
 std::string_view item_presence_text(item_presence v, bool long_text);
 void parse_more_folders(core::index_roots& result, std::string_view more_folders);
@@ -179,6 +177,42 @@ namespace df
 	{
 		icons,
 		detail
+	};
+
+	// A detail row's columns, in the order they are drawn across it.
+	enum class detail_column : uint8_t
+	{
+		icon,
+		disk,
+		track,
+		episode,
+		year,
+		title,
+		flag,
+		presence,
+		sidecars,
+		items,
+		duration,
+		file_size,
+		bitrate,
+		info,
+		dimensions,
+		pixel_format,
+		audio_sample_rate,
+		created,
+		modified,
+	};
+
+	constexpr int detail_column_count = static_cast<int>(detail_column::modified) + 1;
+
+	// What the user has made of one detail group's headings for the session: the column its rows are sorted by,
+	// none for the order the toolbar chooses, and the widths dragged, in logical units, zero where a column fits
+	// what it holds.
+	struct detail_group_choice
+	{
+		int sort_column = -1;
+		bool ascending = true;
+		std::array<double, detail_column_count> widths{};
 	};
 
 	enum class item_online_status
@@ -307,8 +341,6 @@ namespace df
 		int year = 0;
 		int duration = 0;
 		int items = 0;
-		// How far through the recording its saved playback position stands, 0 to 1.
-		double progress = 0.0;
 
 		core::cached bitrate = {};
 		core::cached pixel_format = {};
@@ -486,37 +518,21 @@ namespace df
 
 		index_file_item() = default;
 
-		index_file_item(const index_file_item& other)
-			: metadata(other.metadata.load()),
-			  phash(other.phash.load()),
-			  ft(other.ft),
-			  size(other.size),
-			  file_created(other.file_created),
-			  file_modified(other.file_modified.load()),
-			  metadata_scanned(other.metadata_scanned.load()),
-			  duplicates(other.duplicates.load()),
-			  exact_duplicate_group(other.exact_duplicate_group.load()),
-			  flags(other.flags),
-			  name(other.name),
-			  search_presence(other.search_presence.load()),
-			  crc32c(other.crc32c.load())
+		index_file_item(const index_file_item& other) :
+			metadata(other.metadata.load()), phash(other.phash.load()), ft(other.ft), size(other.size),
+			file_created(other.file_created), file_modified(other.file_modified.load()),
+			metadata_scanned(other.metadata_scanned.load()), duplicates(other.duplicates.load()),
+			exact_duplicate_group(other.exact_duplicate_group.load()), flags(other.flags), name(other.name),
+			search_presence(other.search_presence.load()), crc32c(other.crc32c.load())
 		{
 		}
 
-		index_file_item(index_file_item&& other) noexcept
-			: metadata(other.metadata.load()),
-			  phash(other.phash.load()),
-			  ft(other.ft),
-			  size(std::move(other.size)),
-			  file_created(std::move(other.file_created)),
-			  file_modified(other.file_modified.load()),
-			  metadata_scanned(other.metadata_scanned.load()),
-			  duplicates(other.duplicates.load()),
-			  exact_duplicate_group(other.exact_duplicate_group.load()),
-			  flags(other.flags),
-			  name(std::move(other.name)),
-			  search_presence(other.search_presence.load()),
-			  crc32c(other.crc32c.load())
+		index_file_item(index_file_item&& other) noexcept :
+			metadata(other.metadata.load()), phash(other.phash.load()), ft(other.ft), size(other.size),
+			file_created(other.file_created), file_modified(other.file_modified.load()),
+			metadata_scanned(other.metadata_scanned.load()), duplicates(other.duplicates.load()),
+			exact_duplicate_group(other.exact_duplicate_group.load()), flags(other.flags), name(other.name),
+			search_presence(other.search_presence.load()), crc32c(other.crc32c.load())
 		{
 			other.metadata.store(nullptr);
 			other.phash.store(nullptr);
@@ -524,8 +540,7 @@ namespace df
 
 		index_file_item& operator=(const index_file_item& other)
 		{
-			if (this == &other)
-				return *this;
+			if (this == &other) return *this;
 			flags = other.flags;
 			ft = other.ft;
 			name = other.name;
@@ -544,13 +559,12 @@ namespace df
 
 		index_file_item& operator=(index_file_item&& other) noexcept
 		{
-			if (this == &other)
-				return *this;
+			if (this == &other) return *this;
 			flags = other.flags;
 			ft = other.ft;
-			name = std::move(other.name);
-			size = std::move(other.size);
-			file_created = std::move(other.file_created);
+			name = other.name;
+			size = other.size;
+			file_created = other.file_created;
 			file_modified = other.file_modified.load();
 			metadata_scanned = other.metadata_scanned.load();
 			metadata.store(other.metadata.load());
@@ -609,35 +623,17 @@ namespace df
 			return md ? md->xmp : core::cached{};
 		}
 
-		bool operator<(const core::cached other) const
-		{
-			return icmp(name, other) < 0;
-		}
+		bool operator<(const core::cached other) const { return icmp(name, other) < 0; }
 
-		bool operator<(const std::string_view other) const
-		{
-			return icmp(name, other) < 0;
-		}
+		bool operator<(const std::string_view other) const { return icmp(name, other) < 0; }
 
-		bool operator<(const index_file_item& other) const
-		{
-			return icmp(name, other.name) < 0;
-		}
+		bool operator<(const index_file_item& other) const { return icmp(name, other.name) < 0; }
 
-		bool operator==(const core::cached other) const
-		{
-			return icmp(name, other) == 0;
-		}
+		bool operator==(const core::cached other) const { return icmp(name, other) == 0; }
 
-		bool operator==(const std::string_view other) const
-		{
-			return icmp(name, other) == 0;
-		}
+		bool operator==(const std::string_view other) const { return icmp(name, other) == 0; }
 
-		bool operator==(const index_file_item& other) const
-		{
-			return icmp(name, other.name) == 0;
-		}
+		bool operator==(const index_file_item& other) const { return icmp(name, other.name) == 0; }
 	};
 
 	struct index_folder_item
@@ -678,27 +674,18 @@ namespace df
 		index_folder_item(index_folder_item&&) noexcept = delete;
 		index_folder_item& operator=(index_folder_item&&) = delete;
 
-		explicit index_folder_item(index_item_infos f, index_folder_infos g = {}) noexcept : files(std::move(f)),
-			child_folders(std::make_shared<const index_folder_infos>(std::move(g)))
+		explicit index_folder_item(index_item_infos f, index_folder_infos g = {}) :
+			files(std::move(f)), child_folders(std::make_shared<const index_folder_infos>(std::move(g)))
 		{
 			core::assert_true(files.size() == files.capacity());
 			core::assert_true(child_folders.load()->size() == child_folders.load()->capacity());
 		}
 
-		std::shared_ptr<const index_folder_infos> folders_snapshot() const
-		{
-			return child_folders.load();
-		}
+		std::shared_ptr<const index_folder_infos> folders_snapshot() const { return child_folders.load(); }
 
-		uint64_t revision_snapshot() const
-		{
-			return content_revision.load(std::memory_order_acquire);
-		}
+		uint64_t revision_snapshot() const { return content_revision.load(std::memory_order_acquire); }
 
-		uint64_t search_revision_snapshot() const
-		{
-			return search_revision.load(std::memory_order_acquire);
-		}
+		uint64_t search_revision_snapshot() const { return search_revision.load(std::memory_order_acquire); }
 
 		void mark_content_changed(const bool searchable = true)
 		{
@@ -720,9 +707,7 @@ namespace df
 				auto updated = std::make_shared<index_folder_infos>(*existing);
 				const auto found = std::lower_bound(updated->begin(), updated->end(), folder_name,
 				                                    [](const index_folder_item_ptr& left, const std::string_view right)
-				                                    {
-					                                    return icmp(left->name, right) < 0;
-				                                    });
+				{ return icmp(left->name, right) < 0; });
 
 				if (found == updated->end() || icmp((*found)->name, folder_name) != 0) return;
 				*found = replacement;
@@ -756,8 +741,7 @@ namespace df
 			{
 				updated = existing;
 				updated |= file_node.search_presence.load();
-			}
-			while (!search_presence_summary.compare_exchange_weak(existing, updated));
+			} while (!search_presence_summary.compare_exchange_weak(existing, updated));
 		}
 
 		void update_search_presence(const index_file_item& file_node, const search_presence_mask previous)
@@ -766,7 +750,6 @@ namespace df
 			update_search_presence(file_node);
 		}
 	};
-
 
 	struct location_heat_map
 	{
@@ -795,8 +778,8 @@ namespace df
 	// the file's published pointer again.
 	inline uint8_t thumbnail_representative_rank(const index_file_item& file, const prop::item_metadata* metadata)
 	{
-		const auto visual_media = file.ft &&
-			(file.ft->has_trait(file_traits::bitmap) || file.ft->has_trait(file_traits::video_metadata));
+		const auto visual_media = file.ft && (file.ft->has_trait(file_traits::bitmap) ||
+		                                      file.ft->has_trait(file_traits::video_metadata));
 		if (!visual_media || !file.ft->has_trait(file_traits::thumbnail)) return 0;
 		return metadata && metadata->rating >= 4 ? 2 : 1;
 	}
@@ -810,21 +793,21 @@ namespace df
 	inline bool should_replace_thumbnail_representative(const core::file_path& candidate, const uint8_t candidate_rank,
 	                                                    const core::file_path& current, const uint8_t current_rank)
 	{
-		return candidate_rank > 0 && (candidate_rank > current_rank ||
-			(candidate_rank == current_rank && (current.is_empty() || candidate.icmp(current) < 0)));
+		return candidate_rank > 0 &&
+		       (candidate_rank > current_rank ||
+		        (candidate_rank == current_rank && (current.is_empty() || candidate.icmp(current) < 0)));
 	}
 
 	// Maximum number of years the sidebar history chart can hold. The chart itself shows one window
-	// of history_window_years at a time and a navigator to move that window; the storage is always
+	// of year columns at a time and pans across the rest; the storage is always
 	// sized to this upper bound so changing what is shown never requires re-indexing. Covers
 	// collections back to ~1900s.
 	constexpr int max_history_years = 100;
 
-	// Rows in the calendar, and the span a navigator selection covers. More than this and the grid
-	// stops being something the eye can take in at once.
+	// Minimum history offered even for a recent or empty collection.
 	constexpr int history_window_years = 8;
 
-	// The span of years the navigator offers, which is not the span the collection literally covers.
+	// The span of years the calendar offers, which is not the span the collection literally covers.
 	struct history_range
 	{
 		int first_year = 0;
@@ -837,9 +820,8 @@ namespace df
 	constexpr history_range history_range_from_start_year(const int start_year, const int current_year)
 	{
 		return {
-			std::clamp(start_year, current_year - max_history_years + 1,
-			           current_year - history_window_years + 1),
-			current_year
+			std::clamp(start_year, current_year - max_history_years + 1, current_year - history_window_years + 1),
+			current_year,
 		};
 	}
 
@@ -868,8 +850,8 @@ namespace df
 		void record_representative(const size_t index, const index_file_item& file, const core::file_path& path)
 		{
 			const auto rank = thumbnail_representative_rank(file);
-			if (should_replace_thumbnail_representative(
-				path, rank, representative_paths[index], representative_ranks[index]))
+			if (should_replace_thumbnail_representative(path, rank, representative_paths[index],
+			                                            representative_ranks[index]))
 			{
 				representative_paths[index] = path;
 				representative_ranks[index] = rank;
@@ -896,10 +878,7 @@ namespace df
 			return result;
 		}
 
-		core::count_and_size total_folders() const
-		{
-			return counts[file_group::folder.id];
-		}
+		core::count_and_size total_folders() const { return counts[file_group::folder.id]; }
 
 		icon_index icon() const
 		{
@@ -916,10 +895,7 @@ namespace df
 			return file_group_from_index(largest)->icon;
 		}
 
-		void record(const index_folder_info_const_ptr& folder)
-		{
-			counts[file_group::folder.id].count += 1;
-		}
+		void record(const index_folder_info_const_ptr& /*folder*/) { counts[file_group::folder.id].count += 1; }
 
 		void record(const index_file_item& info)
 		{
@@ -1050,13 +1026,14 @@ namespace df
 		bool alt_background = false;
 		bool row_layout_valid = true;
 
-		item_element(const core::file_path id, const index_file_item& info) noexcept : view_element(
-				view_element_style::can_invoke), _random(rand())
+		item_element(const core::file_path id, const index_file_item& info) noexcept :
+			view_element(view_element_style::can_invoke), _random(rand())
 		{
 			update(id, info);
 		}
 
-		item_element(const core::folder_path path, index_folder_item_ptr info) noexcept : _info(std::move(info)), _path(path)
+		item_element(const core::folder_path path, index_folder_item_ptr info) noexcept :
+			_info(std::move(info)), _path(path)
 		{
 			_is_read_only = _info->is_read_only;
 			_name = path.name();
@@ -1074,7 +1051,6 @@ namespace df
 		// shown; the media's own indexed size is next; a thumbnail is only a guess until one of those
 		// arrives, and never earns the justification that a known aspect does.
 		void refresh_layout_dims();
-
 
 		item_element(const item_element& other) = delete;
 		item_element(item_element&& other) = delete;
@@ -1118,15 +1094,9 @@ namespace df
 			return sv.substr(ext);
 		}
 
-		bool is_media() const
-		{
-			return _ft->is_media();
-		}
+		bool is_media() const { return _ft->is_media(); }
 
-		bool is_link() const
-		{
-			return ends(_name, ".lnk");
-		}
+		bool is_link() const { return ends(_name, ".lnk"); }
 
 		bool has_title() const
 		{
@@ -1244,10 +1214,7 @@ namespace df
 			return _cover_art_surface;
 		}
 
-		bool is_selected() const
-		{
-			return is_style_bit_set(view_element_style::selected);
-		}
+		bool is_selected() const { return is_style_bit_set(view_element_style::selected); }
 
 		void select(const bool s, const view_host_base_ptr& view, const view_element_ptr& e)
 		{
@@ -1255,10 +1222,7 @@ namespace df
 			is_error(s && is_error(), view, e);
 		}
 
-		bool is_error() const
-		{
-			return is_style_bit_set(view_element_style::error);
-		}
+		bool is_error() const { return is_style_bit_set(view_element_style::error); }
 
 		void is_error(const bool val, const view_host_base_ptr& view, const view_element_ptr& e)
 		{
@@ -1271,20 +1235,11 @@ namespace df
 			is_error(is_selected() && is_error(), view, e);
 		}
 
-		search_result search() const
-		{
-			return _search;
-		}
+		search_result search() const { return _search; }
 
-		void search(const search_result& r)
-		{
-			_search = r;
-		}
+		void search(const search_result& r) { _search = r; }
 
-		index_folder_info_const_ptr info() const
-		{
-			return _info;
-		}
+		index_folder_info_const_ptr info() const { return _info; }
 
 		void info(index_folder_item_ptr info)
 		{
@@ -1326,8 +1281,8 @@ namespace df
 			return _layout_aspect_known;
 		}
 
-		void thumbnail(core::const_image_ptr i, core::const_image_ptr ca, const core::date_t timestamp = core::date_t::null,
-		               const bool fade_in = false)
+		void thumbnail(core::const_image_ptr i, core::const_image_ptr ca,
+		               const core::date_t timestamp = core::date_t::null, const bool fade_in = false)
 		{
 			core::assert_true(platform::is_ui_thread());
 			++_thumbnail_request_generation;
@@ -1340,8 +1295,7 @@ namespace df
 			_cover_art = std::move(ca);
 			refresh_layout_dims();
 
-			set_thumbnail_state(thumbnail_state::fade_pending,
-			                    fade_in && !had_visual && has_visual && _is_visible);
+			set_thumbnail_state(thumbnail_state::fade_pending, fade_in && !had_visual && has_visual && _is_visible);
 			row_layout_valid = false;
 
 			// Invalidate an in-flight staging result, but keep the staged surface on screen until the
@@ -1389,7 +1343,7 @@ namespace df
 
 			// Not surface_cached: a surface awaiting replacement is still held but no longer current.
 			if (!_texture && !_thumbnail_surface && !_cover_art_surface &&
-				!(_thumbnail_state && thumbnail_state::staging_surface))
+			    !(_thumbnail_state && thumbnail_state::staging_surface))
 			{
 				return;
 			}
@@ -1429,15 +1383,9 @@ namespace df
 		void render_bg(render::draw_context& dc, const item_group& group, pointi element_offset) const;
 		void render(render::draw_context& dc, const item_group& group, pointi element_offset) const;
 
-		recti interactive_bounds() const
-		{
-			return _interactive_bounds;
-		}
+		recti interactive_bounds() const { return _interactive_bounds; }
 
-		recti pin_badge_bounds() const
-		{
-			return _pin_badge_bounds;
-		}
+		recti pin_badge_bounds() const { return _pin_badge_bounds; }
 
 		sizei measure(render::measure_context& mc, int width_limit) const override;
 		void layout(render::measure_context& mc, recti bounds_in) override;
@@ -1469,15 +1417,9 @@ namespace df
 			return _is_read_only;
 		}
 
-		bool is_folder() const
-		{
-			return _is_folder;
-		}
+		bool is_folder() const { return _is_folder; }
 
-		bool is_in_collection() const
-		{
-			return _info && _info->is_in_collection;
-		}
+		bool is_in_collection() const { return _info && _info->is_in_collection; }
 
 		prop::item_metadata_const_ptr metadata() const
 		{
@@ -1485,10 +1427,7 @@ namespace df
 			return _metadata;
 		}
 
-		core::file_size file_size() const
-		{
-			return _size;
-		}
+		core::file_size file_size() const { return _size; }
 
 		core::date_t file_created() const
 		{
@@ -1552,10 +1491,7 @@ namespace df
 			return md ? md->xmp : core::cached{};
 		}
 
-		size_t sidecars_count() const
-		{
-			return core::split_count(sidecars(), true);
-		}
+		size_t sidecars_count() const { return core::split_count(sidecars(), true); }
 
 		double media_position() const
 		{
@@ -1573,26 +1509,20 @@ namespace df
 		bool should_load_thumbnail() const
 		{
 			core::assert_true(platform::is_ui_thread());
-			if (is_folder())
-				return false;
+			if (is_folder()) return false;
 
-			if (!_ft->has_trait(file_traits::bitmap) && !_ft->has_trait(file_traits::av))
-				return false;
+			if (!_ft->has_trait(file_traits::bitmap) && !_ft->has_trait(file_traits::av)) return false;
 
 			// Cloud-only placeholders have no local thumbnail; attempting to load one would hit
 			// the shell every session for every visible item. Skip until the file is hydrated
 			// (its online status becomes 'disk'), at which point it is scanned normally.
-			if (_online_status == item_online_status::offline)
-				return false;
+			if (_online_status == item_online_status::offline) return false;
 
-			if (_thumbnail_state && thumbnail_state::load_blocked)
-				return false;
+			if (_thumbnail_state && thumbnail_state::load_blocked) return false;
 
-			if (core::is_empty(_thumbnail))
-				return true;
+			if (core::is_empty(_thumbnail)) return true;
 
-			if (_thumbnail_timestamp != _modified)
-				return true;
+			if (_thumbnail_timestamp != _modified) return true;
 
 			return false;
 		}
@@ -1613,14 +1543,11 @@ namespace df
 		bool should_load_shell_thumbnail() const
 		{
 			core::assert_true(platform::is_ui_thread());
-			if (is_folder())
-				return false;
+			if (is_folder()) return false;
 
-			if (_online_status != item_online_status::offline)
-				return false;
+			if (_online_status != item_online_status::offline) return false;
 
-			if (!_ft->has_trait(file_traits::bitmap) && !_ft->has_trait(file_traits::av))
-				return false;
+			if (!_ft->has_trait(file_traits::bitmap) && !_ft->has_trait(file_traits::av)) return false;
 
 			if (_thumbnail_state && (thumbnail_state::load_blocked | thumbnail_state::shell_retry_pending))
 				return false;
@@ -1721,15 +1648,9 @@ namespace df
 			return _online_status;
 		}
 
-		int random() const
-		{
-			return _random;
-		}
+		int random() const { return _random; }
 
-		void random(const int i)
-		{
-			_random = i;
-		}
+		void random(const int i) { _random = i; }
 
 		void presence(const item_presence presence)
 		{
@@ -1743,15 +1664,9 @@ namespace df
 			return _presence;
 		}
 
-		core::file_path path() const
-		{
-			return _path;
-		}
+		core::file_path path() const { return _path; }
 
-		core::folder_path folder() const
-		{
-			return _path.folder();
-		}
+		core::folder_path folder() const { return _path.folder(); }
 
 		uint64_t begin_db_thumbnail_query()
 		{
@@ -1871,15 +1786,9 @@ namespace df
 			}
 		}
 
-		bool fail() const
-		{
-			return code != process_result_code::ok;
-		}
+		bool fail() const { return code != process_result_code::ok; }
 
-		bool success() const
-		{
-			return code == process_result_code::ok;
-		}
+		bool success() const { return code == process_result_code::ok; }
 	};
 
 	// Keeps the encoded thumbnails the user is most likely to scroll back to and releases the rest.
@@ -1907,44 +1816,24 @@ namespace df
 
 		item_set() noexcept = default;
 
-		item_set(item_elements items) : _items(std::move(items))
-		{
-		}
+		item_set(item_elements items) : _items(std::move(items)) {}
 
 		item_set(const item_set&) = default;
 		item_set& operator=(const item_set&) = default;
 		item_set(item_set&&) noexcept = default;
 		item_set& operator=(item_set&&) noexcept = default;
 
-		void clear()
-		{
-			_items.clear();
-		}
+		void clear() { _items.clear(); }
 
-		bool is_empty() const
-		{
-			return _items.empty();
-		}
+		bool is_empty() const { return _items.empty(); }
 
-		bool empty() const
-		{
-			return _items.empty();
-		}
+		bool empty() const { return _items.empty(); }
 
-		size_t size() const
-		{
-			return _items.size();
-		}
+		size_t size() const { return _items.size(); }
 
-		friend bool operator==(const item_set& lhs, const item_set& rhs)
-		{
-			return lhs._items == rhs._items;
-		}
+		friend bool operator==(const item_set& lhs, const item_set& rhs) { return lhs._items == rhs._items; }
 
-		friend bool operator!=(const item_set& lhs, const item_set& rhs)
-		{
-			return !(lhs == rhs);
-		}
+		friend bool operator!=(const item_set& lhs, const item_set& rhs) { return !(lhs == rhs); }
 
 		void shuffle() const
 		{
@@ -1961,14 +1850,12 @@ namespace df
 
 		bool has_errors() const
 		{
-			for (const auto& i : _items) if (i->is_error()) return true;
+			for (const auto& i : _items)
+				if (i->is_error()) return true;
 			return false;
 		}
 
-		void append(const item_set& other)
-		{
-			_items.insert(_items.end(), other._items.begin(), other._items.end());
-		}
+		void append(const item_set& other) { _items.insert(_items.end(), other._items.begin(), other._items.end()); }
 
 		bool single_file_extension() const
 		{
@@ -1994,10 +1881,7 @@ namespace df
 		file_group_histogram summary() const;
 		item_set_info info() const;
 
-		const item_elements& items() const
-		{
-			return _items;
-		}
+		const item_elements& items() const { return _items; }
 
 		core::paths ids() const
 		{
@@ -2020,8 +1904,7 @@ namespace df
 		{
 			for (const auto& i : _items)
 			{
-				if (i->is_folder())
-					return true;
+				if (i->is_folder()) return true;
 			}
 			return false;
 		}
@@ -2049,9 +1932,9 @@ namespace df
 		}
 
 		std::vector<core::const_image_ptr> thumbs(size_t max = core::max_thumbnails_to_display,
-		                                        const item_element_ptr& skip_this = nullptr) const;
+		                                          const item_element_ptr& skip_this = nullptr) const;
 		std::vector<core::const_surface_ptr> thumbnail_surfaces(size_t max = core::max_thumbnails_to_display,
-		                                                      const item_element_ptr& skip_this = nullptr) const;
+		                                                        const item_element_ptr& skip_this = nullptr) const;
 		void stage_thumbnail_surfaces(async_strategy& async, size_t max = core::max_thumbnails_to_display,
 		                              const item_element_ptr& skip_this = nullptr) const;
 
@@ -2061,44 +1944,50 @@ namespace df
 		item_set selected() const
 		{
 			item_set result;
-			for (const auto& i : _items) if (i->is_selected()) result._items.emplace_back(i);
+			for (const auto& i : _items)
+				if (i->is_selected()) result._items.emplace_back(i);
 			return result;
 		}
 
 		core::cached first_name() const
 		{
-			for (const auto& i : _items) return i->name();
-			return {};
+			if (_items.empty()) return {};
+			return _items.front()->name();
 		}
 
 		item_element_ptr find(const std::string_view s) const
 		{
-			for (const auto& i : _items) if (icmp(i->name(), s) == 0 || icmp(i->path().name(), s) == 0) return i;
+			for (const auto& i : _items)
+				if (icmp(i->name(), s) == 0 || icmp(i->path().name(), s) == 0) return i;
 			return nullptr;
 		}
 
 		item_element_ptr find(const core::file_path id) const
 		{
-			for (const auto& i : _items) if (i->path() == id) return i;
+			for (const auto& i : _items)
+				if (i->path() == id) return i;
 			return nullptr;
 		}
 
 		item_element_ptr find(const core::folder_path id) const
 		{
 			const core::file_path search_path(id);
-			for (const auto& i : _items) if (i->path() == search_path) return i;
+			for (const auto& i : _items)
+				if (i->path() == search_path) return i;
 			return nullptr;
 		}
 
 		item_element_ptr find(const item_element_ptr& f) const
 		{
-			for (const auto& i : _items) if (i == f) return i;
+			for (const auto& i : _items)
+				if (i == f) return i;
 			return nullptr;
 		}
 
 		item_element_ptr find_file(const item_element_ptr& f) const
 		{
-			for (const auto& i : _items) if (i == f) return i;
+			for (const auto& i : _items)
+				if (i == f) return i;
 			return nullptr;
 		}
 
@@ -2111,7 +2000,8 @@ namespace df
 
 		bool contains(const item_element_ptr& ii) const
 		{
-			for (const auto& i : _items) if (i == ii) return true;
+			for (const auto& i : _items)
+				if (i == ii) return true;
 			return false;
 		}
 
@@ -2176,17 +2066,15 @@ namespace df
 		double val_max = static_cast<double>(INT64_MIN);
 		double val_min = static_cast<double>(INT64_MAX);
 
-		void clear_for_layout()
-		{
-			*this = {};
-		}
+		void clear_for_layout() { *this = {}; }
 
 		void update_extent(render::draw_context& dc, const std::string_view text, const double val)
 		{
 			const auto max_width = core::round(_max_width * dc.scale_factor);
 
-			extent = std::max(extent, dc.measure_text(text, render::font_face::dialog,
-			                                          render::text_style::single_line, max_width).cx);
+			extent = std::max(extent, dc.measure_text(text, render::font_face::dialog, render::text_style::single_line,
+			                                          max_width)
+			                              .cx);
 			val_max = std::max(val_max, val);
 			val_min = std::min(val_min, val);
 		}
@@ -2194,11 +2082,12 @@ namespace df
 		void update_extent(render::draw_context& dc, const std::string_view text)
 		{
 			const auto max_width = core::round(_max_width * dc.scale_factor);
-			extent = std::max(extent, dc.measure_text(text, render::font_face::dialog,
-			                                          render::text_style::single_line, max_width).cx);
+			extent = std::max(extent, dc.measure_text(text, render::font_face::dialog, render::text_style::single_line,
+			                                          max_width)
+			                              .cx);
 		}
 
-		recti calc_bounds(const recti row_bounds, const int text_x, const int text_y, const int text_padding) const
+		recti calc_bounds(const recti row_bounds, const int text_x, const int /*text_y*/, const int text_padding) const
 		{
 			auto bounds = row_bounds;
 			bounds.left = text_x + text_padding / 2;
@@ -2207,15 +2096,14 @@ namespace df
 		}
 
 		void draw(render::draw_context& rc, const std::string_view text, const double val, const recti bounds,
-		          const render::font_face text_font, const render::text_style text_style,
-		          const core::color color) const
+		          const render::font_face text_font, const render::text_style text_style, const core::color color) const
 		{
 			core::color rank_color;
 
 			if (val_min < val_max && setting.highlight_large_items)
 			{
-				const auto importance_alpha = std::min(
-					color.a, static_cast<float>(0.7 * (val - val_min) / (val_max - val_min)));
+				const auto importance_alpha = std::min(color.a,
+				                                       static_cast<float>(0.7 * (val - val_min) / (val_max - val_min)));
 				rank_color = core::color(app_colors::rank_background, importance_alpha);
 			}
 
@@ -2223,8 +2111,7 @@ namespace df
 		}
 
 		static void draw(render::draw_context& rc, const std::string_view text, const core::color bg_color,
-		                 const recti bounds,
-		                 const render::font_face text_font, const render::text_style text_style,
+		                 const recti bounds, const render::font_face text_font, const render::text_style text_style,
 		                 const core::color color)
 		{
 			rc.draw_text(text, bounds, text_font, text_style, color, bg_color);
@@ -2300,6 +2187,39 @@ namespace df
 			if (modified.width > 0) result += modified.width + text_padding;
 			return result;
 		}
+
+		item_draw_info& column(const detail_column c)
+		{
+			return const_cast<item_draw_info&>(std::as_const(*this).column(c));
+		}
+
+		const item_draw_info& column(const detail_column c) const
+		{
+			switch (c)
+			{
+			case detail_column::icon: return icon;
+			case detail_column::disk: return disk;
+			case detail_column::track: return track;
+			case detail_column::episode: return episode;
+			case detail_column::year: return year;
+			case detail_column::title: return title;
+			case detail_column::flag: return flag;
+			case detail_column::presence: return presence;
+			case detail_column::sidecars: return sidecars;
+			case detail_column::items: return items;
+			case detail_column::duration: return duration;
+			case detail_column::file_size: return file_size;
+			case detail_column::bitrate: return bitrate;
+			case detail_column::info: return info;
+			case detail_column::dimensions: return dimensions;
+			case detail_column::pixel_format: return pixel_format;
+			case detail_column::audio_sample_rate: return audio_sample_rate;
+			case detail_column::created: return created;
+			case detail_column::modified: break;
+			}
+
+			return modified;
+		}
 	};
 
 	struct group_key
@@ -2317,16 +2237,13 @@ namespace df
 		core::cached text2 = {};
 		core::cached text3 = {};
 
-
 		group_key() noexcept = default;
 		group_key(const group_key&) = default;
 		group_key& operator=(const group_key&) = default;
 		group_key(group_key&&) noexcept = default;
 		group_key& operator=(group_key&&) noexcept = default;
 
-		group_key(const group_key_type t) noexcept : type(t)
-		{
-		}
+		group_key(const group_key_type t) noexcept : type(t) {}
 
 		bool operator<(const group_key& other) const
 		{
@@ -2349,7 +2266,6 @@ namespace df
 		}
 	};
 
-
 	class item_group final : public std::enable_shared_from_this<item_group>, public view_element
 	{
 	public:
@@ -2367,6 +2283,21 @@ namespace df
 		bool _show_folder = true;
 		group_key _key;
 
+		// A detail group's headings, over its rows and held at the top of the items while the group scrolls under
+		// them: the band and each column's part of it as last drawn, in the view's pixels, for the hit test that
+		// follows a paint; and the heading pressed or the divider dragged, drawn so while the gesture lasts.
+		struct heading_cell
+		{
+			detail_column column = detail_column::icon;
+			recti bounds;
+		};
+		mutable int _heading_height = 0;
+		mutable double _heading_scale = 1.0;
+		mutable recti _heading_drawn;
+		mutable std::vector<heading_cell> _heading_cells;
+		mutable int _pressed_heading = -1;
+		mutable int _active_divider = -1;
+
 		// Title controls are derived from the key plus the search and grouping, so they survive the
 		// group_layout passes that only reshuffle items. Rebuilding them was O(groups) allocations
 		// and search_t copies per pass.
@@ -2377,29 +2308,28 @@ namespace df
 		icon_index icon = icon_index::none;
 
 		item_group(view_state& s, item_elements items, const item_group_display display, group_key key) noexcept :
-			_state(s),
-			_items(std::move(items)),
-			_display(display),
-			_key(std::move(key))
+			_state(s), _items(std::move(items)), _display(display), _key(key)
 		{
 		}
 
 		void sort(group_by group_mode, sort_by sort_order, bool group_by_dups);
 
-		const item_row_draw_info& row_widths() const
-		{
-			return _row_draw_info;
-		}
+		const item_row_draw_info& row_widths() const { return _row_draw_info; }
 
-		item_group_display display() const
-		{
-			return _display;
-		}
+		item_group_display display() const { return _display; }
 
 		void toggle_display();
-		void update_row_layout(const render::measure_context& mc) const;
+		void update_row_layout(render::measure_context& mc) const;
 		void update_detail_row_layout(render::draw_context& dc, const item_element_ptr& i, bool has_related) const;
 		void display(item_group_display d);
+
+		bool shows_headings() const { return _display == item_group_display::detail && !_items.empty(); }
+
+		// Over the rows, after them, so a band held at the top of the view covers the rows scrolling under it.
+		void render_headings(render::draw_context& dc, pointi element_offset, recti viewport) const;
+		// The divider after a heading, between it and the next one drawn, as a drag on it resizes a column: the one
+		// on the far side of it from the name, which takes up or gives the room.
+		std::vector<std::pair<detail_column, recti>> heading_dividers() const;
 
 		void items(item_elements items)
 		{
@@ -2408,15 +2338,13 @@ namespace df
 			for (const auto& item : _items) item->row_layout_valid = false;
 		}
 
-		const item_elements& items() const
-		{
-			return _items;
-		}
+		const item_elements& items() const { return _items; }
 
 		void render(render::draw_context& dc, pointi element_offset) const override;
 		sizei measure(render::measure_context& mc, int width_limit) const override;
 		void layout(render::measure_context& mc, recti bounds_in) override;
-		void scroll_tooltip(const item_element_ptr& item, const view_elements_ptr& elements, async_strategy& async) const;
+		void scroll_tooltip(const item_element_ptr& item, const view_elements_ptr& elements,
+		                    async_strategy& async) const;
 		void tooltip(view_hover_element& hover, pointi loc, pointi element_offset) const override;
 		view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
 		                                             hit_test_context& ctx) override;
@@ -2424,12 +2352,10 @@ namespace df
 		item_element_ptr drawable_from_layout_location(pointi loc) const;
 		void update_scroll_info(group_by gb);
 
-
 		friend class item_set;
 		friend class item_element;
 		friend class item_group_header;
 	};
-
 
 	std::shared_ptr<group_title_control> build_group_title(view_state& s, const view_host_base_ptr& view,
 	                                                       const item_group_ptr& g);

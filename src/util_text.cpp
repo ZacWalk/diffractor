@@ -1,14 +1,13 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Counts the words in names and text for the index's summaries of a collection, leaving out
 // numbers, cameras' numbered file names and filler words; and decodes the character references in XML text,
-// which Movie Maker projects and media managers' .nfo files are read through.
+// which media managers' .nfo files are read through.
 
 #include "pch.h"
 #include "util_text.h"
@@ -52,13 +51,12 @@ std::string str::decode_xml_entities(const std::string_view text)
 			const auto digits = entity.substr(hex ? 2 : 1);
 			uint32_t code = 0;
 
-			const auto [ptr, ec] = std::from_chars(digits.data(), digits.data() + digits.size(), code,
-			                                       hex ? 16 : 10);
+			const auto [ptr, ec] = std::from_chars(digits.data(), digits.data() + digits.size(), code, hex ? 16 : 10);
 
 			// A surrogate is half of a UTF-16 pair and no character of its own; encoded alone it would make
 			// text - a path in a Movie project, a title in an .nfo - that nothing can convert.
 			if (ec == std::errc{} && ptr == digits.data() + digits.size() && code > 0 && code < 0x110000 &&
-				(code < 0xD800 || code > 0xDFFF))
+			    (code < 0xD800 || code > 0xDFFF))
 			{
 				core::char32_to_utf8(std::back_inserter(result), code);
 			}
@@ -89,9 +87,7 @@ static bool is_range_separator(const char c)
 static bool is_num_token(const std::string_view text)
 {
 	return !text.empty() && std::find_if(text.begin(), text.end(), [](const char c)
-	{
-		return !std::isdigit(static_cast<unsigned char>(c));
-	}) == text.end();
+	{ return !std::isdigit(static_cast<unsigned char>(c)); }) == text.end();
 }
 
 static bool is_num_token_with_prefix(const std::string_view text, const std::string_view prefix)

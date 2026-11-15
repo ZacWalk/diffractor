@@ -34,7 +34,7 @@ Location-aware terms are distinct from raw metadata properties:
 - `loc:` and `near:` resolve a place name or coordinate and may carry a distance.
 - `place:`/`city:`, `state:`, and `country:` constrain the location level.
 - `latitude:`/`x:` and `longitude:`/`y:` compare stored coordinate properties.
-- `area:` remains readable for saved map-cell searches but new map actions produce `loc:` terms.
+- `area:` is read for saved map-cell searches; map actions produce `loc:` terms.
 
 Distance accepts metres, kilometres, and miles and is normalized for display. Text matching uses
 gazetteer identity and the item's stored or derived location; coordinate matching uses geodesic

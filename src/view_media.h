@@ -1,13 +1,13 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: Media viewing and playback. Displays photos and videos with
-// playback controls, comparison view, and metadata display.
+// Purpose: Fullscreen media viewing and playback. A photo, a video, a running Commodore 64 or a comparison
+// has the screen, with the compact selection panel floating over it; anything else - a monitor, the
+// visualizer, a collage, a cartridge, a folder - is the items view's stack of panels, centred.
 
 #pragma once
 
@@ -21,13 +21,57 @@ inline view_element_ptr make_icon_link_element2(const icon_index i, commands cmd
 // design.md: the media overlay identifies rather than summarises, and this is the invariant that
 // stops it returning to a summary. Never more than a quarter of the media's height, truncated rather
 // than grown. The floor keeps a small window showing the identification rather than nothing at all.
-// Where the media is not a picture - audio, an archive, a file the viewer cannot decode - the panel
-// is the presentation rather than a caption on one, so it may take half.
+// Where the picture is not a photograph or a film - a running Commodore 64 - the panel is part of the
+// presentation rather than a caption on one, so it may take half.
 constexpr int calc_media_overlay_height(const int measured, const int media_height, const int min_height,
                                         const bool panel_is_the_presentation = false)
 {
 	const auto limit = panel_is_the_presentation ? media_height / 2 : media_height / 4;
 	return std::min(measured, std::max(min_height, limit));
+}
+
+// The widest fullscreen's stack of panels grows, in logical units: wide enough for a monitor's three voices
+// and a tracker's channels side by side, and no wider than a line is comfortably read across.
+constexpr int media_stack_max_width = 1120;
+
+// The tallest a description grows in fullscreen's stack, in logical units, before its panel clips it.
+constexpr int stack_description_max_height = 240;
+
+// Fullscreen's stack: the panels one above another with the column's one gap between them, no wider than
+// media_stack_max_width and centred in avail. Fullscreen does not scroll, so what can give way - a monitor,
+// the visualizer, a listing - is fitted to the height. Returns where the stack went.
+inline recti layout_media_stack(const std::vector<view_element_ptr>& stack, render::measure_context& mc,
+                                const recti avail)
+{
+	if (stack.empty() || avail.is_empty()) return {};
+
+	const auto width = std::min(avail.width(), core::round(media_stack_max_width * mc.scale_factor));
+	const auto left = avail.left + (avail.width() - width) / 2;
+
+	flex_container_layout column;
+	column.direction = flex_direction::column;
+	column.wrap = flex_wrap::no_wrap;
+	column.align_items = flex_align::stretch;
+	column.gap.cy = ui::panel_element::spacing;
+
+	const auto block = calc_flex_layout(stack, mc, {width, avail.height()}, column);
+	const auto centre = [&avail](const int height)
+	{
+		return avail.top + std::max(0, avail.height() - height) / 2;
+	};
+
+	// A monitor can take less than its slot, giving up a part to fit; the stack closes up behind it and is
+	// centred again on what it takes.
+	auto top = centre(block.extent.cy);
+	auto height = layout_stacked(stack, block.layout_bounds, mc, {left, top});
+
+	if (height < block.extent.cy && centre(height) != top)
+	{
+		top = centre(height);
+		height = layout_stacked(stack, block.layout_bounds, mc, {left, top});
+	}
+
+	return {left, top, left + width, top + height};
 }
 
 class media_view final : public view_base
@@ -45,6 +89,11 @@ class media_view final : public view_base
 	view_element_ptr _description_element;
 	display_state_ptr _display;
 
+	// What a selection that is not a picture is shown as: the panels above its selection panel, the panel
+	// and its description, centred. Empty while a picture has the screen.
+	std::vector<view_element_ptr> _stack;
+	bool _is_stack = false;
+
 	sizei _client_extent;
 
 public:
@@ -52,24 +101,23 @@ public:
 	float overlay_alpha_target = 1.0f;
 
 	media_view(view_state& state, view_host_ptr host) :
-		_state(state),
-		_host(std::move(host)),
-		_left_arrow_element(make_icon_link_element2(icon_index::left, commands::browse_previous_item,
-		                                            view_element_style::none)),
-		_right_arrow_element(make_icon_link_element2(icon_index::right, commands::browse_next_item,
-		                                             view_element_style::none))
+		_state(state), _host(std::move(host)),
+		_left_arrow_element(
+			make_icon_link_element2(icon_index::left, commands::browse_previous_item, view_element_style::none)),
+		_right_arrow_element(
+			make_icon_link_element2(icon_index::right, commands::browse_next_item, view_element_style::none))
 	{
 	}
 
-	~media_view() override
-	{
-		core::log(__FUNCTION__, "destruct");
-	}
+	~media_view() override { core::log(__FUNCTION__, "destruct"); }
 
-	recti calc_media_bounds() const
-	{
-		return {0, 0, _client_extent.cx, _client_extent.cy};
-	}
+	recti calc_media_bounds() const { return {0, 0, _client_extent.cx, _client_extent.cy}; }
+
+	// What the view shows of the item, as the last update_media_elements made it.
+	const view_element_ptr& media_element() const { return _media_element; }
+
+	// The panels a selection that is not a picture is shown as, in order; empty for a picture.
+	const std::vector<view_element_ptr>& stack() const { return _stack; }
 
 	void activate(const sizei extent) override
 	{
@@ -77,24 +125,25 @@ public:
 		update_media_elements();
 	}
 
-	void deactivate() override
-	{
-	}
+	void deactivate() override {}
 
-	void refresh() override
-	{
-		_state.open(_host, _state.search(), {});
-	}
+	void refresh() override { _state.open(_host, _state.search(), {}); }
 
-	menu_type context_menu(const pointi loc) override
-	{
-		return menu_type::media;
-	}
+	view_menu context_menu(const pointi /*loc*/) override { return media_view_menu(); }
 
 	// zoom.md 11: fullscreen has one surface, so the modifier alone chooses which of its axes moves.
 	bool mouse_wheel(const pointi loc, const platform::wheel_notch notch) override
 	{
 		if (!_display) return false;
+		if (_media_element && _media_element->wheel(loc, {}, notch.delta)) return true;
+
+		// A panel that scrolls what it shows - a tracker's pattern - takes the wheel over it; anywhere else
+		// on the stack it steps through the items, as it does over a picture.
+		if (_is_stack && std::ranges::any_of(_stack, [&](const view_element_ptr& e)
+		{ return e != _media_element && e->wheel(loc, {}, notch.delta); }))
+		{
+			return true;
+		}
 
 		const auto magnified = _display->is_temporary_zoom() || _display->is_zoom_mode();
 
@@ -139,26 +188,21 @@ public:
 		if (steps == 0) return true;
 		_display->active_zoom_pane_at(pointd(loc));
 		const auto anchor = _display->zoom_anchor_at(pointd(loc));
-		for (auto step = 0; step < std::abs(steps); ++step)
-			_display->adjust_zoom_scale(steps > 0 ? 1 : -1, anchor);
+		for (auto step = 0; step < std::abs(steps); ++step) _display->adjust_zoom_scale(steps > 0 ? 1 : -1, anchor);
 		return true;
 	}
 
-	void pan_start(const pointi start_loc) override
+	void pan_start(const pointi /*start_loc*/) override
 	{
 		if (_display) _touch_pan_start_zoom = _display->zoom_state();
 	}
 
 	void pan(const pointi start_loc, const pointi current_loc) override
 	{
-		if (_display && _display->zoom())
-			_display->pan_zoom(pointd(current_loc - start_loc), _touch_pan_start_zoom);
+		if (_display && _display->zoom()) _display->pan_zoom(pointd(current_loc - start_loc), _touch_pan_start_zoom);
 	}
 
-	void pan_end(const pointi start_loc, const pointi final_loc) override
-	{
-		pan(start_loc, final_loc);
-	}
+	void pan_end(const pointi start_loc, const pointi final_loc) override { pan(start_loc, final_loc); }
 
 	bool touch_double_tap(const pointi location) override
 	{
@@ -169,24 +213,39 @@ public:
 		return true;
 	}
 
-	void render(render::draw_context& dc, view_controller_ptr controller) override
+	void render(render::draw_context& dc, view_controller_ptr /*controller*/) override
 	{
 		const auto original_colors = dc.colors;
 		dc.colors.overlay_alpha = overlay_alpha;
 		dc.colors.bg_alpha = overlay_alpha * 0.55f;
 
+		if (_is_stack)
+		{
+			// The panels are the presentation, so they never fade as a caption over a picture does.
+			for (const auto& e : _stack) e->render(dc, {0, 0});
+
+			dc.colors.alpha = dc.colors.alpha * overlay_alpha;
+			_left_arrow_element->render(dc, {0, 0});
+			_right_arrow_element->render(dc, {0, 0});
+			dc.colors = original_colors;
+			return;
+		}
+
 		if (_media_element)
 		{
 			// Subtitles rise over the controls only where the controls float over the picture.
 			const auto controls_float = _display && !_display->is_zoom_mode() && !_display->comparing() &&
-				_controls_element && !_controls_element->bounds.is_empty();
+			                            _controls_element && !_controls_element->bounds.is_empty();
 			if (_display)
 			{
-				_display->_overlay_top = controls_float
-					                         ? _controls_element->bounds.top - (_controls_element->padding * dc.scale_factor).cy
-					                         : 0;
+				_display->_overlay_top = controls_float ? _controls_element->bounds.top -
+				                                              (_controls_element->padding * dc.scale_factor).cy
+				                                        : 0;
 			}
-			const core::scope_exit clear_overlay_top([this] { if (_display) _display->_overlay_top = 0; });
+			const core::scope_exit clear_overlay_top([this]
+			{
+				if (_display) _display->_overlay_top = 0;
+			});
 
 			_media_element->render(dc, {0, 0});
 		}
@@ -248,6 +307,13 @@ public:
 		auto avail_bounds = calc_media_bounds();
 		const auto scale_factor = mc.scale_factor;
 
+		if (_is_stack)
+		{
+			layout_stack(mc, avail_bounds.inflate(core::round(-4 * scale_factor)));
+			_host->frame()->invalidate();
+			return;
+		}
+
 		if (!_state.is_full_screen || !_display || !_display->is_one())
 		{
 			avail_bounds = avail_bounds.inflate(core::round(-4 * scale_factor));
@@ -257,8 +323,9 @@ public:
 		// Zoom and compare give the whole client to the media element, as items_view does, so its
 		// navigator and rating overlays stay in the client corners after a resize.
 		const auto media_owns_client = _display && (_display->is_zoom_mode() || _display->comparing());
-		const auto overlay_media_control = media_owns_client || (_display && _display->is_one() &&
-			_display->display_item_has_trait(file_traits::hide_overlays));
+		const auto overlay_media_control = media_owns_client ||
+		                                   (_display && _display->is_one() &&
+		                                    _display->display_item_has_trait(file_traits::hide_overlays));
 		auto media_bounds_avail = avail_bounds;
 		if (_controls_element) _controls_element->bounds.clear();
 		if (_description_element) _description_element->bounds.clear();
@@ -279,10 +346,8 @@ public:
 			const auto controls_height = calc_media_overlay_height(controls_extent.cy, avail_bounds.height(),
 			                                                       mc.icon_cxy * 2, panel_is_the_presentation);
 			const auto controls_left = (control_limit.left + control_limit.right - controls_width) / 2;
-			const recti control_bounds{
-				controls_left, control_limit.bottom - controls_height,
-				controls_left + controls_width, control_limit.bottom
-			};
+			const recti control_bounds{controls_left, control_limit.bottom - controls_height,
+			                           controls_left + controls_width, control_limit.bottom};
 
 			_controls_element->layout(mc, control_bounds);
 
@@ -296,12 +361,12 @@ public:
 			{
 				const auto description_width = std::min(description_avail, core::round(420 * scale_factor));
 				const auto description_extent = _description_element->measure(mc, description_width);
-				const auto max_description_height = std::max(core::round(112 * scale_factor), avail_bounds.height() / 3);
+				const auto max_description_height = std::max(core::round(112 * scale_factor),
+				                                             avail_bounds.height() / 3);
 				const auto description_height = std::min(description_extent.cy, max_description_height);
-				const recti description_bounds{
-					control_limit.right - description_width, control_limit.bottom - description_height,
-					control_limit.right, control_limit.bottom
-				};
+				const recti description_bounds{control_limit.right - description_width,
+				                               control_limit.bottom - description_height, control_limit.right,
+				                               control_limit.bottom};
 				_description_element->layout(mc, description_bounds);
 				panel_height = std::max(panel_height, description_height);
 			}
@@ -317,8 +382,8 @@ public:
 		const auto left_top = (avail_bounds.top + avail_bounds.bottom - arrow_cy) / 2;
 		const auto right_top = (avail_bounds.top + avail_bounds.bottom - arrow_cy) / 2;
 
-		_left_arrow_element->layout(
-			mc, recti(avail_bounds.left, left_top, avail_bounds.left + arrow_cx, left_top + arrow_cy));
+		_left_arrow_element->layout(mc, recti(avail_bounds.left, left_top, avail_bounds.left + arrow_cx,
+		                                      left_top + arrow_cy));
 		_right_arrow_element->layout(mc, recti(avail_bounds.right - arrow_cx, right_top, avail_bounds.right,
 		                                       right_top + arrow_cy));
 
@@ -337,13 +402,13 @@ public:
 				const auto media_extent = _media_element->measure(mc, media_bounds_avail.width());
 				media_bounds = recti(media_bounds_avail.top_left(), media_extent);
 
-				if (media_bounds.height() < media_bounds_avail.height() || media_bounds.width() < media_bounds_avail.
-					width())
+				if (media_bounds.height() < media_bounds_avail.height() ||
+				    media_bounds.width() < media_bounds_avail.width())
 				{
 					media_bounds = center_rect(media_bounds, media_bounds_avail);
 				}
-				else if (_media_element->flex.shrink > 0.0f && (media_bounds.height() >
-					media_bounds_avail.height() || media_bounds.width() > media_bounds_avail.width()))
+				else if (_media_element->flex.shrink > 0.0f && (media_bounds.height() > media_bounds_avail.height() ||
+				                                                media_bounds.width() > media_bounds_avail.width()))
 				{
 					media_bounds = media_bounds_avail;
 				}
@@ -353,6 +418,24 @@ public:
 		}
 
 		_host->frame()->invalidate();
+	}
+
+	// The arrows keep the screen's edges, and the stack is centred between them.
+	void layout_stack(render::measure_context& mc, const recti avail_bounds)
+	{
+		const auto arrow_cx = avail_bounds.width() / 17;
+		const auto arrow_cy = avail_bounds.height() / 7;
+		const auto arrow_top = (avail_bounds.top + avail_bounds.bottom - arrow_cy) / 2;
+
+		_left_arrow_element->layout(mc, recti(avail_bounds.left, arrow_top, avail_bounds.left + arrow_cx,
+		                                      arrow_top + arrow_cy));
+		_right_arrow_element->layout(mc, recti(avail_bounds.right - arrow_cx, arrow_top, avail_bounds.right,
+		                                       arrow_top + arrow_cy));
+
+		auto stack_bounds = avail_bounds.inflate(-mc.padding2);
+		stack_bounds.left += arrow_cx;
+		stack_bounds.right -= arrow_cx;
+		layout_media_stack(_stack, mc, stack_bounds);
 	}
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
@@ -372,6 +455,19 @@ public:
 			if (!arrow) continue;
 			if (auto controller = arrow->controller_from_location(host, loc, media_offset, ctx)) return controller;
 			ctx.passed_over(arrow->bounds);
+		}
+
+		if (_is_stack)
+		{
+			for (const auto& panel : _stack)
+			{
+				if (panel && ctx.occluded(panel->bounds))
+				{
+					return panel->controller_from_location(host, loc, media_offset, ctx);
+				}
+			}
+
+			return nullptr;
 		}
 
 		// The panels are drawn backgrounds, so they are opaque throughout: a pointer on one must not
@@ -401,9 +497,18 @@ public:
 		return false;
 	}
 
-	void display_changed() override
+	void display_changed() override { _state.invalidate_view(view_invalid::view_layout); }
+
+	// The panels on the screen - the selection panel and description over a picture, or the stack - are one stop of
+	// the keyboard's, beside the picture, which its own keys zoom and step through. A picture zoomed or compared
+	// has the keyboard alone.
+	std::vector<keyboard_region> keyboard_regions() override
 	{
-		_state.invalidate_view(view_invalid::view_layout);
+		if (_display && (_display->is_zoom_mode() || _display->comparing())) return {};
+
+		auto roots = _is_stack ? _stack
+		                       : std::vector<view_element_ptr>{_media_element, _controls_element, _description_element};
+		return {{keyboard_area::media, std::move(roots), {}, calc_media_bounds(), {}}};
 	}
 
 	void update_media_elements() override;
@@ -412,6 +517,14 @@ public:
 	{
 		if (_left_arrow_element) _left_arrow_element->dispatch_event(event);
 		if (_right_arrow_element) _right_arrow_element->dispatch_event(event);
+
+		// The stack holds the panel, its description and the media with whatever else stands above them.
+		if (_is_stack)
+		{
+			for (const auto& e : _stack) e->dispatch_event(event);
+			return;
+		}
+
 		if (_controls_element) _controls_element->dispatch_event(event);
 		if (_description_element) _description_element->dispatch_event(event);
 		if (_media_element) _media_element->dispatch_event(event);

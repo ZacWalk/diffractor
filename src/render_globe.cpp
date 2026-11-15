@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Software rasteriser for the sidebar globe. Resamples an equirectangular world map
 // onto an orthographic sphere for a given view, into a surface the caller uploads as a texture.
@@ -86,7 +85,7 @@ namespace
 	}
 }
 
-void globe_renderer::set_source(core::const_surface_ptr source)
+void globe_renderer::set_source(const core::const_surface_ptr& source)
 {
 	_levels.clear();
 
@@ -187,16 +186,15 @@ bool globe_renderer::render(core::surface& destination, const globe_projection& 
 			while (end_longitude - begin.longitude < -M_PI) end_longitude += 2.0 * M_PI;
 			end.u = (end_longitude / (2.0 * M_PI) + 0.5) * source_cx;
 
-			const auto exact = span == 0 ||
-				std::abs(lat_begin) > globe_pole_guard_rad || std::abs(lat_end) > globe_pole_guard_rad;
+			const auto exact = span == 0 || std::abs(lat_begin) > globe_pole_guard_rad ||
+			                   std::abs(lat_end) > globe_pole_guard_rad;
 
 			// How much of the map one screen pixel covers here chooses the reduced copy to read.
 			auto level_index = 0;
 
 			if (span > 0)
 			{
-				const auto texels_per_pixel = std::max(
-					std::abs(end.u - begin.u), std::abs(end.v - begin.v)) / span;
+				const auto texels_per_pixel = std::max(std::abs(end.u - begin.u), std::abs(end.v - begin.v)) / span;
 				if (texels_per_pixel > 1.0)
 				{
 					level_index = std::clamp(static_cast<int>(std::log2(texels_per_pixel)), 0, max_level);
@@ -204,10 +202,8 @@ bool globe_renderer::render(core::surface& destination, const globe_projection& 
 			}
 
 			const auto& level = *_levels[level_index];
-			const source_level texels{
-				level.pixels(), static_cast<size_t>(level.stride()),
-				level.dimensions().cx, level.dimensions().cy
-			};
+			const source_level texels{level.pixels(), static_cast<size_t>(level.stride()), level.dimensions().cx,
+			                          level.dimensions().cy};
 			const auto level_scale = static_cast<double>(texels.cx) / source_cx;
 			const auto level_scale_y = static_cast<double>(texels.cy) / source_cy;
 
@@ -251,8 +247,7 @@ bool globe_renderer::render(core::surface& destination, const globe_projection& 
 					shade_q8 = shade_q8 * alpha / 255u;
 				}
 
-				line[px] = modulate(sample_bilinear(texels, at.u * level_scale, at.v * level_scale_y),
-				                    shade_q8, alpha);
+				line[px] = modulate(sample_bilinear(texels, at.u * level_scale, at.v * level_scale_y), shade_q8, alpha);
 			}
 
 			x = x_end + 1;

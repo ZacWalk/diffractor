@@ -1,14 +1,14 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Camera raw files, through libfiles, which opens them with LibRaw: a load - the largest preview,
-// or the raw data developed - into a surface judged against the decode budget first, and a scan - the
-// metadata LibRaw parses, the listing the info pane shows, and a thumbnail - mapped onto Diffractor's.
+// or the raw data developed, at sixteen bits a channel for an edit - into a surface judged against the
+// decode budget first, and a scan - the metadata LibRaw parses, the listing the info pane shows, and a
+// thumbnail - mapped onto Diffractor's.
 
 #include "pch.h"
 #include "files.h"
@@ -24,28 +24,38 @@ namespace
 	}
 
 	// A surface as the memory libfiles writes a raw file's bitmap preview or thumbnail, or its developed
-	// image, into. The raw data's declared size is judged against the decode budget before LibRaw develops
-	// anything.
+	// image, into: a byte a channel, or for a wide load sixteen. The raw data's declared size is judged
+	// against the decode budget, at the bytes a pixel the load takes, before LibRaw develops anything.
 	class raw_surface_sink final : public libfiles::image_sink
 	{
 		const core::file_path _path;
+		const bool _wide;
 
 	public:
 		core::surface_ptr surface;
 		// The size refused for the budget, read from the header.
 		sizei over_budget;
+		// Refused at sixteen bits a channel, where a byte a channel may yet fit.
+		bool over_budget_wide = false;
 
-		explicit raw_surface_sink(const core::file_path path) : _path(path)
-		{
-		}
+		explicit raw_surface_sink(const core::file_path path, const bool wide = false) : _path(path), _wide(wide) {}
 
 		bool accept(const libfiles::frame_info& declared) override
 		{
 			const sizei dimensions{static_cast<int>(declared.source_width), static_cast<int>(declared.source_height)};
-			if (dimensions.is_empty() || !files::exceeds_decode_budget(dimensions)) return true;
+			if (dimensions.is_empty()) return true;
 
-			core::log(__FUNCTION__, std::format("{} is {} x {}, past the decode budget of {}", _path.name(), dimensions.cx,
-			                                  dimensions.cy, platform::format_size(core::file_size(render::max_decode_bytes))));
+			if (_wide && files::exceeds_decode_budget(dimensions, core::bytes_per_pixel(core::texture_format::RGBX16)))
+			{
+				over_budget_wide = true;
+				return false;
+			}
+
+			if (!files::exceeds_decode_budget(dimensions)) return true;
+
+			core::log(__FUNCTION__,
+			          std::format("{} is {} x {}, past the decode budget of {}", _path.name(), dimensions.cx,
+			                      dimensions.cy, platform::format_size(core::file_size(render::max_decode_bytes))));
 			over_budget = dimensions;
 			return false;
 		}
@@ -54,7 +64,9 @@ namespace
 		{
 			auto s = std::make_shared<core::surface>();
 			auto* const pixels = s->alloc(static_cast<int>(frame.width), static_cast<int>(frame.height),
-			                              core::texture_format::RGB, static_cast<core::orientation>(frame.orientation));
+			                              frame.format == libfiles::pixel_format::rgbx16 ? core::texture_format::RGBX16
+			                                                                             : core::texture_format::RGB,
+			                              static_cast<core::orientation>(frame.orientation));
 			if (!pixels) return {};
 			surface = std::move(s);
 			return {pixels, surface->stride()};
@@ -62,12 +74,12 @@ namespace
 	};
 }
 
-file_load_result load_raw(const core::file_path path, const bool can_load_preview)
+file_load_result load_raw(const core::file_path path, const bool can_load_preview, const bool wide)
 {
 	file_load_result result;
 	const std::filesystem::path native(libraw_path(path));
-	raw_surface_sink sink(path);
-	auto loaded = libfiles::load_raw(native, sink, can_load_preview);
+	raw_surface_sink sink(path, wide);
+	auto loaded = libfiles::load_raw(native, sink, can_load_preview, wide);
 
 	if (!loaded.jpeg.empty())
 	{
@@ -84,8 +96,10 @@ file_load_result load_raw(const core::file_path path, const bool can_load_previe
 
 		// An image of some size that Diffractor makes nothing of: the raw data is developed, as it is for
 		// any preview that does not load.
-		loaded = libfiles::load_raw(native, sink, false);
+		loaded = libfiles::load_raw(native, sink, false, wide);
 	}
+
+	if (!loaded.success && sink.over_budget_wide) return load_raw(path, can_load_preview, false);
 
 	if (loaded.success)
 	{
@@ -112,8 +126,7 @@ file_scan_result files::scan_raw(const core::file_path path, const std::string_v
 {
 	file_scan_result result;
 	raw_surface_sink sink(path);
-	auto scanned = libfiles::scan_raw(std::filesystem::path(libraw_path(path)), intent,
-	                                  load_thumb ? &sink : nullptr);
+	auto scanned = libfiles::scan_raw(std::filesystem::path(libraw_path(path)), intent, load_thumb ? &sink : nullptr);
 
 	if (scanned.success)
 	{
@@ -156,7 +169,8 @@ file_scan_result files::scan_raw(const core::file_path path, const std::string_v
 
 	if (!scanned.thumbnail_jpeg.empty())
 	{
-		result.thumbnail_surface = image_to_surface(core::cspan{scanned.thumbnail_jpeg.data(), scanned.thumbnail_jpeg.size()},
+		result.thumbnail_surface = image_to_surface(core::cspan{scanned.thumbnail_jpeg.data(),
+		                                                        scanned.thumbnail_jpeg.size()},
 		                                            max, false, decode_intent::thumbnail);
 
 		if (result.thumbnail_surface)
@@ -164,9 +178,11 @@ file_scan_result files::scan_raw(const core::file_path path, const std::string_v
 			// Decoded smaller than the preview's own size, as it always was, so the rule is judged on the
 			// shape decoded.
 			const auto decoded = result.thumbnail_surface->dimensions();
-			result.thumbnail_surface->orientation(static_cast<core::orientation>(libfiles::raw_preview_orientation(
-				decoded.cx, decoded.cy, static_cast<uint16_t>(result.thumbnail_surface->orientation()),
-				scanned.image_width, scanned.image_height, scanned.image_orientation)));
+			result.thumbnail_surface->orientation(static_cast<core::orientation>(
+				libfiles::raw_preview_orientation(decoded.cx, decoded.cy,
+			                                      static_cast<uint16_t>(result.thumbnail_surface->orientation()),
+			                                      scanned.image_width, scanned.image_height,
+			                                      scanned.image_orientation)));
 		}
 	}
 	else if (scanned.thumbnail.success)

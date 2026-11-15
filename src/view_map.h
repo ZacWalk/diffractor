@@ -1,10 +1,9 @@
 // This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Map view base class. Delegates tile rendering, pan, zoom, and
 // crosshair logic to a map_engine. Subclasses add domain logic.
@@ -49,16 +48,12 @@ protected:
 	friend class map_pan_controller;
 
 public:
-	map_view(view_state& state, view_host_ptr host)
-		: _state(state), _host(std::move(host)),
-		  _engine(state._async, [this] { _host->frame()->invalidate(); })
+	map_view(view_state& state, view_host_ptr host) :
+		_state(state), _host(std::move(host)), _engine(state._async, [this] { _host->frame()->invalidate(); })
 	{
 	}
 
-	void set_map_location(const gps_coordinate loc)
-	{
-		_engine.set_location(loc, recti(_extent));
-	}
+	void set_map_location(const gps_coordinate loc) { _engine.set_location(loc, recti(_extent)); }
 
 	// --- view_base overrides ---
 
@@ -69,20 +64,11 @@ public:
 		_engine.fetch_tiles_for_bounds(recti(_extent));
 	}
 
-	void deactivate() override
-	{
-		_engine.clear_caches();
-	}
+	void deactivate() override { _engine.clear_caches(); }
 
-	void layout(render::measure_context& mc, const sizei extent) override
-	{
-		_extent = extent;
-	}
+	void layout(render::measure_context& /*mc*/, const sizei extent) override { _extent = extent; }
 
-	void render(render::draw_context& dc, view_controller_ptr controller) override
-	{
-		_engine.render(dc, _extent);
-	}
+	void render(render::draw_context& dc, view_controller_ptr /*controller*/) override { _engine.render(dc, _extent); }
 
 	void broadcast_event(const view_element_event& event) const override
 	{
@@ -93,17 +79,14 @@ public:
 	}
 
 	// The map's primary axis and its scale are the same thing, so the modifier changes nothing here.
-	bool mouse_wheel(const pointi loc, const platform::wheel_notch notch) override
+	bool mouse_wheel(const pointi /*loc*/, const platform::wheel_notch notch) override
 	{
 		if (!notch.is_vertical()) return false;
 		if (_engine.zoom(notch.delta, recti(_extent))) on_map_zoomed(_engine.zoom_level());
 		return true;
 	}
 
-	void pan_start(const pointi start_loc) override
-	{
-		_engine.pan_start();
-	}
+	void pan_start(const pointi /*start_loc*/) override { _engine.pan_start(); }
 
 	void pan(const pointi start_loc, const pointi current_loc) override
 	{
@@ -116,40 +99,34 @@ public:
 		on_map_panned(gps);
 	}
 
-	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc,
-	                                             hit_test_context& ctx) override
+	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi /*loc*/,
+	                                             hit_test_context& /*ctx*/) override
 	{
 		return std::make_shared<map_pan_controller>(*this, host, recti(_extent));
 	}
 
 	// Called after pan completes with the new center GPS. Override to handle reverse geocoding etc.
-	virtual void on_map_panned(const gps_coordinate& new_center)
-	{
-	}
+	virtual void on_map_panned(const gps_coordinate& /*new_center*/) {}
 
-	virtual void on_map_zoomed(int zoom)
-	{
-	}
+	virtual void on_map_zoomed(int /*zoom*/) {}
 
 	// Called when the cursor hovers an aggregated marker cluster. `marker_index` is
 	// the representative marker index (as passed to map_engine::set_markers), `count`
 	// the number of aggregated items, and `anchor` the cluster's screen position.
 	// Override to populate the hover bubble (e.g. with a thumbnail). Default: no popup.
-	virtual void on_marker_hover(view_hover_element& hover, int marker_index, int count, pointi anchor)
+	virtual void on_marker_hover(view_hover_element& /*hover*/, int /*marker_index*/, int /*count*/, pointi /*anchor*/)
 	{
 	}
 
 	// Called when a click (not a drag) lands on a marker cluster, with the cluster's coordinate
 	// and aggregated count. Override where the centre is the answer. Default: no action.
-	virtual void on_marker_clicked(const gps_coordinate& coordinate, int count)
-	{
-	}
+	virtual void on_marker_clicked(const gps_coordinate& /*coordinate*/, int /*count*/) {}
 };
 
 // --- map_pan_controller inline implementations (after map_view is complete) ---
 
-inline map_pan_controller::map_pan_controller(map_view& view, const view_host_ptr& host, const recti bounds)
-	: view_controller(host, bounds), _view(view)
+inline map_pan_controller::map_pan_controller(map_view& view, const view_host_ptr& host, const recti bounds) :
+	view_controller(host, bounds), _view(view)
 {
 }
 
@@ -205,7 +182,7 @@ inline void map_pan_controller::popup_from_location(view_hover_element& hover)
 	}
 }
 
-inline void map_pan_controller::on_mouse_left_button_up(const pointi loc, const platform::key_state keys)
+inline void map_pan_controller::on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/)
 {
 	if (_tracking)
 	{

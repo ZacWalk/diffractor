@@ -1,10 +1,9 @@
 ﻿// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
-// 
-// This program is free software; you can redistribute it and / or modify it
-// under the terms of the LGPL License either version 2.1 or later.
-// License details are available at https://www.gnu.org/licenses/lgpl-2.1.html
-// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Gazetteer index and reverse geocoding. Declares location_cache, which loads the
 // place database into a KD-tree plus name and ngram indexes, reads full records back from the
@@ -76,35 +75,22 @@ public:
 	country_t(country_t&&) noexcept = default;
 	country_t& operator=(country_t&&) noexcept = default;
 
-	country_t(const std::string_view code, const core::cached name,
-	          std::vector<core::cached> alt_names, const uint32_t langmask = 0,
-	          std::vector<core::cached> localized = {}) noexcept
-		: _name(name), _alt_names(std::move(alt_names)), _localized(std::move(localized)), _langmask(langmask)
+	country_t(const std::string_view code, const core::cached name, std::vector<core::cached> alt_names,
+	          const uint32_t langmask = 0, std::vector<core::cached> localized = {}) noexcept :
+		_name(name), _alt_names(std::move(alt_names)), _localized(std::move(localized)), _langmask(langmask)
 	{
 		_code[0] = code[0];
 		_code[1] = code[1];
 		_code[2] = 0;
 	}
 
-	void state(const std::string_view code, const core::cached name)
-	{
-		_states[to_code2(code)] = name;
-	}
+	void state(const std::string_view code, const core::cached name) { _states[to_code2(code)] = name; }
 
-	std::string_view code() const
-	{
-		return {_code, 2};
-	}
+	std::string_view code() const { return {_code, 2}; }
 
-	uint32_t code2() const
-	{
-		return to_code2(_code);
-	}
+	uint32_t code2() const { return to_code2(_code); }
 
-	const core::cached name() const
-	{
-		return _name;
-	}
+	const core::cached name() const { return _name; }
 
 	// Issue #119: country name in the given display-language bit, or the default name when the
 	// language has no translation (or none is selected, i.e. lang_bit < 0).
@@ -116,15 +102,9 @@ public:
 		return core::is_empty(localized) ? _name : localized;
 	}
 
-	const std::vector<core::cached>& alt_names() const
-	{
-		return _alt_names;
-	}
+	const std::vector<core::cached>& alt_names() const { return _alt_names; }
 
-	const std::vector<core::cached>& localized_names() const
-	{
-		return _localized;
-	}
+	const std::vector<core::cached>& localized_names() const { return _localized; }
 
 	core::cached state(const uint32_t code) const
 	{
@@ -133,25 +113,13 @@ public:
 		return {};
 	}
 
-	const gps_coordinate& centroid() const
-	{
-		return _centroid;
-	}
+	const gps_coordinate& centroid() const { return _centroid; }
 
-	bool operator<(const country_t& other) const
-	{
-		return icmp(_name, other._name) < 0;
-	}
+	bool operator<(const country_t& other) const { return icmp(_name, other._name) < 0; }
 
-	friend bool operator==(const country_t& lhs, const country_t& rhs)
-	{
-		return icmp(lhs._name, rhs._name) == 0;
-	}
+	friend bool operator==(const country_t& lhs, const country_t& rhs) { return icmp(lhs._name, rhs._name) == 0; }
 
-	friend bool operator!=(const country_t& lhs, const country_t& rhs)
-	{
-		return !(lhs == rhs);
-	}
+	friend bool operator!=(const country_t& lhs, const country_t& rhs) { return !(lhs == rhs); }
 
 	friend class location_cache;
 };
@@ -192,10 +160,7 @@ class location_cache final : public core::no_copy
 		uint32_t id;
 		uint32_t offset;
 
-		bool operator<(const location_id_and_offset& other) const
-		{
-			return id < other.id;
-		}
+		bool operator<(const location_id_and_offset& other) const { return id < other.id; }
 	};
 
 	struct ngram_t
@@ -222,7 +187,7 @@ class location_cache final : public core::no_copy
 
 			while (p_out < p_out_limit && p_in < p_in_limit)
 			{
-				*p_out++ = core::normalize_for_compare(core::pop_utf8_char(p_in, p_in_limit));
+				*p_out++ = static_cast<uint8_t>(core::normalize_for_compare(core::pop_utf8_char(p_in, p_in_limit)));
 			}
 
 			while (p_out < p_out_limit)
@@ -233,16 +198,11 @@ class location_cache final : public core::no_copy
 
 		bool is_possible_match(const ngram_t& other) const
 		{
-			return other.text[0] == text[0] &&
-				(other.text[1] == 0 || other.text[1] == text[1]) &&
-				(other.text[2] == 0 || other.text[2] == text[2]) &&
-				(other.text[3] == 0 || other.text[3] == text[3]);
+			return other.text[0] == text[0] && (other.text[1] == 0 || other.text[1] == text[1]) &&
+			       (other.text[2] == 0 || other.text[2] == text[2]) && (other.text[3] == 0 || other.text[3] == text[3]);
 		}
 
-		int cmp(const ngram_t& other) const noexcept
-		{
-			return memcmp(text, other.text, 4);
-		}
+		int cmp(const ngram_t& other) const noexcept { return memcmp(text, other.text, 4); }
 	};
 
 	struct location_ngram_and_offset
@@ -257,18 +217,11 @@ class location_cache final : public core::no_copy
 		location_ngram_and_offset(location_ngram_and_offset&&) noexcept = default;
 		location_ngram_and_offset& operator=(location_ngram_and_offset&&) noexcept = default;
 
-		location_ngram_and_offset(const std::string_view r, const uint32_t off) noexcept : ngram(r), offset(off)
-		{
-		}
+		location_ngram_and_offset(const std::string_view r, const uint32_t off) noexcept : ngram(r), offset(off) {}
 
-		location_ngram_and_offset(const ngram_t& n, const uint32_t off) noexcept : ngram(n), offset(off)
-		{
-		}
+		location_ngram_and_offset(const ngram_t& n, const uint32_t off) noexcept : ngram(n), offset(off) {}
 
-		bool operator<(const location_ngram_and_offset& other) const
-		{
-			return ngram.cmp(other.ngram) < 0;
-		}
+		bool operator<(const location_ngram_and_offset& other) const { return ngram.cmp(other.ngram) < 0; }
 	};
 
 	_Guarded_by_(_rw) kd_points _coords;
@@ -339,15 +292,9 @@ public:
 
 	// Issue #119: bit index of the active display language (or -1 for the default names).
 	// Consumers that cache resolved place names watch this to drop stale-language entries.
-	int display_language_bit() const
-	{
-		return _display_lang_bit.load(std::memory_order_relaxed);
-	}
+	int display_language_bit() const { return _display_lang_bit.load(std::memory_order_relaxed); }
 
-	bool is_index_loaded() const
-	{
-		return _index_loaded.load(std::memory_order_acquire);
-	}
+	bool is_index_loaded() const { return _index_loaded.load(std::memory_order_acquire); }
 
 	country_loc find_country(double x, double y) const;
 	location_t find_closest(double x, double y) const;
@@ -357,8 +304,7 @@ public:
 	// locations.md 3.1: resolve a place query to its canonical record. Exact name match,
 	// optionally qualified by region or country, largest population wins.
 	location_t find_by_name(std::string_view query) const;
-	location_t find_largest(double min_latitude, double min_longitude,
-	                        double max_latitude, double max_longitude) const;
+	location_t find_largest(double min_latitude, double min_longitude, double max_latitude, double max_longitude) const;
 
 	// A map cluster needs a recognizable landmark rather than the nearest small feature.
 	// Returns the highest-population place whose normal `At` radius contains the coordinate.
@@ -380,8 +326,7 @@ public:
 		return find_attributed(coord.latitude(), coord.longitude(), country);
 	}
 
-	location_matches auto_complete(std::string_view query, uint32_t max_results,
-	                               gps_coordinate default_location) const;
+	location_matches auto_complete(std::string_view query, uint32_t max_results, gps_coordinate default_location) const;
 
 	const country_t& find_country(const uint32_t code) const
 	{

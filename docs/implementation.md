@@ -6,27 +6,34 @@ metadata, rendering, locations, zoom, and selection controls. Source owns exact 
 
 ## System Shape
 
-Diffractor is a C++20 media organizer with a custom retained UI. SQLite stores a rebuildable index and
-thumbnail cache. Media files and sidecars remain authoritative. libfiles reads still images and
-audio/video containers; FFmpeg decodes audio and video; format libraries decode still images;
-libdesktop's platform layer supplies operating-system integration, while Diffractor's `platform*`
-files retain application-specific hardware decoding and Linux hooks.
+Diffractor is a C++20 media organizer on libdesktop's platform, render and UI libraries. SQLite
+stores a rebuildable index and thumbnail cache; media files and sidecars remain authoritative.
+libfiles scans every file, reads and writes its metadata, and decodes and encodes most still formats;
+FFmpeg decodes audio and video, and the stills libfiles is not built to decode here, GIF and TIFF
+among them; lib64 emulates the Commodore 64, which plays SID tunes and runs disks, tapes, cartridges
+and programs. Diffractor's `platform*` files hold only what is the application's own: its side of
+hardware decoding, its resource identifiers and its Linux hooks.
 
 ## Source Organization
 
 | Prefix | Responsibility |
 | --- | --- |
-| `app*` | Process coordination, commands, settings, workers, text, sidebar, toolbar |
-| `model*` | State, items, index, search, database, properties, locations, movie model |
-| `view*`, `ui*` | Views, controls, layout, input, and backend-neutral drawing |
-| `files*`, `metadata*` | Format dispatch, decode/encode, scanning, EXIF/IPTC/XMP/ICC |
-| `av*`, `render*` | Audio/video sessions, surfaces, color, transforms, software rendering |
-| `platform*` | Application-specific Windows/Linux glue: FFmpeg hardware decoding, resources and Linux hooks |
+| `app*` | Process coordination: the frame, commands, settings, workers, text and translations, sidebar, toolbars and bars, dialogs, and the headless command-line tools |
+| `model*` | State, items, index, search, database, properties and dates, locations and visits, the Movie document, face detection |
+| `view*`, `ui*` | Views and task views, controls, layout, input, and drawing, on libdesktop's element tree |
+| `files*`, `metadata*` | Diffractor's side of libfiles: format detection, scanning, decode and encode, EXIF/IPTC/XMP/ICC |
+| `media_edit.cpp` | A photo's edits applied to its pixels |
+| `av*` | Audio and video sessions, playback, subtitles, SID tunes, the running Commodore 64, and the visualizer |
+| `render*` | Software rasterisers for the sidebar's globe and charts and for panoramas; the draw backends are libdesktop's |
+| `crypto*` | Hashes and checksums, including the perceptual image hash |
+| `platform*` | The application's own Windows and Linux glue: FFmpeg hardware decoding, resource identifiers and Linux hooks |
 | `util*` | Shared value types and bounded helpers |
-| `test*` | Embedded unit and regression tests |
+| `test*` | Embedded unit and regression tests, arranged by [testing](testing.md) |
+| `pch.h` | The precompiled header: libdesktop's UI umbrella and the headers every file uses |
 
-Application-specific system APIs and Windows types stay in `platform*`; generic OS services come from libdesktop. SQLite calls stay in database owners. Keep each
-source file's `// Purpose:` comment accurate when modifying it.
+The boundaries the lint enforces - platform code in `platform*` files and libdesktop, `sqlite3_*` in
+the database owners, a `// Purpose:` comment in every file - are AGENTS.md's
+[anti-patterns](../AGENTS.md#strict-code-anti-patterns).
 
 ## State And Views
 
@@ -39,8 +46,11 @@ The window holds three surfaces, each a frame of its own, and draws nothing itse
 background round them: the title bar and the status bar (`bar_frame`, drawn on the CPU) and between them
 the view frame (`view_frame`, drawn on the GPU where it can). The view frame holds the view, the task
 view's panel beside it - a region of the view frame, whose controls are elements of its tree, drawn,
-hit and focused with it - and the selector strip along its foot, a frame of its own. Full screen and a
-zoomed picture give the view frame the whole window.
+hit and focused with it - and the selector strip along its foot, composed into the same surface.
+Dialog map widgets likewise share their dialog's surface. Neither creates a native child window or
+rendering device; their embedded frames retain local input, focus and coordinates. Menus, tooltips
+and autocomplete lists remain separate popup windows. Full screen and a zoomed picture give the view
+frame the whole window.
 
 Each view declares what the frame's title bar and status bar carry for it (`view_base::bars`): command
 identifiers, and the few bar controls that are not buttons, for the title bar and for each end of the
@@ -54,6 +64,16 @@ Views, controls, hosts, controllers, and `item_element` are UI-owned. A host may
 window; `view_host::frame()` therefore returns `ui::no_frame()` when unattached. Visibility gates
 painting, not attachment or model updates.
 
+The selection panel's decoded file head owns its text selection and its formatted document control,
+so rebuilding the surrounding elements does not replace a captured control or reset table widths.
+`ui_document` places text, dumps and the shared Markdown and CSV views in libdesktop's flex document
+panel. Element tables belong to libdesktop too; task lists retain application sorting, progress and
+row identities while using the same column sizing and resize gesture as document tables. A table of
+the selection panel is made again with the panel, so what the user made of it - sizes and sort - is
+kept on the display by the table's name (`keep_table_choices`). A detail group's headings are drawn by
+`item_group` itself, over its own rows; their sort and sizes live in `view_state` by group key, and
+`item_group::sort` orders a group by them while its headings show.
+
 ## Hit Testing
 
 One pointer position produces one controller through a single ordered walk. Precedence is the order
@@ -61,7 +81,9 @@ of the walk; nothing restates it afterwards.
 
 A controller's `bounds()` is its own region: what it paints over, and what a release must land in
 for the gesture to count. It is never narrowed to describe what covers it — a controller clipped
-that way drops clicks and hover highlights on the part that was clipped away.
+that way drops clicks and hover highlights on the part that was clipped away. A release reaches the
+controller under the pointer whether or not that controller saw the press - the press that closed a
+menu went to the menu - so a controller acts on a release only after its own press.
 
 How far that answer travels is `hit_test_context`, threaded through the walk and owned by
 `view_host`. A region tested at higher precedence and passed over is cut out of it, so the pointer
@@ -69,6 +91,18 @@ reaching that region forces a fresh test. Recording is a side effect of testing,
 a new tool from being hit tested but forgotten. The host caches `bounds() ∩ stability()`; an empty
 result means "re-test on every move", which is what a controller standing in for whatever is under
 the pointer wants.
+
+Tooltip anchors and their hover regions start in the owning frame's client coordinates. The popup
+anchor is converted to screen coordinates through that frame exactly once; the hover region stays
+client-relative. Native child-window bounds are parent-relative, not a desktop origin. Menus take the
+same path both ways: a view host opens one at its bounds converted through its frame's
+`client_to_screen`, and a right-click, which arrives as a screen point, reaches the view by the view
+surface's screen origin.
+
+Bubble presentation observes the pointer after input and queued UI work, using monotonic
+milliseconds. A half-second dwell allows four logical pixels of jitter around its starting point,
+not around the previous sample, so slow cumulative movement also restarts it. Regular idle ticks
+complete the dwell without another mouse event; content refreshes keep the same target's timer.
 
 ## View Invalidation
 
@@ -110,8 +144,9 @@ thread in Debug. A new connection requires its own documented execution owner.
 ### Synchronized Types
 
 Mutable objects have one owning context unless documented otherwise. Approved synchronized objects
-are execution primitives, app command coordination, index records/caches, media sessions, and the D3D
-shared-texture handoff. Atomic reference counting synchronizes lifetime only.
+are execution primitives, app command coordination, index records/caches, media sessions, and the
+lock a hardware-decoded picture lends the renderer. Atomic reference counting synchronizes lifetime
+only.
 
 `item_element` remains entirely UI-owned. `index_file_item` is a synchronized index record whose
 atomic metadata pointer publishes complete immutable snapshots; published payloads are never mutated.
@@ -125,10 +160,12 @@ counter, the search revision, rises with every in-place update except those to w
 item's bytes - duplicates, checksums and picture hashes - so the search index can tell a folder whose
 captured contents changed from one that only gained a derived value it reads live; one counter cannot
 serve both, because replacement must still reject a node built before a derived update.
+
 Indexing progress is an immutable snapshot owned by the index worker and atomically published for
 UI/sidebar readers; paired total/remaining counters must be read together, and handing every paint
 call through the index queue or posting a UI callback for each scanned file would either block Paint
 on Source work or create unbounded invalidation traffic.
+
 `view_state` owns the visit timeline on the UI thread, while `_visits_generation` is atomic only so
 the location worker can observe superseded visit derivations through `core::cancel_token`; the worker
 still publishes a complete detached `visit_timeline` back to the UI thread before the UI-owned value
@@ -154,18 +191,42 @@ handler that waited on a lock held by the faulting thread would hang the report 
 Adding synchronization requires naming every owning context, the protected invariant, and why moved
 results or immutable publication are insufficient.
 
+Native music renders are shared by the player's read thread and the UI. A render lock owns the SID
+emulator or tracker decoder and PCM cache; a separate, short data lock publishes complete chip or
+pattern snapshots and channel-mix requests. The UI never calls a live decoder: immutable publication
+alone cannot drive a decoder that must continue from its preceding audio block. A tracker snapshot
+carries the patterns either side of the one playing, formatted once on the render thread, and how far
+through its row its moment is, measured from the snapshots around it; libopenmpt places a module only at
+the start of a row, so a seek plays on from there unheard to the sample it asked for.
+
+Movie shares one SID render per tune of each file among the readers of an audio clip - its frames, drawn on the
+render queue or the render's worker, and the decoders that read its sound - through a map of weak
+references under a lock of its own. The render's locks already serialise its readers, and a tune only
+plays forward: a reader that had its own render would emulate the whole tune again from its start.
+The frames are drawn into a `display_state_t` and a monitor element made for that one clip, with a
+software draw context whose text engine the drawing worker made; no view holds any of them, and the one
+worker drawing a frame owns them all, so the UI thread's ownership of displays and elements does not
+reach them.
+
+A running Commodore 64 (`c64_session`) is shared by the emulator queue's worker and the UI thread. The
+worker alone touches the emulator. A short frame lock publishes each finished picture whole - the worker
+writes two surfaces in turn and replaces, rather than reuses, one the UI still holds - and a short input
+lock hands key changes the other way; the joystick, its port, the volume, RESTORE, the status and the stop
+request are atomics. Immutable publication alone cannot carry input into a machine that keeps running
+between the pictures it publishes.
+
 ## Index, Search, And Database
 
 Startup loads cached records, validates collection roots, scans stale files, queues database writes,
 and rebuilds summaries, duplicate predictions, presence, and search candidates. Cached results may
 publish before extraction completes.
 
-The existing `item_properties.properties` blob stores versioned binary property records. Private
-cache IDs are separate from the public media-property registry, so opaque values such as the face
-cache never become EXIF/XMP fields or UI metadata. Metadata-only writes preserve unknown records
-from the same item's previous blob; binary-property edits preserve all other records byte for byte.
-No extra table, column, or schema version is needed. The format and private IDs live in
-[model_db_pack.h](../src/model_db_pack.h) and [model_property.h](../src/model_property.h).
+The `item_properties.properties` blob stores versioned binary property records. Private cache IDs
+are separate from the public media-property registry, so opaque values such as the face cache never
+become EXIF/XMP fields or UI metadata. Metadata-only writes preserve unknown records from the same
+item's previous blob; binary-property edits preserve all other records byte for byte. The format and
+private IDs live in [model_db_pack.h](../src/model_db_pack.h) and
+[model_property.h](../src/model_property.h).
 
 Search parses into exact matchers and conservative candidate prefilters. Negation and OR never create
 a prefilter that could omit an exact result. Query generations prevent stale result publication.
@@ -225,8 +286,8 @@ Sidebar rows and address-box predictions are counted through `search_counter`, w
 collection once for a whole pass. Its evaluator keeps each term's items and the items through each
 presence requirement for the pass, so the searches of a pass share them, and a count reads only the
 folders the snapshot cannot answer for. A sidebar pass counts from the snapshot only while few items
-have changed since it was read, since every row would read each of them; past that it counts as it did
-without one. Prediction counts are budgeted per keystroke and stopped by the next one. When the
+have changed since it was read, since every row would read each of them; past that it counts by
+scanning. Prediction counts are budgeted per keystroke and stopped by the next one. When the
 snapshot cannot answer cheaply - there is none yet, too many items changed, the search walks a folder
 tree, or it is a related search - the count is left out rather than scanned, and a folder search with a
 term is never counted, since that would read the folder's unread files on every keystroke.
@@ -243,18 +304,40 @@ completion path; publication and texture staging use separate generations.
 
 ## Files, Media, And Rendering
 
-[File I/O](file-io.md) owns progressive image display and writes. [Metadata](metadata.md) owns tag
-mapping. [Rendering](rendering.md) owns draw backends and device lifetime. FFmpeg sessions decode off
-the UI thread and publish generation-checked frames; graphics upload remains UI-owned.
+[File I/O](file-io.md) owns progressive image display and writes, [Metadata](metadata.md) tag
+mapping, and [Rendering](rendering.md) image budgets, video presentation and graphics fallbacks; the
+draw backends and device lifetime are libdesktop's. FFmpeg sessions decode off the UI thread and
+publish generation-checked frames; graphics upload remains UI-owned.
 
-A SID tune reaches the player as a WAV file that is never written: [av_sid.cpp](../src/av_sid.cpp)
-runs the tune in lib8bit's Commodore 64 as the decoder's read thread asks for samples, so the
+A native tune reaches the player through [av_pcm.cpp](../src/av_pcm.cpp), a shared WAV stream that is
+never written. [av_sid.cpp](../src/av_sid.cpp)
+runs the tune in lib64's Commodore 64 as the decoder's read thread asks for samples, so the
 session's clock, seeking, pausing and end are the ordinary ones. The render keeps each PAL frame's SID
 registers beside its samples for the SID monitor ([ui_sid.cpp](../src/ui_sid.cpp)) to read on the UI
 thread. Reads are kept short and the WAV demuxer is asked for small packets, so a muted voice is heard
-to stop within half a second. The session's own info describes the WAV, so the display swaps in the
-tune's (`sid_tune_render::describe`). For other audio the visualizer marks the presented position; for
-a SID tune, which has no visualizer, `update_for_present` marks it (`av_session::mark_presented`).
+to stop within half a second. The shared stream describes the original tune at the decoder boundary,
+so sessions, metadata and monitors never expose the generated WAV's codec or bit rate. For other audio
+the visualizer marks the presented position; native monitors use `update_for_present`
+(`av_session::mark_presented`).
+
+A SID tune's length is not in its file, so the stream is declared with room for any tune and the render
+holds where the tune ends within it: three minutes until a `work` worker's `find_sid_tune_end` says
+otherwise. That runs the tune in a second machine with its sound off - well over a hundred times faster
+than it plays - until nothing sounds for three seconds, or until a window of frames, each reduced to its
+voices' gates, waveforms and nearest notes, repeats and carries on repeating for a whole period and
+fifteen seconds more; results are remembered per file and tune. Samples past the end are silence, so
+the session never learns of it: `display_state_t::media_end` gives the transport the render's end, and
+the tick ends the item there.
+
+[av_tracker.cpp](../src/av_tracker.cpp) renders MOD, XM, S3M, IT and the other supported tracker
+formats directly in libopenmpt, rather than its FFmpeg demuxer. All decoder entry points use the same
+native bridge, including metadata and audio extraction. Stereo PCM and monitor snapshots retain only
+four seconds; earlier seeks use libopenmpt's native seeking instead of retaining a whole song in
+memory. Tracker output stays at 48 kHz floating point, preserving mixing headroom until the player's
+gain is applied; title, artist, encoder, comment and date tags still reach the index. The comment is
+the module's song message alone: where a module has none, libopenmpt stands its sample and instrument
+names in for one, and those are the bank panel's to show. Pattern data is
+published immutably with the audio position that produced it.
 
 The monitor is drawn as the audio visualizer is, so a playing tune does not rebuild the view's scene for
 every frame. Its waveforms, meters, lamps and the register grid's highlight are flat rectangles in a
@@ -264,6 +347,16 @@ scene again. The values, notes and register contents beside them are text, which
 scene redraws, so they are redrawn ten times a second while they change - and not at all once the monitor
 has not been drawn for two seconds, as when the view showing it has gone.
 
+[av_c64.cpp](../src/av_c64.cpp) runs what a Commodore 64 listing's row names - a disk's or a tape's
+program, a cartridge, a program file - in lib64's Commodore 64 on the emulator queue's worker. lib64's
+autostart types the load and the `RUN` as a user would; the worker runs the boot and the load unpaced and
+silent, then a PAL frame at a time, paced by writing its samples to the sound device, or by the clock
+without one. `update_for_present` uploads each newer picture to the texture
+[ui_c64.cpp](../src/ui_c64.cpp) draws, so a running machine presents its scene again rather than
+rebuilding it; starting, failing and the first picture rebuild it. Keys reach the machine through
+`view_state::c64_key_down` ahead of the application's own, and are let go when polling finds them up,
+since key-ups are not delivered.
+
 Subtitles ride the playing session ([av_subtitle.cpp](../src/av_subtitle.cpp)). The read thread decodes
 the chosen embedded stream's packets as it demuxes them, or a sidecar whole when the session opens, into
 events on the presentation timeline. It rasterises the lines near the playhead - text through
@@ -271,41 +364,33 @@ libdesktop's styled-text renderer, pictures through their palettes - and release
 memory follows the playhead rather than the film. The UI thread only uploads finished bitmaps and draws
 them over the picture, scaled from the video's pixels; `update_for_present` rebuilds the scene once when
 what is on show changes, with or without a new frame, since a replay would present the lines it was
-recorded with. A seek drops the stream's earlier events by generation; a
-sidecar's are kept. The choice of track belongs to the display, so a change of audio track keeps it.
+recorded with. A seek drops the stream's earlier events by generation; a sidecar's are kept. The choice
+of track belongs to the display, so a change of audio track keeps it.
 
 Long operations execute immutable reviewed plans. Each item records success, failure, skip, or
 cancellation. Cancellation stops future work and does not claim to undo completed effects.
 
 ## Persistence And Network
 
-Settings use the platform settings store. SQLite data, thumbnails, import history, web cache, and map
+Settings use libdesktop's settings store. SQLite data, thumbnails, import history, web cache, and map
 tiles are rebuildable. User metadata belongs in media or sidecars.
-New Windows INI settings files explicitly select Unicode before the first property is written;
-opening an existing settings file never recreates it.
 
 Updates, crash reports, dictionaries, maps, and location lookup are separate network capabilities.
-Transport stays in platform/web modules; application settings decide whether a capability is used.
+Transport is libdesktop's web client; application settings decide whether a capability is used.
 Feature-use and performance counters are relaxed aggregate diagnostics and never control behavior.
-Server browsing requests share names and types without security descriptors; an enumeration failure
-does not publish a partial listing as complete.
 
 ## Crash-Loop Protection
 
-Graphics crash guards disable only the risky capability whose durable marker survived a crash.
-`crash_files_db` records files open on a faulting scan thread and skips them for the current release
-line during unattended indexing. Explicit user opens are still attempted.
+Graphics crash guards disable only the risky capability whose durable marker survived a crash
+([Rendering](rendering.md#resilience)). `crash_files_db` records files open on a faulting scan or
+picture-hash thread and skips them for the current release line during unattended indexing and
+duplicate hashing. Explicit user opens are still
+attempted.
 
-Repeated unsettled starts reset presentation settings and disable GPU, hardware decode, and direct YUV
-until a working window can explain recovery. Collection roots and user metadata are retained. Crash
-report contents and symbolization are owned by [crash.md](crash.md).
-
-## Build And Validation
-
-CMake is the only build description and `dd` is the repository gateway. Run `.\dd.ps1 test` for
-repository lint, build, embedded tests, and translation validation. Focused tests use
-`.\exe\diffractor64-d.exe /test:*name*`. [Testing](testing.md) owns test placement and constraints;
-[Linux](linux.md#retiring-msbuild) owns the cross-platform build boundary.
+Two unsettled starts in a row make the next a safe start: it resets presentation settings and turns
+off GPU rendering and hardware decode before the first window, so that window can explain the
+recovery. Collection roots and user metadata are retained. Crash report contents and symbolization
+are owned by [crash.md](crash.md).
 
 ## Where this lives
 
@@ -321,17 +406,25 @@ repository lint, build, embedded tests, and translation validation. Focused test
   search index snapshot and its evaluation.
 - [model_index_duplicates.cpp](../src/model_index_duplicates.cpp): duplicate prediction and presence;
   [model_index_summary.cpp](../src/model_index_summary.cpp): the summary, its vocabulary, and
-  auto-complete.
+  auto-complete; [crypto.h](../src/crypto.h): checksums and the perceptual image hash.
 - [model_tile_cache.cpp](../src/model_tile_cache.cpp): separately owned map tile database.
-- libdesktop's [core.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/core.h): shared vocabulary and utilities;
-  [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h): operating-system services, tasks and the application loop.
-- libdesktop's [render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render.h): draw and measure contexts, rendering backends and textures;
-  [ui.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui.h): frames, the element tree, controls, menus and text views.
 - [av_sid.cpp](../src/av_sid.cpp) and [ui_sid.cpp](../src/ui_sid.cpp): SID tunes played through
-  lib8bit, and the SID monitor.
+  lib64, how long each lasts, and the SID monitor.
+- [av_c64.cpp](../src/av_c64.cpp) and [ui_c64.cpp](../src/ui_c64.cpp): the Commodore 64 run in the
+  media pane, its keyboard, the listing whose rows start it, and its screen.
 - [av_subtitle.cpp](../src/av_subtitle.cpp): subtitles - styling, placement, the events a session
   keeps, and the choice of track.
 - [ui_view.h](../src/ui_view.h), [ui_elements.h](../src/ui_elements.h), and
   [ui_controllers.h](../src/ui_controllers.h): view framework, on libdesktop's element tree
   ([ui/elements.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui/elements.h)).
-- [util_crash_files_db.h](../src/util_crash_files_db.h): media crash-loop protection.
+- [ui_document.h](../src/ui_document.h), [model_document.h](../src/model_document.h), and
+  [view_list.h](../src/view_list.h): the document panel adapters and task-table policy over
+  libdesktop's document views, table elements and shared column layout.
+- [util_crash_files_db.h](../src/util_crash_files_db.h): media crash-loop protection;
+  [app_settings.cpp](../src/app_settings.cpp): the safe start's settings.
+- libdesktop's [core.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/core.h):
+  shared vocabulary and utilities; [platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h):
+  operating-system services, tasks and the application loop;
+  [render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render.h): draw and
+  measure contexts, rendering backends and textures; [ui.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui.h):
+  frames, the element tree, controls, menus and text views.

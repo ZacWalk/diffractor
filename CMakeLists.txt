@@ -169,7 +169,7 @@ diffractor_dependency(lzma VENDORED_MODULE vendored/lzma OPTIONAL)
 # Tracked music. Declared before FFmpeg because its configure enables the libopenmpt demuxer only
 # when it can already see the library, and a dependency can only be stated on a target that already
 # exists.
-diffractor_dependency(openmpt VENDORED_MODULE vendored/openmpt OPTIONAL)
+diffractor_dependency(openmpt VENDORED_MODULE vendored/openmpt)
 
 # FFmpeg, built as docs/third-party.md configures it. Never resolvable from the system: a
 # distribution's copy is configured otherwise. Not OPTIONAL: media is not a feature Diffractor is
@@ -181,8 +181,9 @@ diffractor_dependency(ffmpeg NO_SYSTEM VENDORED_MODULE vendored/FFmpeg)
 # cmake/DiffractorLibdesktop.cmake.
 include(DiffractorLibdesktop)
 
-# The Commodore 64 that plays SID tunes, fetched from lib8bit: see cmake/DiffractorLib8bit.cmake.
-include(DiffractorLib8bit)
+# The Commodore 64 emulator that plays SID tunes and runs disks, tapes, cartridges and programs, fetched from
+# lib64: see cmake/DiffractorLib64.cmake.
+include(DiffractorLib64)
 
 # Codecs and utilities that gate a translation unit of their own.
 
@@ -193,6 +194,11 @@ include(DiffractorLib8bit)
 include(DiffractorHeif)
 diffractor_dependency(hunspell VENDORED_MODULE vendored/hunspell OPTIONAL)
 diffractor_dependency(minizip VENDORED_MODULE vendored/minizip OPTIONAL)
+
+# Face detection: libfacedetection's network and weights, on the Highway libfiles builds. Not OPTIONAL:
+# it needs nothing else, so every configuration can find faces, and model_faces_detect.cpp has no
+# stand-in.
+diffractor_dependency(facedetection NO_SYSTEM VENDORED_MODULE vendored/facedetection)
 
 diffractor_report_dependencies()
 
@@ -222,6 +228,8 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/model.cpp
         src/model_db.cpp
         src/model_document.cpp
+        src/model_faces.cpp
+        src/model_faces_detect.cpp
         src/model_index.cpp
         src/model_index_duplicates.cpp
         src/model_index_summary.cpp
@@ -243,6 +251,7 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/app_movie_batch.cpp
         src/app_search.cpp
         src/app_toolbar.cpp
+        src/app_tutorial.cpp
         src/app_workers.cpp
         src/view_batch.cpp
         src/view_edit.cpp
@@ -250,6 +259,7 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/view_items.cpp
         src/view_locate.cpp
         src/view_movie.cpp
+        src/view_movie_audio.cpp
         src/view_options.cpp
         src/view_rename.cpp
         src/view_selector.cpp
@@ -257,13 +267,19 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/view_tags.cpp
 )
 
-# Unconditional: FFmpeg, libfiles and lib8bit are required dependencies, so configuration has already
+# Unconditional: FFmpeg, libfiles and lib64 are required dependencies, so configuration has already
 # failed above if any is absent.
 list(APPEND DIFFRACTOR_PORTABLE_SOURCES
+        src/av_c64.cpp
         src/av_format.cpp
+        src/av_pcm.cpp
         src/av_sid.cpp
+        src/av_tracker.cpp
         src/av_subtitle.cpp
+        src/ui_c64.cpp
         src/ui_sid.cpp
+        src/ui_music.cpp
+        src/ui_tracker.cpp
 )
 
 # Tools rather than tests: neither has a library dependency, so neither is conditional.
@@ -300,6 +316,7 @@ endif ()
 set(DIFFRACTOR_TEST_SOURCES
         src/test_app.cpp
         src/test_av.cpp
+        src/test_faces.cpp
         src/test_files.cpp
         src/test_fixtures.cpp
         src/test_index.cpp
@@ -314,6 +331,12 @@ set(DIFFRACTOR_TEST_SOURCES
         src/test_util.cpp
         src/test_view.cpp
 )
+
+# The face tests run the detector over libfacedetection's own sample photographs, read from the
+# archive the build fetched, so that this repository keeps no photograph of a person.
+FetchContent_GetProperties(facedetection SOURCE_DIR _facedetection_source_dir)
+set_property(SOURCE src/test_faces.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+        "DIFFRACTOR_FACEDETECTION_SOURCE_DIR=\"${_facedetection_source_dir}\"")
 
 # The application's own assets - the index's schema and the world map - are generated into a
 # translation unit rather than read from disk, so the executable stays self-contained and a resource
@@ -356,6 +379,7 @@ if (WIN32)
 
     set(DIFFRACTOR_PLATFORM_SOURCES
             src/platform_win_av.cpp
+            src/platform_win_record.cpp
             src/platform_win_res.rc
             "${_generated_resources}"
     )
@@ -371,6 +395,21 @@ add_executable(diffractor
         ${DIFFRACTOR_TEST_SOURCES}
         ${DIFFRACTOR_PLATFORM_SOURCES}
 )
+
+if (NOT WIN32)
+    set(_app_icon_source "${CMAKE_CURRENT_SOURCE_DIR}/src/Res/app-icon.bmp")
+    set(_app_icon_cpp "${CMAKE_CURRENT_BINARY_DIR}/generated/app_icon.cpp")
+    add_custom_command(OUTPUT "${_app_icon_cpp}"
+            COMMAND "${CMAKE_COMMAND}" "-DOUTPUT=${_app_icon_cpp}" "-DINPUTS=${_app_icon_source}"
+                    "-DNAMES=app-icon.bmp" "-DREGISTRY_NAMESPACE=platform"
+                    -P "${LIBDESKTOP_CMAKE_DIR}/embed_resources.cmake"
+            DEPENDS "${_app_icon_source}" "${LIBDESKTOP_CMAKE_DIR}/embed_resources.cmake"
+            VERBATIM)
+    target_sources(diffractor PRIVATE "${_app_icon_cpp}")
+    set_source_files_properties("${_app_icon_cpp}" PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/diffractor.desktop"
+            CONTENT "[Desktop Entry]\nType=Application\nName=Diffractor\nExec=\"$<TARGET_FILE:diffractor>\" %F\nIcon=${CMAKE_CURRENT_SOURCE_DIR}/src/Res/app.png\nTerminal=false\nCategories=Graphics;Photography;\n")
+endif ()
 
 target_include_directories(diffractor PRIVATE
         src
@@ -402,7 +441,7 @@ foreach (dep IN ITEMS
         zlib png jpeg sqlite webp archive ffmpeg
         heif heif_ffmpeg jxl raw hunspell minizip
         de265 dav1d dng openmpt
-        bzip2 lzma brotli highway skcms)
+        bzip2 lzma brotli highway skcms facedetection)
     if (TARGET diffractor::${dep})
         list(APPEND DIFFRACTOR_LINK_DEPENDENCIES diffractor::${dep})
     endif ()
@@ -412,7 +451,7 @@ endforeach ()
 # naming them here is what puts them inside the rescan group below.
 get_property(_grouped_archives GLOBAL PROPERTY DIFFRACTOR_GROUPED_ARCHIVES)
 list(APPEND DIFFRACTOR_LINK_DEPENDENCIES ${_grouped_archives})
-list(APPEND DIFFRACTOR_LINK_DEPENDENCIES libfiles::libfiles libdesktop::ui lib8bit::lib8bit)
+list(APPEND DIFFRACTOR_LINK_DEPENDENCIES libfiles::libfiles libdesktop::ui lib64::lib64)
 
 if (MSVC)
     target_link_libraries(diffractor PRIVATE ${DIFFRACTOR_LINK_DEPENDENCIES})
