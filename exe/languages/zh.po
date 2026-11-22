@@ -194,9 +194,6 @@ msgstr "打开创建的项目。\nCtrl+单击打开修改的项目。"
 msgid "{} items close to {} in the collection."
 msgstr "集合中有 {} 个项目靠近 {}。"
 
-msgid "{} items close to {}"
-msgstr "{} 个项目靠近 {}"
-
 msgid "filter"
 msgstr "筛选"
 
@@ -227,9 +224,6 @@ msgstr "有关集合管理的更多信息。"
 msgid "More information about metadata templates."
 msgstr "有关元数据模板的更多信息。"
 
-msgid "Videos"
-msgstr "视频"
-
 msgid "Your collection"
 msgstr "您的集合"
 
@@ -238,9 +232,6 @@ msgstr "颜色"
 
 msgid "Adjust date and time"
 msgstr "调整日期和时间"
-
-msgid "Advanced Search"
-msgstr "高级搜索"
 
 msgid "Exit"
 msgstr "退出"
@@ -1778,6 +1769,9 @@ msgstr "当前索引数据库的大小为 {}，包含来自 {} 项目的元数�
 msgid "Indexing"
 msgstr "索引"
 
+msgid "Indexing faces"
+msgstr "正在索引人脸"
+
 msgid "Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works."
 msgstr "Diffractor 正在读取您的集合，以保持搜索、重复项和统计的完整。在此期间您可以继续浏览。"
 
@@ -1870,6 +1864,9 @@ msgstr "Esc"
 
 msgid "Gets you out of full screen, zoom or other modes."
 msgstr "让您退出全屏、缩放或其他模式。"
+
+msgid "Closes the current view. In the normal Items view, exits Diffractor."
+msgstr "关闭当前视图。在普通的项目视图中，退出 Diffractor。"
 
 msgid "F1"
 msgstr "F1"
@@ -2661,44 +2658,14 @@ msgstr "正在保存 {}..."
 msgid "Failed to Scan."
 msgstr "扫描失败。"
 
-msgid "All these terms"
-msgstr "所有这些词语"
-
 msgid "Christmas"
 msgstr "圣诞节"
-
-msgid "Search in the collection"
-msgstr "在集合中搜索"
-
-msgid "From"
-msgstr "从"
-
-msgid "Until"
-msgstr "至"
-
-msgid "Search in a folder"
-msgstr "在文件夹中搜索"
 
 msgid "Last 7 days"
 msgstr "过去 7 天"
 
-msgid "Located within"
-msgstr "位于"
-
-msgid "None of these terms"
-msgstr "不含这些词语"
-
 msgid "Search criteria or folder"
 msgstr "搜索条件或文件夹"
-
-msgid "Photos"
-msgstr "照片"
-
-msgid "Select term"
-msgstr "选择词语"
-
-msgid "Search in subfolders"
-msgstr "在子文件夹中搜索"
 
 msgid "Searching..."
 msgstr "正在寻找..."
@@ -3035,12 +3002,6 @@ msgstr "ICC"
 
 msgid "press ctrl+space"
 msgstr "按 ctrl+空格键"
-
-msgid "Scope"
-msgstr "范围"
-
-msgid "Value"
-msgstr "值"
 
 msgid "Volume 200%"
 msgstr "音量 200%"
@@ -3630,9 +3591,6 @@ msgstr "放大或缩小显示的图像。按 0 使其适应窗口。"
 msgid "Add folders to your collection (F6)"
 msgstr "将文件夹添加到集合 (F6)"
 
-msgid "Select at least one search criterion."
-msgstr "请至少选择一个搜索条件。"
-
 msgid "Could not check for updates. Check your internet connection and try again."
 msgstr "无法检查更新。请检查网络连接后重试。"
 
@@ -3786,6 +3744,24 @@ msgstr "已渲染 {}。"
 msgid "Rendering was canceled. Nothing was written."
 msgstr "渲染已取消。未写入任何内容。"
 
+msgid "YouTube Short: upright, three minutes at most"
+msgstr "YouTube Shorts：竖屏，最长三分钟"
+
+msgid "Its items run {}, so it fades out at three minutes."
+msgstr "其项目时长为 {}，因此会在三分钟处淡出。"
+
+msgid "It ends where the tune starts again, so YouTube loops it seamlessly."
+msgstr "它在曲子重新开始处结束，因此 YouTube 会无缝循环播放。"
+
+msgid "Render each item as its own Short"
+msgstr "将每个项目分别渲染为 Shorts"
+
+msgid "Rendering Short {} of {}"
+msgstr "正在渲染第 {} 个 Shorts，共 {} 个"
+
+msgid "{} could not be rendered. {}"
+msgstr "无法渲染 {}。{}"
+
 msgid "No missing clip was found in that folder."
 msgstr "在该文件夹中未找到任何缺失的剪辑。"
 
@@ -3817,6 +3793,16 @@ msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "有 1 个剪辑找不到其源文件。"
 msgstr[1] "有 {count} 个剪辑找不到其源文件。"
 
+
+msgid "Rendered 1 Short."
+msgid_plural "Rendered {count} Shorts."
+msgstr[0] "已渲染 1 个 Shorts。"
+msgstr[1] "已渲染 {count} 个 Shorts。"
+
+msgid "Rendering was canceled after 1 Short."
+msgid_plural "Rendering was canceled after {count} Shorts."
+msgstr[0] "渲染在完成 1 个 Shorts 后被取消。"
+msgstr[1] "渲染在完成 {count} 个 Shorts 后被取消。"
 
 msgid "Pattern"
 msgstr "乐段"
@@ -4113,3 +4099,541 @@ msgstr "帧速率"
 
 msgid "Contents"
 msgstr "内容"
+
+msgid "Explore"
+msgstr "探索"
+
+msgid "Reading the collection..."
+msgstr "正在读取集合..."
+
+msgid "Nothing in the collection says when or where it was taken yet."
+msgstr "集合中还没有任何项目标明拍摄的时间或地点。"
+
+msgid "Drag to turn the globe and scroll to zoom. Click a place or a time to show its items."
+msgstr "拖动可旋转地球，滚动可缩放。单击某个地点或时间可显示其中的项目。"
+
+msgid "Nothing in {}"
+msgstr "{}：没有项目"
+
+msgid "Nothing yet in {}"
+msgstr "{}：尚无项目"
+
+msgid "Taken from {} to {}"
+msgstr "拍摄于 {} 至 {}"
+
+msgid "Taken in {}"
+msgstr "拍摄于 {}"
+
+msgid "Click to show the items taken there that year."
+msgstr "单击可显示当年在该地拍摄的项目。"
+
+msgid "Click to show the year's items."
+msgstr "单击可显示该年的项目。"
+
+msgid "Click to show the month's items."
+msgstr "单击可显示该月的项目。"
+
+msgid "Click to show the week's items, or drag up or down to take in more weeks."
+msgstr "单击可显示该周的项目，向上或向下拖动可包含更多周。"
+
+msgid "Release to show these weeks' items."
+msgstr "松开可显示这些周的项目。"
+
+msgid "Click to show the items taken there on this trip."
+msgstr "单击可显示此次旅行在该地拍摄的项目。"
+
+msgid "Nothing was taken then."
+msgstr "这段时间没有拍摄任何项目。"
+
+msgid "1 trip away"
+msgid_plural "{count} trips away"
+msgstr[0] "1 次旅行"
+msgstr[1] "{count} 次旅行"
+
+msgid "1 item taken in {first-name}"
+msgid_plural "{count} items taken in {first-name}"
+msgstr[0] "在{first-name}拍摄的 1 个项目"
+msgstr[1] "在{first-name}拍摄的 {count} 个项目"
+
+msgid "Show in Explore"
+msgstr "在探索中显示"
+
+msgid "Expand the globe into Explore: where the collection was taken, beside when."
+msgstr "将地球展开到探索：查看集合的拍摄地点和时间。"
+
+msgid "Recent changes"
+msgstr "最近的更改"
+
+msgid "What you have changed since Diffractor started. Pick a change to see its items again, selected, wherever they are now."
+msgstr "自 Diffractor 启动以来您所做的更改。选择一项更改，即可在项目当前所在位置再次查看并选中这些项目。"
+
+msgid "Faces"
+msgstr "人脸"
+
+msgid "Save names to files"
+msgstr "将名字保存到文件"
+
+msgid "Export face data"
+msgstr "导出人脸数据"
+
+msgid "Import face data"
+msgstr "导入人脸数据"
+
+msgid "Confirm {}"
+msgstr "确认是{}"
+
+msgid "Not {}"
+msgstr "不是{}"
+
+msgid "Confirm all"
+msgstr "全部确认"
+
+msgid "Name all"
+msgstr "全部命名"
+
+msgid "Hide all"
+msgstr "全部隐藏"
+
+msgid "Confirm every suggested face here as this person. You are asked first."
+msgstr "将此处所有建议的人脸确认为此人。操作前会先询问您。"
+
+msgid "Name every face in this group as one person: choose a name, or type a new one."
+msgstr "将此组中的所有人脸命名为同一个人：选择一个姓名，或输入新姓名。"
+
+msgid "Hide every face in this group from review. Hidden lists them, and Show again brings them back."
+msgstr "在审核中隐藏此组中的所有人脸。它们会列在“隐藏”中，使用“重新显示”可恢复。"
+
+msgid "Move to {}"
+msgstr "移至{}"
+
+msgid "This name comes from picture files. Renaming it changes those files."
+msgstr "此姓名来自图片文件。重命名会修改这些文件。"
+
+msgid "Last placement: {} in {}."
+msgstr "上次归组：{}已归入{}。"
+
+msgid "No people match this filter."
+msgstr "没有符合此筛选条件的人物。"
+
+msgid "Names in your photos"
+msgstr "照片中的名字"
+
+msgid "Comparing two files"
+msgstr "比较两个文件"
+
+msgid "Selection summary"
+msgstr "所选项目概览"
+
+msgid "Choose a date or trip to open its items."
+msgstr "选择日期或行程即可打开相应项目。"
+
+msgid "Hidden"
+msgstr "隐藏"
+
+msgid "Click to rename."
+msgstr "单击以重命名。"
+
+msgid "No faces have been found yet."
+msgstr "尚未找到人脸。"
+
+msgid "That name belongs to someone else. Choose a different name."
+msgstr "这个名字已用于其他人物。请选择另一个名字。"
+
+msgid "Names will be written into {}: {} and {}. Everything else the files hold is kept."
+msgstr "将向 {} 写入名字：{}，{}。文件中的其他内容都会保留。"
+
+msgid "Names will be written into {}: {}. Everything else the files hold is kept."
+msgstr "将向 {} 写入名字：{}。文件中的其他内容都会保留。"
+
+msgid "Diffractor face data"
+msgstr "Diffractor 人脸数据"
+
+msgid "{} and {} were saved to {}."
+msgstr "已将 {} 和 {} 保存到 {}。"
+
+msgid "{} could not be written."
+msgstr "无法写入 {}。"
+
+msgid "{} and {} were read from {}."
+msgstr "{} 和 {} 已从 {} 读取。"
+
+msgid "{} could not be read: {}."
+msgstr "无法读取 {}：{}。"
+
+msgid "Click to show their pictures."
+msgstr "单击以显示此人的图片。"
+
+msgid "Show in face view"
+msgstr "在人脸视图中显示"
+
+msgid "Name face"
+msgstr "为人脸命名"
+
+msgid "Choose an existing name or enter a new one."
+msgstr "选择已有姓名，或输入新姓名。"
+
+msgid "Name as someone else"
+msgstr "命名为其他人"
+
+msgid "Choose who this face is instead, or enter a new name."
+msgstr "改为选择此人脸属于谁，或输入新姓名。"
+
+msgid "New person: {}"
+msgstr "新人物：{}"
+
+msgid "Go to the next picture afterwards"
+msgstr "之后转到下一张照片"
+
+msgid "Open or select one picture."
+msgstr "请打开或选择一张照片。"
+
+msgid "Turn on face search in the Faces view to name faces."
+msgstr "要为人脸命名，请在“人脸”视图中打开人脸扫描。"
+
+msgid "No face was found in this picture."
+msgstr "这张照片中没有找到人脸。"
+
+msgid "This picture has more than one face. Point at the one to name."
+msgstr "这张照片中有多张人脸。请指向要命名的那一张。"
+
+msgid "The faces found in {} will be removed and face search turned off. Names in your files are kept."
+msgstr "将删除在 {} 中找到的人脸，并关闭人脸搜索。文件中的名字会保留。"
+
+msgid "The faces found in your pictures will be removed and face search turned off. Names in your files are kept."
+msgstr "将删除在您的图片中找到的人脸，并关闭人脸搜索。文件中的名字会保留。"
+
+msgid "1 face"
+msgid_plural "{count} faces"
+msgstr[0] "1 张人脸"
+msgstr[1] "{count} 张人脸"
+
+msgid "1 person"
+msgid_plural "{count} people"
+msgstr[0] "1 个人"
+msgstr[1] "{count} 个人"
+
+msgid "1 decision"
+msgid_plural "{count} decisions"
+msgstr[0] "1 个决定"
+msgstr[1] "{count} 个决定"
+
+msgid "1 suggested"
+msgid_plural "{count} suggested"
+msgstr[0] "1 个建议"
+msgstr[1] "{count} 个建议"
+
+msgid "1 face named"
+msgid_plural "{count} faces named"
+msgstr[0] "命名 1 张人脸"
+msgstr[1] "命名 {count} 张人脸"
+
+msgid "1 name taken out"
+msgid_plural "{count} names taken out"
+msgstr[0] "删除 1 个名字"
+msgstr[1] "删除 {count} 个名字"
+
+msgid "and 1 more picture"
+msgid_plural "and {count} more pictures"
+msgstr[0] "以及另外 1 张图片"
+msgstr[1] "以及另外 {count} 张图片"
+
+msgid "Hide"
+msgstr "隐藏"
+
+msgid "Show again"
+msgstr "重新显示"
+
+msgid "Person search"
+msgstr "人物搜索"
+
+msgid "Open in folder"
+msgstr "在文件夹中打开"
+
+msgid "Open pictures with a strong match for this face in Items."
+msgstr "在“项目”中打开包含高度相似人脸的图片。"
+
+msgid "Find pictures of {} in Items."
+msgstr "在“项目”中查找 {} 的图片。"
+
+msgid "Select one face that can be compared."
+msgstr "请选择一张可用于比较的人脸。"
+
+msgid "Select one face to open its picture in Items."
+msgstr "选择一张人脸，即可在“项目”中打开对应的图片。"
+
+msgid "Suggested"
+msgstr "建议"
+
+msgid "Similar faces"
+msgstr "相似的人脸"
+
+msgid "Unique faces"
+msgstr "单独的人脸"
+
+msgid "Small or unclear faces"
+msgstr "较小或不清晰的人脸"
+
+msgid "Finding faces..."
+msgstr "正在查找人脸..."
+
+msgid "Filter people"
+msgstr "筛选人物"
+
+msgid "Clear filter"
+msgstr "清除筛选"
+
+msgid "Find similar faces"
+msgstr "查找相似的人脸"
+
+msgid "Scan for faces"
+msgstr "扫描人脸"
+
+msgid "Scan for faces in photos"
+msgstr "扫描照片中的人脸"
+
+msgid "Scan for faces in videos"
+msgstr "扫描视频中的人脸"
+
+msgid "Faces are found and compared on this computer. Nothing is uploaded."
+msgstr "人脸的查找和比较都在这台计算机上进行，不会上传任何内容。"
+
+msgid "Every picture in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused."
+msgstr "将再次读取集合中的每张图片（共 {}），在这台计算机上大约需要 {}。扫描可以暂停。"
+
+msgid "Every video in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused."
+msgstr "将再次读取集合中的每个视频（共 {}），在这台计算机上大约需要 {}。扫描可以暂停。"
+
+msgid "Every picture and video in the collection is read once more - {} and {}, which takes about {} on this computer. The scan can be paused."
+msgstr "将再次读取集合中的每张图片和每个视频（共 {} 和 {}），在这台计算机上大约需要 {}。扫描可以暂停。"
+
+msgid "Face scanning is off."
+msgstr "人脸扫描已关闭。"
+
+msgid "Pause"
+msgstr "暂停"
+
+msgid "Resume"
+msgstr "继续"
+
+msgid "Paused"
+msgstr "已暂停"
+
+msgid "Paused after reading {} of {}."
+msgstr "已读取 {}/{} 后暂停。"
+
+msgid "{} of {} read, {} found. About {} left."
+msgstr "已读取 {}/{}，找到 {}。大约还剩 {}。"
+
+msgid "All {} read, {} found."
+msgstr "已全部读取（{}），找到 {}。"
+
+msgid "1 picture could not be read."
+msgid_plural "{count} pictures could not be read."
+msgstr[0] "无法读取 1 张图片。"
+msgstr[1] "无法读取 {count} 张图片。"
+
+msgid "1 file could not be read."
+msgid_plural "{count} files could not be read."
+msgstr[0] "无法读取 1 个文件。"
+msgstr[1] "无法读取 {count} 个文件。"
+
+msgid "1 picture is on a drive or folder that isn't available."
+msgid_plural "{count} pictures are on drives or folders that aren't available."
+msgstr[0] "1 张图片位于不可用的驱动器或文件夹中。"
+msgstr[1] "{count} 张图片位于不可用的驱动器或文件夹中。"
+
+msgid "1 file is on a drive or folder that isn't available."
+msgid_plural "{count} files are on drives or folders that aren't available."
+msgstr[0] "1 个文件位于不可用的驱动器或文件夹中。"
+msgstr[1] "{count} 个文件位于不可用的驱动器或文件夹中。"
+
+msgid "Delete face data"
+msgstr "删除人脸数据"
+
+msgid "{} will be renamed {} in {}."
+msgstr "{} 将重命名为 {}（{}）。"
+
+msgid "{0} is also named in {1}. Change the name there to {2} too?"
+msgstr "{1}中也标注了 {0}。是否也将那里的名字改为 {2}？"
+
+msgid "Change in files"
+msgstr "在文件中更改"
+
+msgid "Only in Diffractor"
+msgstr "仅在 Diffractor 中"
+
+msgid "Phone or camera"
+msgstr "手机或相机"
+
+msgid "{} (phone or camera)"
+msgstr "{}（手机或相机）"
+
+msgid "Reading {}..."
+msgstr "正在读取 {}..."
+
+msgid "Copying from {}: {} of {}"
+msgstr "正在从 {} 复制：{}/{}"
+
+msgid "No photos or videos were found on {}. If it is locked, unlock it, and if it asks, allow this computer to access its files."
+msgstr "在 {} 上未找到照片或视频。如果设备已锁定，请将其解锁；如果设备询问，请允许这台计算机访问其文件。"
+
+msgid "There is not enough free space to copy from {}: {} more is needed."
+msgstr "没有足够的可用空间从 {} 复制：还需要 {}。"
+
+msgid "Photos and videos are copied from a phone or camera: it keeps its own."
+msgstr "照片和视频会从手机或相机中复制，设备上的原始文件会保留。"
+
+msgid "Person"
+msgstr "人物"
+
+msgid "1 picture"
+msgid_plural "{count} pictures"
+msgstr[0] "1 张图片"
+msgstr[1] "{count} 张图片"
+
+msgid "1 video"
+msgid_plural "{count} videos"
+msgstr[0] "1 个视频"
+msgstr[1] "{count} 个视频"
+
+msgid "1 picture or video"
+msgid_plural "{count} pictures and videos"
+msgstr[0] "1 个图片或视频"
+msgstr[1] "{count} 个图片和视频"
+
+msgid "1 minute"
+msgid_plural "{count} minutes"
+msgstr[0] "1 分钟"
+msgstr[1] "{count} 分钟"
+
+msgid "1 hour"
+msgid_plural "{count} hours"
+msgstr[0] "1 小时"
+msgstr[1] "{count} 小时"
+
+msgid "1 face selected"
+msgid_plural "{count} faces selected"
+msgstr[0] "已选择 1 张人脸"
+msgstr[1] "已选择 {count} 张人脸"
+
+msgid "{first-name} could not be read from the device."
+msgid_plural "{first-name} and {other} other files could not be read from the device."
+msgstr[0] "无法从设备读取 {first-name}。"
+msgstr[1] "无法从设备读取 {first-name} 和其他 {other} 个文件。"
+
+msgid "Confirm that the selected faces belong to the indicated person. This changes the face book, not the pictures."
+msgstr "确认所选面孔属于指定的人物。此操作仅更改面孔记录，不会更改照片。"
+
+msgid "Restore the face book to before this last change. The picture files are not changed."
+msgstr "将面孔记录恢复到上次更改前的状态。照片文件不会被更改。"
+
+msgid "People"
+msgstr "人物"
+
+msgid "Confirmed"
+msgstr "已确认"
+
+msgid "Name faces"
+msgstr "为面孔命名"
+
+msgid "Person name"
+msgstr "人物姓名"
+
+msgid "Not this person"
+msgstr "不是此人"
+
+msgid "Confirm"
+msgstr "确认"
+
+msgid "Name a face in Unknown to start a person. Confirm suggestions, reject a wrong match, or hide faces you do not want to review."
+msgstr "给未知面孔命名即可添加人物。你可以确认或拒绝建议，也可以隐藏不想查看的面孔。"
+
+msgid "As you confirm faces, Diffractor learns and gets better at making suggestions."
+msgstr "随着您确认更多人脸，Diffractor 会不断学习，提供更准确的建议。"
+
+msgid "Never suggest this person for these faces again. They can still be named as someone else."
+msgstr "不会再为这些面孔推荐此人。你仍可将其命名为其他人。"
+
+msgid "Show these faces again without changing their names or rejections."
+msgstr "重新显示这些面孔，不更改姓名或已拒绝的建议。"
+
+msgid "Select one named person."
+msgstr "请选择一位已命名的人物。"
+
+msgid "Backup"
+msgstr "备份"
+
+msgid "Export face data saves the people you named and your decisions to a file. Import face data reads one back, on this PC or another."
+msgstr "“导出人脸数据”会将你命名的人物和你的决定保存到文件。“导入人脸数据”可在这台或另一台电脑上读回该文件。"
+
+msgid "Names you confirm stay in Diffractor until you save them. Saving writes them into the photos, where other photo apps can read them."
+msgstr "确认的名字会保留在 Diffractor 中，直到你保存它们。保存会将名字写入照片，其他照片应用也能读取。"
+
+msgid "Scan for faces to name people and review suggested matches."
+msgstr "扫描面孔以命名人物并查看匹配建议。"
+
+msgid "Your face data is kept in {}."
+msgstr "面孔数据保存在 {}。"
+
+msgid "Face data cannot be saved: the database could not be opened."
+msgstr "无法打开数据库，面孔数据无法保存。"
+
+msgid "Your latest face changes could not be saved yet. Diffractor keeps trying; Export face data keeps a copy now."
+msgstr "最近的人脸更改尚未保存。Diffractor 会继续尝试；“导出人脸数据”可立即保留一份副本。"
+
+msgid "Another Diffractor window is changing faces, so this window only shows them. It can change them once that window closes."
+msgstr "另一个 Diffractor 窗口正在更改人脸，因此此窗口仅显示它们。该窗口关闭后，此窗口即可进行更改。"
+
+msgid "Read only: another Diffractor window is changing faces."
+msgstr "只读：另一个 Diffractor 窗口正在更改人脸。"
+
+msgid "Face changes are not saved yet."
+msgstr "人脸更改尚未保存。"
+
+msgid "There are no face names to write."
+msgstr "没有需要写入的面孔姓名。"
+
+msgid "Names and review decisions stay on this computer unless you export them."
+msgstr "除非导出，否则姓名和审核决定仅保存在这台计算机上。"
+
+msgid "Also forget names and review decisions made in Diffractor"
+msgstr "同时清除在 Diffractor 中记录的姓名和审核决定"
+
+msgid "Forget names and decisions?"
+msgstr "清除名字和决定？"
+
+msgid "{} and {} made in Diffractor will be forgotten. This cannot be undone: export face data first if you might want them back. Names saved in your photos are kept."
+msgstr "将清除在 Diffractor 中记录的 {}和{}。此操作无法撤消：如果以后可能还需要，请先导出人脸数据。保存在照片中的名字会保留。"
+
+msgid "Forget"
+msgstr "清除"
+
+msgid "Enter a new name for {}."
+msgstr "请输入 {} 的新姓名。"
+
+msgid "Updating suggestions..."
+msgstr "正在更新建议…"
+
+msgid "Hide the selected faces from review. Similar faces stay visible. Choose Show again to bring them back."
+msgstr "隐藏所选面孔。相似的面孔仍然可见。选择“重新显示”可恢复。"
+
+msgid "Combine people?"
+msgstr "合并人物？"
+
+msgid "A person named {1} already exists. Combine {0} with {1}? This changes only the face book, not your photos."
+msgstr "已存在名为“{1}”的人物。要将“{0}”合并到“{1}”吗？此操作仅更改面孔记录，不会修改照片。"
+
+msgid "Combined {} with {}."
+msgstr "已将“{}”合并到“{}”。"
+
+msgid "These people have changed. Review their names and try again."
+msgstr "这些人物的信息已更改。请检查姓名后再试。"
+
+msgid "Face CSVs contain names and biometric face signatures, not filenames. Share only with people you trust."
+msgstr "CSV 包含姓名和面孔生物特征签名，不含文件名。请仅与信任的人分享。"
+
+msgid "Face decisions without an unambiguous signature were not exported: {}."
+msgstr "因没有明确签名而未导出的面孔决定数：{}。"
+
+msgid "The face book is updating. Wait for recognition to finish, then export again."
+msgstr "面孔记录正在更新。请等待识别完成，然后重新导出。"

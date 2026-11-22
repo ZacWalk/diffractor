@@ -24,7 +24,7 @@ enum class batch_tool_mode
 // not known yet takes the limit, so a large one is still reduced.
 int convert_max_side(sizei dimensions, int max_side);
 
-class batch_tool_view final : public list_view, public std::enable_shared_from_this<batch_tool_view>
+class batch_tool_view final : public review_list, public std::enable_shared_from_this<batch_tool_view>
 {
 	batch_tool_mode _mode = batch_tool_mode::convert;
 	std::string _title;
@@ -62,16 +62,28 @@ class batch_tool_view final : public list_view, public std::enable_shared_from_t
 	void run_convert();
 	void run_metadata();
 	void run_dates();
+	// A row Edit metadata or Adjust Date writes: the item, and for a date shift the date it moves to.
+	struct update_request
+	{
+		core::file_path path;
+		core::cached xmp;
+		std::optional<core::date_t> date_original;
+	};
+	// Writes the edits every row shares - with each row's own date, where it has one - a row at a time on a worker,
+	// and hands the run back as one change.
+	void run_updates(icon_index icon, std::string title, std::vector<update_request> requests, metadata_edits edits);
 	// Shows what the finished run did to each reviewed row, its statuses in plan order, and concludes the status
 	// line with the counts and the first error.
 	void show_run_results(const std::vector<item_status>& statuses, std::string_view error);
-	// Called from the worker: hands a finished run back to the UI thread as one status per row.
+	// Called from the worker: hands a finished run back to the UI thread as one status per row, and what it changed to
+	// the session's recent changes.
 	static void queue_run_results(const view_state& s, const std::shared_ptr<batch_tool_view>& view, size_t generation,
 	                              std::vector<item_status> statuses, std::string fatal, std::string first_error,
-	                              std::shared_ptr<detach_file_handles> detach, std::string title);
+	                              std::shared_ptr<detach_file_handles> detach, std::string title,
+	                              session_change change);
 
 public:
-	batch_tool_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host)) { col_count = 3; }
+	batch_tool_view(view_state& state, view_host_ptr host) : review_list(state, std::move(host)) { col_count = 3; }
 
 	void mode(const batch_tool_mode value)
 	{
@@ -80,6 +92,12 @@ public:
 		col_count = value == batch_tool_mode::adjust_date ? 4 : 3;
 	}
 	batch_tool_mode mode() const { return _mode; }
+	// The start Adjust Date moves the selection to, as its date control sets it.
+	void new_start_for_tests(const core::date_t value)
+	{
+		_new_start = value;
+		_new_start_seeded = true;
+	}
 	void run();
 	text_t run_text() const;
 	void refresh() override;
@@ -100,6 +118,11 @@ public:
 	view_bars bars() const override;
 	text_t empty_message() override { return tt.no_items_selected_message; }
 	std::array<text_t, max_col_count> col_titles() override;
+	// Adjust Date's dates sort latest first, as dates do wherever a heading sorts them.
+	bool column_first_ascending(const int col) const override
+	{
+		return !(_mode == batch_tool_mode::adjust_date && (col == 1 || col == 2));
+	}
 	std::string_view operation_name() const override;
 	bool reviewing() const override { return _reviewing; }
 

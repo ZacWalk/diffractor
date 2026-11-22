@@ -22,6 +22,7 @@
 #include "metadata.h"
 #include "ui_dialog.h"
 #include "ui_controls.h"
+#include "libdesktop/ui/table_headings.h"
 #include "ui_sid.h"
 #include "ui_music.h"
 #include "app_command_status.h"
@@ -729,24 +730,129 @@ core::unique_paths make_unique_paths(core::paths selection)
 
 void view_state::browse_forward(const view_host_base_ptr& view)
 {
-	history_state::history_entry e;
-
-	if (history.history_entry_at(1, e))
-	{
-		_pending_history_move = {e.search, 1, _selected.ids()};
-		if (!open(view, e.search, make_unique_paths(e.selected))) _pending_history_move.reset();
-	}
+	browse_history(view, 1);
 }
 
 void view_state::browse_back(const view_host_base_ptr& view)
 {
-	history_state::history_entry e;
+	browse_history(view, -1);
+}
 
-	if (history.history_entry_at(-1, e))
+void view_state::browse_history(const view_host_base_ptr& view, const int direction)
+{
+	// A task view, the options or a dialog's owner gives way only to a search it is asked about, so the history is
+	// stepped from where it is kept alone.
+	if (!can_browse_history()) return;
+
+	history_state::history_entry e;
+	if (!history.history_entry_at(direction, e)) return;
+
+	if (e.is_view())
 	{
-		_pending_history_move = {e.search, -1, _selected.ids()};
-		if (!open(view, e.search, make_unique_paths(e.selected))) _pending_history_move.reset();
+		// Explore or Faces as it was left, over the listing Items keeps behind it.
+		history.commit_history_pos(direction, _selected.ids());
+		view_mode(e.view);
+		return;
 	}
+
+	const auto leaving_view = !is_items_or_media_view();
+
+	if (leaving_view && e.search == _search)
+	{
+		// The listing behind the view is the one the entry names, so Items shows it as it is.
+		history.commit_history_pos(direction, _selected.ids());
+		view_mode(view_type::items);
+		return;
+	}
+
+	_pending_history_move = {e.search, direction, _selected.ids()};
+
+	if (!open(view, e.search, make_unique_paths(e.selected)))
+	{
+		_pending_history_move.reset();
+		return;
+	}
+
+	if (leaving_view) view_mode(view_type::items);
+}
+
+void view_state::open_in_history(const view_type v)
+{
+	if (_view_mode == v) return;
+	history.history_add_view(v, _selected.ids());
+	view_mode(v);
+}
+
+void view_state::record_change(const icon_index icon, const std::string_view what, std::vector<core::file_path> paths)
+{
+	if (paths.empty()) return;
+
+	for (const auto& p : paths) _changed_this_session.emplace(p);
+
+	// The same change made again to the same items - a rating set twice - is one change, newest.
+	if (!_session_changes.empty() && _session_changes.front().what == what && _session_changes.front().paths == paths)
+	{
+		return;
+	}
+
+	_session_changes.push_front({icon, std::string(what), std::move(paths)});
+	if (_session_changes.size() > max_session_changes) _session_changes.pop_back();
+	invalidate_view(view_invalid::command_state | view_invalid::view_redraw);
+}
+
+void view_state::move_changed(const std::vector<std::pair<core::file_path, core::file_path>>& moves)
+{
+	if (_changed_this_session.empty() || moves.empty()) return;
+
+	core::hash_map<core::file_path, core::file_path, core::ihash, core::ieq> moved_to;
+	std::vector<core::file_path> marked;
+
+	for (const auto& [from, to] : moves)
+	{
+		moved_to.insert_or_assign(from, to);
+		if (_changed_this_session.contains(from)) marked.emplace_back(to);
+	}
+
+	for (const auto& [from, to] : moves) _changed_this_session.erase(from);
+	for (const auto& to : marked) _changed_this_session.emplace(to);
+
+	for (auto& change : _session_changes)
+		for (auto& p : change.paths)
+			if (const auto found = moved_to.find(p); found != moved_to.end()) p = found->second;
+}
+
+void view_state::move_changed(const std::vector<std::pair<core::folder_path, core::folder_path>>& folder_moves)
+{
+	std::vector<std::pair<core::file_path, core::file_path>> moves;
+
+	for (const auto& p : _changed_this_session)
+		if (const auto to = df::moved_with_folder(p, folder_moves)) moves.emplace_back(p, *to);
+
+	move_changed(moves);
+}
+
+bool view_state::open_changed(const view_host_base_ptr& view, const std::vector<core::file_path>& paths)
+{
+	if (paths.empty()) return false;
+
+	// Their folders as one search, each item selected where it is now; a change across very many folders opens the
+	// first of them rather than a search too long to read.
+	constexpr size_t max_folders = 16;
+	core::unique_paths selection;
+	std::vector<core::folder_path> folders;
+	df::search_t search;
+
+	for (const auto& p : paths)
+	{
+		selection.emplace(p);
+		if (folders.size() < max_folders && std::ranges::find(folders, p.folder()) == folders.end())
+		{
+			folders.emplace_back(p.folder());
+			search.add_selector(p.folder());
+		}
+	}
+
+	return open(view, search, selection);
 }
 
 void view_state::capture_display(const std::function<void(file_load_result)>& f) const
@@ -789,6 +895,17 @@ void view_state::view_mode(const view_type m)
 {
 	if (_view_mode != m)
 	{
+		// Items showing again after Explore or Faces - closed, or a search opened that lists what Items already did -
+		// stands on the history's entry for its listing, so Back and Forward go on from what is shown.
+		if ((m == view_type::items || m == view_type::media) && !is_items_or_media_view())
+		{
+			history.return_to_items(_search, _selected.ids());
+
+			// A listing face search answers may have changed while another view was shown, the Faces view's sorting
+			// among what changes it, so it is run again.
+			if (_search.reads_faces()) invalidate_view(view_invalid::refresh_items);
+		}
+
 		// A task view or the options hide the pane a running machine is drawn in, so it stops rather than
 		// playing on unseen and taking the keys. Full screen shows it, so the media view keeps it.
 		if (m != view_type::items && m != view_type::media) stop_c64();
@@ -907,7 +1024,8 @@ bool display_state_t::publish_av_session(const std::shared_ptr<av_session>& ses,
 
 void view_state::open_av_session(const std::shared_ptr<display_state_t>& d, const df::item_element_ptr& i,
                                  const bool auto_play, const int video_track, const int audio_track,
-                                 const bool use_last_played_pos, platform::file_ptr file) const
+                                 const bool use_last_played_pos, platform::file_ptr file,
+                                 const std::optional<double> start_at) const
 {
 	const auto generation = ++d->_av_generation;
 	auto resume = use_last_played_pos;
@@ -943,7 +1061,7 @@ void view_state::open_av_session(const std::shared_ptr<display_state_t>& d, cons
 	subtitles.mode = setting.subtitles;
 	subtitles.language = setting.subtitle_language.empty() ? setting.language : setting.subtitle_language;
 
-	_player->open(i, auto_play, video_track, audio_track, av_can_use_hw(), resume,
+	_player->open(i, auto_play && !start_at, video_track, audio_track, av_can_use_hw(), resume,
 	              [d = ui_owned(_async, d), generation, player = _player](const std::shared_ptr<av_session>& ses)
 	{
 		// Dropping a superseded session instead of closing it would leave the file open
@@ -952,7 +1070,7 @@ void view_state::open_av_session(const std::shared_ptr<display_state_t>& d, cons
 		{
 			player->close(ses, {});
 		}
-	}, std::move(file), std::move(subtitles));
+	}, std::move(file), std::move(subtitles), start_at);
 }
 
 void view_state::select_sid_song(const int song) const
@@ -1187,9 +1305,12 @@ void view_state::group_order(const std::optional<group_by> group, const std::opt
 void view_state::sort_detail_group(const df::group_key& key, const df::detail_column column, const bool first_ascending)
 {
 	auto& choice = _detail_choices[key];
-	const auto c = static_cast<int>(column);
-	choice.ascending = choice.sort_column == c ? !choice.ascending : first_ascending;
-	choice.sort_column = c;
+	// As every headed table's headings do: a first click sorts by the column its own way, a second the other way, and
+	// a third gives the group back the order the toolbar chooses.
+	const auto next = ui::next_table_sort({choice.sort_column, choice.ascending}, static_cast<int>(column),
+	                                      first_ascending);
+	choice.sort_column = next.column;
+	choice.ascending = next.ascending;
 	_hold_items_scroll = true;
 	_events.invalidate_view(view_invalid::group_layout | view_invalid::view_layout | view_invalid::command_state);
 }
@@ -1385,6 +1506,7 @@ bool view_state::update_selection()
 	if (changed)
 	{
 		_selected = selected;
+		++_selection_generation;
 		load_display_state();
 	}
 
@@ -1777,6 +1899,37 @@ void view_state::select_next(const view_host_base_ptr& view, const bool forward,
 	make_visible(focus_item());
 }
 
+void view_state::move_focus(const df::item_element_ptr& i)
+{
+	if (!i || !is_item_displayed(i)) return;
+	stop_slideshow();
+
+	if (i != _focus)
+	{
+		const auto previous = _focus;
+		_focus = i;
+		_events.item_focus_changed(i, previous);
+		invalidate_view(view_invalid::view_redraw);
+	}
+
+	make_visible(i);
+}
+
+void view_state::focus_next(const bool forward)
+{
+	move_focus(next_item(forward, false));
+}
+
+void view_state::focus_end(const bool forward)
+{
+	move_focus(end_item(forward));
+}
+
+void view_state::toggle_focus(const view_host_base_ptr& view)
+{
+	if (_focus && is_item_displayed(_focus)) select(view, _focus, true, false, false);
+}
+
 void view_state::select_next_media(const view_host_base_ptr& view, const bool forward)
 {
 	if (const auto next = next_media_item(forward, false))
@@ -2095,7 +2248,7 @@ static std::vector<view_element_ptr> create_location_elements(view_state& s, con
 	if (!is_empty(md->location_country))
 		results.emplace_back(location_link(md->location_country, prop::location_country, df::location_level::country));
 
-	// locations.md 2.5 step 1: stored text wins outright. Only a file that names no place at all
+	// docs/locations.md#item-locations: stored text wins outright. Only a file that names no place at all
 	// falls through to the derived answer below.
 	if (!is_empty(md->location_place) || !is_empty(md->location_state) || !is_empty(md->location_country))
 	{
@@ -2120,18 +2273,10 @@ static std::vector<view_element_ptr> create_location_elements(view_state& s, con
 
 	if (!derived->is_located()) return results;
 
-	// locations.md 2.5: the label states how far it had to reach. `Near` is display honesty --
-	// the item still carries that place's identity, so it groups and searches as that place.
+	// docs/locations.md#item-locations: the label states how far it had to reach.
 	const auto has_place = !core::is_empty(derived->place.place);
 	const auto search_text = has_place ? derived->place.place.sv() : derived->place.country.sv();
-	auto display = qualified_name(derived->place);
-
-	if (derived->attribution == location_attribution::near)
-	{
-		display = str_format(tt.location_near_fmt.sv(), display);
-	}
-
-	if (display.empty()) display = std::string(tt.location_remote.sv());
+	auto display = attributed_name(*derived);
 
 	if (search_text.empty())
 	{
@@ -2145,13 +2290,47 @@ static std::vector<view_element_ptr> create_location_elements(view_state& s, con
 			make_link(s, display, search, has_place ? prop::location_place : prop::location_country, search_result));
 	}
 
-	// locations.md 2.7: never a group key and never a search term, so it is plain text and answers
+	// docs/locations.md#item-locations: never a group key and never a search term, so it is plain text and answers
 	// only "where was that?".
 	if (auto bearing = bearing_descriptor(*derived); !bearing.empty())
 	{
 		results.emplace_back(std::make_shared<text_element>(bearing));
 	}
 
+	return results;
+}
+
+// Whom the picture names (docs/faces.md#21-reading-names), each a way to the other pictures naming them, as a place
+// leads to the other pictures taken there.
+static std::vector<view_element_ptr> create_people_elements(view_state& s, const prop::item_metadata_const_ptr& md,
+                                                            const df::search_result& search_result)
+{
+	std::vector<view_element_ptr> results;
+	if (!md || prop::is_null(md->people)) return results;
+
+	constexpr size_t max_people = 6;
+	size_t more = 0;
+
+	for (const auto& part : core::split(md->people, true))
+	{
+		const auto name = core::trim(part);
+		if (name.empty()) continue;
+		if (results.size() < max_people) results.emplace_back(make_link(s, name, prop::person, search_result));
+		else ++more;
+	}
+
+	if (more > 0) results.emplace_back(std::make_shared<text_element>(std::format("+{}", more)));
+	return results;
+}
+
+// Where the item was taken, and a way to see it on Explore's globe among the rest of the collection.
+static std::vector<view_element_ptr> create_place_elements(view_state& s, const prop::item_metadata_const_ptr& md,
+                                                           const df::search_result& search_result)
+{
+	auto results = create_location_elements(s, md, search_result);
+	if (!results.empty() && md && md->coordinate.is_valid())
+		results.emplace_back(
+			make_icon_link_element(icon_index::world, commands::explore_item, view_element_style::none));
 	return results;
 }
 
@@ -2879,10 +3058,11 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 
 					if (compact)
 					{
-						// Where it was taken describes the subject as much as when it was, so location keeps
-						// its place beside the date in full screen. It identifies rather than invites an
-						// edit, so it carries no command icon and is absent when the item has no place.
-						append_bullet(elements, icon_index::location, create_location_elements(s, md, search_result));
+						// Where it was taken and who is in it describe the subject as much as when it was, so they keep
+						// their places beside the date in full screen. They identify rather than invite an edit, so
+						// they carry no command icon, and are absent when the item has none.
+						append_bullet(elements, icon_index::album_artist, create_people_elements(s, md, search_result));
+						append_bullet(elements, icon_index::location, create_place_elements(s, md, search_result));
 					}
 
 					if (!compact)
@@ -2893,11 +3073,14 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 
 				if (!compact)
 				{
-					// Location, Tags and Description close the panel. Location and Tags lead with the
-					// command that edits them, so the icon in front of the row both names the field and
-					// opens it.
+					// Who is in it, then Location, Tags and Description close the panel. Location and Tags lead with
+					// the command that edits them, so the icon in front of the row both names the field and opens
+					// it; people are named on their faces, in Faces.
+					if (md)
+						append_bullet(elements, icon_index::album_artist, create_people_elements(s, md, search_result));
+
 					std::vector<view_element_ptr> location_elements;
-					if (md) location_elements = create_location_elements(s, md, search_result);
+					if (md) location_elements = create_place_elements(s, md, search_result);
 					append_editable_bullet(s, elements, commands::tool_locate, location_elements);
 
 					std::vector<view_element_ptr> tag_elements;
@@ -3157,6 +3340,9 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 				identical_text = tt.items_not_identical;
 			}
 
+			if (!compact)
+				result->add(std::make_shared<text_element>(tt.comparing_files, render::font_face::title,
+				                                           render::text_style::multiline, flex_item::line_break));
 			if (!identical_text.empty())
 			{
 				const auto element = std::make_shared<text_element>(identical_text, render::font_face::dialog,
@@ -3192,6 +3378,11 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 
 			const auto elements = std::make_shared<view_elements>();
 
+			const auto summary_heading = !compact && selected.size() > 1;
+			if (summary_heading)
+				elements->add(std::make_shared<text_element>(tt.selection_summary_title, render::font_face::title,
+				                                             render::text_style::multiline, flex_item::line_break));
+			const auto count_font = summary_heading ? render::font_face::dialog : render::font_face::title;
 			if (folder_count > 0)
 			{
 				std::string title;
@@ -3205,8 +3396,8 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 					title = format_plural_text(tt.title_folder_count_fmt, folder_count);
 				}
 
-				elements->add(std::make_shared<text_element>(title, render::font_face::title,
-				                                             render::text_style::multiline, flex_item::line_break));
+				elements->add(std::make_shared<text_element>(title, count_font, render::text_style::multiline,
+				                                             flex_item::line_break));
 			}
 
 			if (item_count > 0)
@@ -3222,8 +3413,8 @@ view_elements_ptr view_state::create_selection_controls(const bool compact)
 					title = format_plural_text(tt.title_item_count_fmt, item_count);
 				}
 
-				elements->add(std::make_shared<text_element>(title, render::font_face::title,
-				                                             render::text_style::multiline, flex_item::line_break));
+				elements->add(std::make_shared<text_element>(title, count_font, render::text_style::multiline,
+				                                             flex_item::line_break));
 			}
 
 			if (folder_count + item_count > 0)
@@ -3343,7 +3534,7 @@ const located_place* view_state::derived_location(const gps_coordinate& coord)
 	}
 
 	// Attribution reads the gazetteer file, so it never runs here. Queue it once and let the
-	// published result invalidate the panel that asked.
+	// published result invalidate the panel or the bubble that asked.
 	if (_resolving_places.emplace(coord).second)
 	{
 		queue_location([this, coord, generation = _resolved_places_generation](const location_cache& locations)
@@ -3358,7 +3549,7 @@ const located_place* view_state::derived_location(const gps_coordinate& coord)
 
 				_resolving_places.erase(coord);
 				_resolved_places.insert_or_assign(attribution_cell(coord), resolved);
-				invalidate_view(view_invalid::media_elements);
+				invalidate_view(view_invalid::media_elements | view_invalid::tooltip);
 			});
 		});
 	}
@@ -3558,6 +3749,7 @@ void view_state::reset()
 	_search_items.clear();
 	_display_items.clear();
 	_selected.clear();
+	++_selection_generation;
 	_focus.reset();
 	_item_groups.clear();
 	_edit_item.reset();
@@ -3818,16 +4010,39 @@ df::item_element_ptr view_state::next_unselected_item() const
 	df::item_element_ptr first;    // first unselected in the listing
 	df::item_element_ptr previous; // nearest unselected at or before the focus
 
+	// In a listing of copies, a copy whose others are all in the set leaves with it: with them gone it has no copy
+	// left, and the listing drops it (#265). Settling on it would follow it to the top, where an item without copies
+	// sorts, before it went - so the cursor settles on a copy that stays.
+	const auto copies_only = _search.is_duplicates();
+	core::hash_map<uint32_t, int> staying_copies;
+	if (copies_only)
+	{
+		for (const auto& b : _item_groups)
+		{
+			for (const auto& i : b->items())
+			{
+				if (!i->is_selected()) ++staying_copies[i->duplicates().group];
+			}
+		}
+	}
+	const auto stays = [&](const df::item_element_ptr& i)
+	{
+		if (i->is_selected()) return false;
+		if (!copies_only) return true;
+		const auto group = i->duplicates().group;
+		return group == 0 || staying_copies[group] > 1;
+	};
+
 	for (const auto& b : _item_groups)
 	{
 		for (const auto& i : b->items())
 		{
-			if (found && !i->is_selected())
+			if (found && stays(i))
 			{
 				return i;
 			}
 
-			if (!i->is_selected())
+			if (stays(i))
 			{
 				if (!first) first = i;
 				if (!found) previous = i;
@@ -4385,7 +4600,20 @@ void view_state::load_display_state()
 				const auto auto_play = (setting.auto_play || continue_playing) && play_view &&
 				                       df::file_handles_detached == 0;
 
-				open_av_session(new_display, display_item, auto_play, -1, -1, setting.last_played_pos);
+				// docs/faces.md#93-faces-on-a-picture: a video opened at a face opens paused on its frame.
+				constexpr int64_t start_lasts_ms = 10'000;
+				std::optional<double> start_at;
+				_opened_face.reset();
+				if (_pending_media_start && core::now_ms() - _pending_media_start->asked_ms > start_lasts_ms)
+					_pending_media_start.reset();
+				if (_pending_media_start && _pending_media_start->path == display_path)
+				{
+					start_at = _pending_media_start->time;
+					_opened_face = _pending_media_start->face;
+					_pending_media_start.reset();
+				}
+
+				open_av_session(new_display, display_item, auto_play, -1, -1, setting.last_played_pos, {}, start_at);
 			}
 			else
 			{

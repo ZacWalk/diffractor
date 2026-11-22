@@ -1,84 +1,88 @@
 # Third-Party Dependencies
 
-This document owns the dependency inventory, upstream sources, licensing, vendoring policy, and
-integration constraints that an upgrade must preserve. The pins in
-[dd-dependencies.json](../cmake/dd-dependencies.json) and the revisions the libfiles, libdesktop and
-lib64 modules name are authoritative, and CMake owns the exact compiled source lists. Wrapper
-behavior belongs to the corresponding subject document.
+This document owns the dependency inventory, upstream sources, licensing, vendoring policy, and the integration
+constraints an upgrade must preserve. The pins in [dd-dependencies.json](../cmake/dd-dependencies.json) and the
+revisions the libfiles, libdesktop, lib64 and libmug modules name are authoritative, and CMake owns the exact
+compiled source lists. Wrapper behavior belongs to the corresponding subject document.
 
 ## Licensing
 
-Diffractor's own licence is stated in the [README](../README.md#license): its code, libdesktop and
-libfiles are MPL-2.0, apart from the files libfiles ports from libexif and libiptcdata, which keep
-LGPL-2.1-or-later. libheif and libde265 are LGPL-3.0-or-later and FFmpeg is LGPL-2.1-or-later, all
-statically linked, so a released binary carries their LGPL obligations. [licences](../licences)
-holds the LGPL-3.0, the GPL-3.0 it incorporates, and the LGPL-2.1, and every release package - the
-installer, the portable zip and the Store package - carries them beside the executable with
-Diffractor's own licence, as the LGPL requires of each copy. They stay out of the repository root
-and out of a top-level `LICENSES` folder, where GitHub would read them as Diffractor's own licence.
+Diffractor's own licence is stated in the [README](../README.md#license): its code, libdesktop and libfiles are
+MPL-2.0, apart from the files libfiles ports from libexif and libiptcdata, which keep LGPL-2.1-or-later; lib64 and
+libmug are MIT. libheif and libde265 are LGPL-3.0-or-later and FFmpeg is LGPL-2.1-or-later, all statically linked,
+so a released binary carries their LGPL obligations. [licences](../licences) holds the LGPL-3.0, the GPL-3.0 it
+incorporates and the LGPL-2.1, beside the licences of libaom and of the libfacedetection and SFace weights libmug
+compiles in, and every release package - the installer, the portable zip and the Store package - carries them
+beside the executable with Diffractor's own licence, as each requires of a copy. They stay out of the repository
+root and out of a top-level `LICENSES` folder, where GitHub would read them as Diffractor's own licence.
 
-FFmpeg is configured without GPL, version-3, or LGPL-v3-only components, so it remains usable under
-LGPL 2.1. Enabling a GPL component changes the outbound license of the combined binary and is not an
-ordinary build option.
+FFmpeg is configured without GPL, version-3, or LGPL-v3-only components, so it remains usable under LGPL 2.1.
+Enabling a GPL component changes the outbound licence of the combined binary and is not an ordinary build option.
 
-A dependency or model with non-commercial terms, no redistribution grant, or incompatible
-additional restrictions cannot ship. Every dependency must retain the license and notices required
-by its exact upstream version; the license file in its pinned archive is the authority for those
-terms.
+A dependency or model with non-commercial terms, no redistribution grant, or incompatible additional restrictions
+cannot ship. Every dependency keeps the licence and notices its exact upstream version requires; the licence file
+in its pinned archive is the authority for those terms.
 
 ## Vendoring
 
-Nothing is vendored. Every dependency is an archive CMake fetches at the version
-[dd-dependencies.json](../cmake/dd-dependencies.json) pins by SHA-256 - Diffractor's own, an upstream
-FFmpeg commit among them - or one libfiles or libdesktop fetches at its own pin; assets live in their
-consuming tree. Owned CMake modules under `cmake/vendored/` select each library's sources,
-definitions and compiler policy, and keep beside them the configuration headers a library's own build
-would have generated.
+Nothing is vendored. The sibling libraries are fetched at the commits their `cmake/Diffractor*.cmake` modules name,
+and every other dependency as an archive a manifest pins by SHA-256 - skcms, which makes none, by commit: Diffractor's
+own [dd-dependencies.json](../cmake/dd-dependencies.json), an upstream FFmpeg commit among them, or the
+`cmake/dd-dependencies.json` of libfiles, libdesktop or libmug for a library one of them fetches. Assets live in
+their consuming tree. Owned CMake modules under `cmake/vendored/` select each library's sources, definitions and
+compiler policy, and keep beside them the configuration headers a library's own build would have generated.
 
-Fetched source is upstream material, never patched where it lands, and Diffractor keeps no fork of a
-dependency. Keep Diffractor changes in wrappers and CMake modules; a configuration header kept in
-`cmake/vendored/` is part of its library's upgrade checklist.
+Fetched source is upstream material, never patched where it lands, and Diffractor keeps no fork of a dependency.
+Keep Diffractor changes in wrappers and CMake modules; a configuration header kept in `cmake/vendored/` is part of
+its library's upgrade checklist.
 
 A library that offers one may instead come from a system package, for bringing a new platform up
-(`DIFFRACTOR_SYSTEM_<NAME>`, or `DIFFRACTOR_PREFER_SYSTEM` for all of them; both off by default).
-Nothing ships that way, and FFmpeg is never taken from the system: a distribution's build typically
-carries GPL components, which would change the outbound licence.
+(`DIFFRACTOR_SYSTEM_<NAME>`, or `DIFFRACTOR_PREFER_SYSTEM` for all of them; both off by default). Nothing ships
+that way, and FFmpeg is never taken from the system: a distribution's build typically carries GPL components,
+which would change the outbound licence.
 
 ## Dependency Inventory
 
-Update this table with each pin. A snapshot is an exact upstream commit, not a moving `main`
-branch or the API version left in its headers.
+Update this table with each pin. A snapshot is an exact upstream commit, not a moving `main` branch or the API
+version left in its headers. *Fetched* is pinned in [dd-dependencies.json](../cmake/dd-dependencies.json) and built
+by a module in `cmake/vendored/`; *libfiles*, *libdesktop* or *libmug* is pinned in that library's own
+`cmake/dd-dependencies.json` and built by its recipe; *sibling* is a commit in a `cmake/Diffractor*.cmake` module,
+and its `../<name>` checkout is built instead when present. libfiles builds each of its libraries as
+`libfiles::<name>`, which [CMakeLists.txt](../CMakeLists.txt) also names `diffractor::<name>` for the codecs and
+tests that link it. Archives are pinned by SHA-256.
 
-| Library | Imported release or upstream snapshot | Location | Type | Upstream / update source |
+| Library | Imported release or upstream snapshot | Location | Type | Upstream, and what it is here |
 | --- | --- | --- | --- | --- |
-| Brotli | 1.2.1 | Fetched by libfiles | Release archive by SHA-256 | [google/brotli releases](https://github.com/google/brotli/releases). libfiles pins the archive in its `cmake/dd-dependencies.json` and builds its C decoder and encoder as `libfiles::brotli`, whose bounded decoder reads JPEG XL's compressed metadata boxes; [CMakeLists.txt](../CMakeLists.txt) also names the target `diffractor::brotli` for libjxl's codec dependency |
-| bzip2 | 1.0.8 | Fetched | Release archive by SHA-256 | [Sourceware](https://sourceware.org/bzip2/downloads.html). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json) and built unchanged by [bzip2.cmake](../cmake/vendored/bzip2.cmake) |
-| dav1d | 1.5.4 | Fetched by libfiles | Release archive by SHA-256 | [VideoLAN](https://code.videolan.org/videolan/dav1d). libfiles pins the release archive in its `cmake/dd-dependencies.json` and builds it, with its configuration and bitdepth-template wrappers, as `libfiles::dav1d`; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::dav1d`, which libheif and FFmpeg's AV1 decoder link |
-| Adobe DNG SDK | 1.7.1 build 2802 | Fetched by libfiles | Release archive by SHA-256 | [Adobe source archive](https://download.adobe.com/pub/adobe/dng/dng_sdk_1_7_1_2802_20261110.zip). libfiles pins the archive in its `cmake/dd-dependencies.json` and builds `dng_sdk/source/` - every source but the SDK's XMP backend, which its [dng_xmp_sdk.cpp](https://github.com/ZacWalk/libfiles/blob/main/src/dng_xmp_sdk.cpp) replaces - with the `RawEnvironment.h` kept in its `cmake/dng/`, as `libfiles::dng`; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::dng`, which LibRaw hands DNGs to |
-| FFmpeg | `d35e13b9e05cc20f48373f88e399c8ef0c16fc61`, upstream `master` of 2026-11-16 | Fetched | Upstream commit archive by SHA-256 | [FFmpeg/FFmpeg](https://github.com/FFmpeg/FFmpeg). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [FFmpeg.cmake](../cmake/vendored/FFmpeg.cmake) drives its configure and make on Linux, and [ffmpeg_msvc.cmake](../cmake/vendored/ffmpeg_msvc.cmake) builds it on Windows with the configuration its configure generated, kept in `cmake/vendored/ffmpeg-windows/` |
-| Highway | 1.4.0 | Fetched by libfiles | Release archive by SHA-256 | [google/highway releases](https://github.com/google/highway/releases). libfiles pins the archive and builds it as `libfiles::highway`, which libjxl alone uses |
-| Hunspell | 1.7.6 | Fetched | Release archive by SHA-256 | [Hunspell releases](https://github.com/hunspell/hunspell/releases). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [hunspell.cmake](../cmake/vendored/hunspell.cmake) builds its `src/hunspell/` unchanged, the version and visibility headers included |
-| lib64 | `DIFFRACTOR_LIB64_REVISION` in [DiffractorLib64.cmake](../cmake/DiffractorLib64.cmake) | Fetched by CMake | Shared library, MIT | [ZacWalk/lib64](https://github.com/ZacWalk/lib64), its emulator library only; a `../lib64` checkout is built instead when present. Its Commodore 64 plays SID tunes for [av_sid.cpp](../src/av_sid.cpp), which also shows the chip's registers in the SID monitor, and checks a tune's header for [files.cpp](../src/files.cpp). A tune drives the chip with its own code, so needs no ROM; a disk's, tape's, cartridge's or program file's program runs on the machine's KERNAL, BASIC and character ROMs, which lib64 carries, for [av_c64.cpp](../src/av_c64.cpp) |
-| libaom | 3.15.1 | Fetched by libfiles | Release archive by SHA-256 | [AOMedia releases](https://storage.googleapis.com/aom-releases/), signed with AOMedia's release key; BSD-2-Clause with the Alliance for Open Media Patent License 1.0, whose texts every release package carries from [licences](../licences). libfiles pins the archive in its `cmake/dd-dependencies.json` and builds its encoder alone, with the configuration its own CMake generated, in libfiles' `cmake/aom/`, as `libfiles::aom`, which libheif's AV1 encoder uses and libfiles writes AVIF with; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::aom` |
-| libarchive | 3.8.11 | Fetched | Release archive by SHA-256 | [libarchive releases](https://github.com/libarchive/libarchive/releases). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [archive.cmake](../cmake/vendored/archive.cmake) builds it unchanged, including its CRC32 and umask helpers, with the configuration its configure produced for Windows and for Linux kept in `cmake/vendored/archive-windows/` and `archive-linux/` |
-| libde265 | 1.1.3 | Fetched by libfiles | Release archive by SHA-256 | [strukturag/libde265 releases](https://github.com/strukturag/libde265/releases). libfiles pins the archive and builds it, with the `config.h` and `de265-version.h` its own build generates, as `libfiles::de265`, libheif's HEVC decoder where FFmpeg's is not named |
-| libdesktop | `DIFFRACTOR_LIBDESKTOP_REVISION` in [DiffractorLibdesktop.cmake](../cmake/DiffractorLibdesktop.cmake) | Fetched by CMake | Shared library, MPL-2.0 | [ZacWalk/libdesktop](https://github.com/ZacWalk/libdesktop), its four static layers; a `../libdesktop` checkout is built instead when present. Diffractor links `libdesktop::ui`, which brings `libdesktop::core`, `libdesktop::platform` and `libdesktop::render`. They expose `core::`, `platform::`, `render::` and `ui::` through `libdesktop/core.h`, `libdesktop/platform.h`, `libdesktop/render.h` and `libdesktop/ui.h`; Diffractor keeps its own `df::` and `str::` names, while libdesktop supplies the OS services, drawing, frames, controls, menus, text views and syntax highlighters (`libdesktop/ui/syntax.h`) |
-| libfacedetection | `acf7b254121927e7dced30e233a2e03119f28ea2`, upstream `master` of 2026-06-28 | Fetched | Commit archive by SHA-256 | [ShiqiYu/libfacedetection](https://github.com/ShiqiYu/libfacedetection), BSD-3-Clause, its network's weights included. Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [facedetection.cmake](../cmake/vendored/facedetection.cmake) builds its Highway detector unchanged, as `diffractor::facedetection`, on libfiles' Highway. See [face detection](#face-detection) |
-| libfiles | `DIFFRACTOR_LIBFILES_REVISION` in [DiffractorLibfiles.cmake](../cmake/DiffractorLibfiles.cmake) | Fetched by CMake | Shared library, MPL-2.0; its files ported from libexif and libiptcdata are LGPL-2.1-or-later | [ZacWalk/libfiles](https://github.com/ZacWalk/libfiles), shared with ImageWalker; a `../libfiles` checkout is built instead when present. Owns format identification, still-image and audio/video scans, reconciled properties, XMP/EXIF/IPTC, the ICC profile listing, metadata updates, still-image decoding and encoding, camera raw loading, and the Commodore 64 listing. Diffractor supplies streams and pixel storage, and builds it without its GIF and TIFF documents (`LIBFILES_GIF`, `LIBFILES_TIFF`), so giflib and libtiff are not built; libheif is called here only to register its FFmpeg decoder plugin, and libjxl only by the DNG SDK |
-| libheif | 1.23.7 | Fetched by libfiles | Release archive by SHA-256 | [strukturag/libheif releases](https://github.com/strukturag/libheif/releases). libfiles pins the archive and builds its library subtree with the JPEG, libde265, dav1d and uncompressed decoders and its libaom and uncompressed encoders, as `libfiles::heif`, which libfiles' HEIF decoder and AVIF encoder use; its FFmpeg decoder plugin is built here, from that tree, by [DiffractorHeif.cmake](../cmake/DiffractorHeif.cmake), and registered by [files_heif.cpp](../src/files_heif.cpp), which names it to libfiles for HEVC images |
-| libjpeg-turbo | 3.2.1 | Fetched by libfiles | Release archive by SHA-256 | [libjpeg-turbo releases](https://github.com/libjpeg-turbo/libjpeg-turbo/releases). libfiles pins the archive in its `cmake/dd-dependencies.json` and builds it as `libfiles::jpeg`, and decodes, encodes and losslessly turns JPEGs with it; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::jpeg`, which the codecs that read JPEG data and the tests link |
-| libjxl | 0.13.0 | Fetched by libfiles | Release archive by SHA-256 | [libjxl releases](https://github.com/libjxl/libjxl/releases). libfiles pins the archive and builds its decoder, encoder, colour management and thread runners, with the version and export headers its own build generates and optimised like the rest, as `libfiles::jxl`, and decodes and encodes JPEG XL with it; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::jxl`, which the DNG SDK links |
-| XZ / liblzma | 5.8.4 | Fetched | Release archive by SHA-256 | [XZ releases](https://github.com/tukaani-project/xz/releases). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [lzma.cmake](../cmake/vendored/lzma.cmake) builds `src/liblzma/` and `src/common/` unchanged, not the command-line tools, with the `config.h` kept in `cmake/vendored/lzma/` |
-| libopenmpt | 0.8.10 | Fetched | Release archive by SHA-256 | [libopenmpt downloads](https://lib.openmpt.org/libopenmpt/download/). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json), the `.autotools` source release; [openmpt.cmake](../cmake/vendored/openmpt.cmake) builds it unchanged, with the release's own `svn_version.h` |
-| libpng | 1.6.59 | Fetched by libfiles | Release archive by SHA-256 | [libpng](https://www.libpng.org/pub/png/libpng.html), [upstream tags](https://github.com/pnggroup/libpng/tags). libfiles pins the archive in its `cmake/dd-dependencies.json` and builds it in C alone, with the `pnglibconf.h` kept in its `cmake/`, as `libfiles::png`, and decodes and encodes PNGs with it; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::png`, which the tests link |
-| LibRaw | 0.22.3 | Fetched by libfiles | Release archive by SHA-256 | [LibRaw releases](https://github.com/LibRaw/LibRaw/releases). libfiles pins the archive and builds its library's sources with the DNG SDK and libjpeg, as `libfiles::raw`, and loads raw files with it - their preview, or their raw data developed - and scans them - their metadata, the info pane's listing and a thumbnail; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::raw`, which Diffractor links for libfiles without calling it |
-| libwebp | 1.6.0 | Fetched by libfiles | Release archive by SHA-256 | [libwebp tags](https://github.com/webmproject/libwebp/tags). libfiles pins the archive in its `cmake/dd-dependencies.json` and builds its decoder, encoder, sharpyuv, mux and demux as one library, `libfiles::webp`, and decodes still WebPs and encodes WebPs with it; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::webp`, which the tests link |
-| minizip-ng | 4.2.2 | Fetched | Tag archive by SHA-256 | [minizip-ng releases](https://github.com/zlib-ng/minizip-ng/releases). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [minizip.cmake](../cmake/vendored/minizip.cmake) builds it unchanged, the `compat/` API included, with the `mz_config.h` kept in `cmake/vendored/minizip/` |
-| RapidJSON | `297637bc0a0f00dc504dbc1a47ebdaa577f8ae19` | Fetched by libdesktop | Commit archive by SHA-256 | [Tencent/rapidjson](https://github.com/Tencent/rapidjson). libdesktop pins the archive in its `cmake/dd-dependencies.json` and gives its headers to `libdesktop::core`'s consumers; Diffractor's own sources include none of it, and nothing of it is built |
-| SDL3 | 3.4.20 | Fetched by libdesktop, on Linux | Release archive by SHA-256 | [libsdl-org/SDL releases](https://github.com/libsdl-org/SDL/releases). libdesktop pins the archive in its `cmake/dd-dependencies.json` and links it statically into its Linux platform and render backends; the Windows build does not use it |
-| skcms | `074a8d439d75df5bff2746458306f7760ee74dd8` | Fetched by libfiles | Git commit | [Skia upstream](https://skia.googlesource.com/skcms/). It makes no releases, and Skia's generated archives differ from one download to the next, so libfiles pins the commit, clones it, and builds its baseline, Haswell and Skylake units as `libfiles::skcms`, which libjxl's colour management uses |
-| SQLite | 3.54.1 | Fetched | Amalgamation archive by SHA-256 | [sqlite.org](https://www.sqlite.org/download.html). Pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); [sqlite.cmake](../cmake/vendored/sqlite.cmake) builds the amalgamation unchanged, with Diffractor's compile-time options |
-| zlib-ng | 2.3.3, zlib-compatible API | Fetched by libfiles | Release archive by SHA-256 | [zlib-ng releases](https://github.com/zlib-ng/zlib-ng/releases), not stock zlib. libfiles pins the archive in its `cmake/dd-dependencies.json` and builds it, with the headers its own build generates, as `libfiles::zlib`; [CMakeLists.txt](../CMakeLists.txt) names it `diffractor::zlib`, which libpng, libarchive, minizip, the DNG SDK and FFmpeg link |
+| Brotli | 1.2.1 | libfiles | Release archive | [google/brotli releases](https://github.com/google/brotli/releases): its C decoder and encoder; libfiles' bounded decoder reads JPEG XL's compressed metadata boxes with it, and libjxl links it |
+| bzip2 | 1.0.8 | Fetched | Release archive | [Sourceware](https://sourceware.org/bzip2/downloads.html), built unchanged by [bzip2.cmake](../cmake/vendored/bzip2.cmake) |
+| dav1d | 1.5.4 | libfiles | Release archive | [VideoLAN](https://code.videolan.org/videolan/dav1d), with libfiles' configuration and bitdepth-template wrappers ([dav1d](#dav1d)); libheif and FFmpeg's software AV1 decoder link it |
+| Adobe DNG SDK | 1.7.1 build 2802 | libfiles | Release archive | [Adobe source archive](https://download.adobe.com/pub/adobe/dng/dng_sdk_1_7_1_2802_20261110.zip): `dng_sdk/source/` - every source but the SDK's XMP backend, which libfiles' [dng_xmp_sdk.cpp](https://github.com/ZacWalk/libfiles/blob/main/src/dng_xmp_sdk.cpp) replaces - with the `RawEnvironment.h` kept in libfiles' `cmake/dng/`; LibRaw hands it DNGs |
+| FFmpeg | `d35e13b9e05cc20f48373f88e399c8ef0c16fc61`, upstream `master` of 2026-11-16 | Fetched | Upstream commit archive | [FFmpeg/FFmpeg](https://github.com/FFmpeg/FFmpeg). [FFmpeg.cmake](../cmake/vendored/FFmpeg.cmake) drives its configure and make on Linux, and [ffmpeg_msvc.cmake](../cmake/vendored/ffmpeg_msvc.cmake) builds it on Windows with the configuration its configure generated, kept in `cmake/vendored/ffmpeg-windows/` ([FFmpeg](#ffmpeg)) |
+| Highway | 1.4.0 | libfiles | Release archive | [google/highway releases](https://github.com/google/highway/releases), which libjxl and libmug use |
+| Hunspell | 1.7.6 | Fetched | Release archive | [Hunspell releases](https://github.com/hunspell/hunspell/releases); [hunspell.cmake](../cmake/vendored/hunspell.cmake) builds its `src/hunspell/` unchanged, the version and visibility headers included |
+| lib64 | `DIFFRACTOR_LIB64_REVISION` in [DiffractorLib64.cmake](../cmake/DiffractorLib64.cmake) | Sibling | Commit, MIT | [ZacWalk/lib64](https://github.com/ZacWalk/lib64), its emulator core only. Its Commodore 64 plays SID tunes, which need no ROM, and shows the chip's registers for [av_sid.cpp](../src/av_sid.cpp), checks a tune's header for [files.cpp](../src/files.cpp), and runs a disk's, tape's, cartridge's or program file's program on the KERNAL, BASIC and character ROMs it carries for [av_c64.cpp](../src/av_c64.cpp) |
+| libaom | 3.15.1 | libfiles | Release archive | [AOMedia releases](https://storage.googleapis.com/aom-releases/), signed with AOMedia's release key; BSD-2-Clause with the Alliance for Open Media Patent License 1.0, whose texts every release package carries from [licences](../licences). Its encoder alone, with the configuration its own CMake generated, in libfiles' `cmake/aom/` ([libaom](#libaom)): libheif's AV1 encoder, which libfiles writes AVIF with |
+| libarchive | 3.8.11 | Fetched | Release archive | [libarchive releases](https://github.com/libarchive/libarchive/releases); [archive.cmake](../cmake/vendored/archive.cmake) builds it unchanged, its CRC32 and umask helpers included, with the configuration its configure produced for Windows and for Linux kept in `cmake/vendored/archive-windows/` and `archive-linux/` |
+| libde265 | 1.1.3 | libfiles | Release archive | [strukturag/libde265 releases](https://github.com/strukturag/libde265/releases), with the `config.h` and `de265-version.h` its own build generates: libheif's HEVC decoder where FFmpeg's is not named |
+| libdesktop | `DIFFRACTOR_LIBDESKTOP_REVISION` in [DiffractorLibdesktop.cmake](../cmake/DiffractorLibdesktop.cmake) | Sibling | Commit, MPL-2.0 | [ZacWalk/libdesktop](https://github.com/ZacWalk/libdesktop), its four static layers: Diffractor links `libdesktop::ui`, which brings `libdesktop::core`, `libdesktop::platform` and `libdesktop::render`; [AGENTS.md](../AGENTS.md#source-directory-map) says what each supplies |
+| libfacedetection | `acf7b254121927e7dced30e233a2e03119f28ea2`, upstream `master` of 2026-06-28 | libmug | Commit archive | [ShiqiYu/libfacedetection](https://github.com/ShiqiYu/libfacedetection), BSD-3-Clause, whose text every release package carries from [licences](../licences). libmug compiles in its YuNet weights, converted, and runs the network on its own kernels; nothing else of it is built. Its sample photographs are the face tests' ([Faces](#faces)) |
+| libfiles | `DIFFRACTOR_LIBFILES_REVISION` in [DiffractorLibfiles.cmake](../cmake/DiffractorLibfiles.cmake) | Sibling | Commit, MPL-2.0; its files ported from libexif and libiptcdata are LGPL-2.1-or-later | [ZacWalk/libfiles](https://github.com/ZacWalk/libfiles), shared with ImageWalker: format identification, still-image and audio/video scans, reconciled properties, XMP/EXIF/IPTC, the ICC profile listing, metadata updates, still-image decoding and encoding, camera raw loading, and the Commodore 64 listing. Diffractor supplies streams and pixel storage, and builds it without its GIF and TIFF documents (`LIBFILES_GIF`, `LIBFILES_TIFF`), so giflib and libtiff are not built; libheif is called here only to register its FFmpeg decoder plugin, and libjxl only by the DNG SDK |
+| libheif | 1.23.7 | libfiles | Release archive | [strukturag/libheif releases](https://github.com/strukturag/libheif/releases): its library with the JPEG, libde265, dav1d and uncompressed decoders and the libaom and uncompressed encoders, for libfiles' HEIF decoder and AVIF encoder. Its FFmpeg decoder plugin is built here from that tree by [DiffractorHeif.cmake](../cmake/DiffractorHeif.cmake) and registered by [files_heif.cpp](../src/files_heif.cpp), which names it to libfiles for HEVC images |
+| libjpeg-turbo | 3.2.1 | libfiles | Release archive | [libjpeg-turbo releases](https://github.com/libjpeg-turbo/libjpeg-turbo/releases): libfiles decodes, encodes and losslessly turns JPEGs with it, and the codecs that read JPEG data and the tests link it |
+| libjxl | 0.13.0 | libfiles | Release archive | [libjxl releases](https://github.com/libjxl/libjxl/releases): its decoder, encoder, colour management and thread runners, with the version and export headers its own build generates, optimised like the rest; libfiles decodes and encodes JPEG XL with it, and the DNG SDK links it |
+| XZ / liblzma | 5.8.4 | Fetched | Release archive | [XZ releases](https://github.com/tukaani-project/xz/releases); [lzma.cmake](../cmake/vendored/lzma.cmake) builds `src/liblzma/` and `src/common/` unchanged, not the command-line tools, with the `config.h` kept in `cmake/vendored/lzma/` |
+| libmug | `DIFFRACTOR_LIBMUG_REVISION` in [DiffractorLibmug.cmake](../cmake/DiffractorLibmug.cmake) | Sibling | Commit, MIT | [ZacWalk/libmug](https://github.com/ZacWalk/libmug): finds faces and makes each a vector for [faces](faces.md), YuNet and SFace on its own SIMD kernels over libfiles' Highway (`LIBMUG_HIGHWAY_TARGET`), both networks' weights compiled in ([Faces](#faces)) |
+| libopenmpt | 0.8.10 | Fetched | Release archive | [libopenmpt downloads](https://lib.openmpt.org/libopenmpt/download/), the `.autotools` source release; [openmpt.cmake](../cmake/vendored/openmpt.cmake) builds it unchanged, with the release's own `svn_version.h` ([libopenmpt](#libopenmpt)) |
+| libpng | 1.6.59 | libfiles | Release archive | [libpng](https://www.libpng.org/pub/png/libpng.html), [upstream tags](https://github.com/pnggroup/libpng/tags): built in C alone, with the `pnglibconf.h` kept in libfiles' `cmake/`; libfiles decodes and encodes PNGs with it, and the tests link it |
+| LibRaw | 0.22.3 | libfiles | Release archive | [LibRaw releases](https://github.com/LibRaw/LibRaw/releases): its library, with the DNG SDK and libjpeg. libfiles loads raw files with it - their preview, or their raw data developed - and scans them: their metadata, the info pane's listing and a thumbnail. Diffractor links it for libfiles without calling it |
+| libwebp | 1.6.0 | libfiles | Release archive | [libwebp tags](https://github.com/webmproject/libwebp/tags): its decoder, encoder, sharpyuv, mux and demux as one library; libfiles decodes still WebPs and encodes WebPs with it, and the tests link it |
+| minizip-ng | 4.2.2 | Fetched | Tag archive | [minizip-ng releases](https://github.com/zlib-ng/minizip-ng/releases); [minizip.cmake](../cmake/vendored/minizip.cmake) builds it unchanged, the `compat/` API included, with the `mz_config.h` kept in `cmake/vendored/minizip/` |
+| RapidJSON | `297637bc0a0f00dc504dbc1a47ebdaa577f8ae19` | libdesktop | Commit archive | [Tencent/rapidjson](https://github.com/Tencent/rapidjson): headers only, which libdesktop gives `libdesktop::core`'s consumers; the agent tools and the Movie report read and write JSON with them ([app_mcp_json.h](../src/app_mcp_json.h), [app_movie_batch.cpp](../src/app_movie_batch.cpp)), and nothing of it is built |
+| SDL3 | 3.4.20 | libdesktop, on Linux | Release archive | [libsdl-org/SDL releases](https://github.com/libsdl-org/SDL/releases), linked statically into libdesktop's Linux platform and render backends; the Windows build does not use it |
+| SFace | OpenCV Zoo `ba91a3b91d00d76e86540d4013f944bd6b514e39`, `face_recognition_sface_2021dec.onnx` | libmug | Model file | [opencv/opencv_zoo](https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface), Apache-2.0, whose text every release package carries from [licences](../licences). libmug converts it as the build runs into the quantized weights it compiles in ([Faces](#faces)) |
+| skcms | `074a8d439d75df5bff2746458306f7760ee74dd8` | libfiles | Git commit | [Skia upstream](https://skia.googlesource.com/skcms/). It makes no releases, and Skia's generated archives differ from one download to the next, so libfiles clones the commit; its baseline, Haswell and Skylake units serve libjxl's colour management |
+| SQLite | 3.54.1 | Fetched | Amalgamation archive | [sqlite.org](https://www.sqlite.org/download.html); [sqlite.cmake](../cmake/vendored/sqlite.cmake) builds the amalgamation unchanged, with Diffractor's compile-time options |
+| zlib-ng | 2.3.3, zlib-compatible API | libfiles | Release archive | [zlib-ng releases](https://github.com/zlib-ng/zlib-ng/releases), not stock zlib, with the headers its own build generates; libpng, libarchive, minizip, the DNG SDK and FFmpeg link it |
 
 Version traps matter during an audit: RapidJSON's `1.1.0` does not identify a post-release snapshot,
 and zlib-ng's `1.3.1.zlib-ng` describes its compatibility API. Use the SDK build number for DNG, the
@@ -93,60 +97,64 @@ public `hunversion.h` for Hunspell, and `ZLIBNG_VERSION` in the generated `zlib.
 | 7-Zip Extra | 26.06 | Fetched by `dd.ps1` into `tmp/tools/7zip/` | [7-Zip release](https://github.com/ip7z/7zip/releases/tag/26.06): `7zr.exe` unpacks `7z2606-extra.7z`, both pinned in [dd-dependencies.json](../cmake/dd-dependencies.json); its `License.txt` is in the archive |
 | SymStore | Installed Windows SDK | `Windows Kits\10\Debuggers\x64\symstore.exe` | Machine-installed SDK, or a per-user SDK administrative image as described in [crash.md](crash.md#3-symbols); packaging checks it before changing release state |
 
-`dd.ps1` packs with the release's x86 `7za.exe` and its two DLLs. SignTool and SymStore come from the
-installed Windows SDK. These are build and packaging tools, not additional media decoders. Installed
-Visual Studio, CMake, Ninja, Windows SDK and NSIS prerequisites are described in the
-[README](../README.md#building).
+`dd.ps1` packs with the release's x86 `7za.exe` and its two DLLs; SignTool and SymStore come from the installed
+Windows SDK. These are build and packaging tools, not media decoders. The Visual Studio, CMake, Ninja, Windows SDK
+and NSIS prerequisites are the [README](../README.md#building)'s.
 
 ## Upgrade Procedure
 
-1. Identify the exact upstream release or commit and verify its license.
-2. Pin it: the archive's URL and SHA-256 in [dd-dependencies.json](../cmake/dd-dependencies.json),
-   or in libfiles' or libdesktop's pins for a library one of them owns. Compare the new release's
-   source inventory with the old one's.
-3. Reapply the integration constraints below - a configuration header kept in `cmake/vendored/` is
-   brought up to the release - update the owning CMake module's source list, and update the
-   inventory. Record snapshot commit IDs and DNG build numbers, not just a branch or API version.
-4. Configure from a clean build directory so removed sources cannot survive as stale objects.
-   In an existing tree the pin manifest is a configure dependency, so a pin change refetches the
-   archive, and extraction uses current timestamps so existing objects rebuild; FFmpeg's staged
-   source also depends on FFmpeg's pin, so an incremental Linux build copies the new snapshot
-   before configuring it, and a pin change for another library does not rebuild FFmpeg.
-5. Build Debug and Release x64 plus Release Win32 where the dependency has architecture-specific
-   code, then run `.\dd.ps1 test` and its focused wrapper tests.
+1. Identify the exact upstream release or commit and verify its licence.
+2. Pin it: the archive's URL and SHA-256 in [dd-dependencies.json](../cmake/dd-dependencies.json), or in the pins
+   of libfiles, libdesktop or libmug for a library one of them fetches; a sibling library's new commit goes in its
+   `cmake/Diffractor*.cmake` module once pushed there. Compare the new release's source inventory with the old
+   one's.
+3. Reapply the integration constraints below - a configuration header kept in `cmake/vendored/` is brought up to
+   the release - update the owning CMake module's source list, and update the inventory. Record snapshot commit IDs
+   and DNG build numbers, not just a branch or API version.
+4. Configure from a clean build directory so removed sources cannot survive as stale objects. In an existing tree
+   the pin manifest is a configure dependency, so a pin change refetches the archive, and extraction uses current
+   timestamps so existing objects rebuild; FFmpeg's staged source depends on FFmpeg's pin alone, so an incremental
+   Linux build copies a new snapshot before configuring it, and another library's pin change does not rebuild
+   FFmpeg.
+5. Build Debug and Release x64 plus Release Win32 where the dependency has architecture-specific code, then run
+   `.\dd.ps1 test` and its focused wrapper tests.
+6. Before packaging, configure a clean build directory in an isolated checkout, or explicitly set
+   `FETCHCONTENT_SOURCE_DIR_LIBDESKTOP`, `FETCHCONTENT_SOURCE_DIR_LIBFILES`, `FETCHCONTENT_SOURCE_DIR_LIB64` and
+   `FETCHCONTENT_SOURCE_DIR_LIBMUG` to empty cache values. Confirm the configure output names the expected pinned
+   revisions, then build and test the release. A build against sibling worktrees cannot detect an API the pinned
+   commits are missing.
 
-Build only what the application needs from a fetched archive: not upstream tests, benchmarks,
-examples or build systems. CMake source lists are explicit; a file in a fetched archive is not part
-of Diffractor until a module names it.
+Build only what the application needs from a fetched archive: not upstream tests, benchmarks, examples or build
+systems. CMake source lists are explicit; a file in a fetched archive is not part of Diffractor until a module
+names it.
 
 ## FFmpeg
 
 FFmpeg is upstream [FFmpeg](https://github.com/FFmpeg/FFmpeg), fetched at the commit
-[dd-dependencies.json](../cmake/dd-dependencies.json) pins and built unpatched: an upgrade is a new pin
-and a regenerated Windows configuration. Diffractor uses it to decode - playback, thumbnails, frame
-extraction, audio for the waveform and the movie encoder's sources - to describe the streams of a
-file libfiles' media scan cannot describe whole, and to copy a video's or a sound file's packets into a
-new file of its own format, or an MP4, for Edit's lossless edits. Every other audio and video read is libfiles':
-the container's streams, duration, tags, XMP packet and cover art (see [metadata.md](metadata.md)).
+[dd-dependencies.json](../cmake/dd-dependencies.json) pins and built unpatched: an upgrade is a new pin and a
+regenerated Windows configuration. Diffractor uses it to decode - playback, thumbnails, frame extraction, audio for
+the waveform and the movie encoder's sources - to describe the streams of a file libfiles' media scan cannot
+describe whole, and to copy a video's or a sound file's packets into a new file of its own format, or an MP4, for
+Edit's lossless edits. Every other audio and video read - the container's streams, duration, tags, XMP packet and
+cover art - is libfiles' ([metadata](metadata.md)).
 
-Its configuration controls the available demuxers, muxers, decoders, parsers and hardware
-acceleration. It builds no end-user programs and enables no network protocols. It is configured for
-decode speed rather than size, which also keeps codec profile names; it decodes software AV1 through
-libdav1d, built against libfiles' dav1d; D3D11VA is its only hardware acceleration; its only muxers
-write the formats Edit copies a file into; and it has no encoders or devices. It is configured
-LGPL 2.1: no GPL, version-3 or nonfree component.
+Its configuration controls the available demuxers, muxers, decoders, parsers and hardware acceleration. It builds
+no end-user programs and enables no network protocols. It is configured for decode speed rather than size, which
+also keeps codec profile names; it decodes software AV1 through libdav1d, built against libfiles' dav1d; D3D11VA,
+on Windows, is its only hardware acceleration; its only muxers write the formats Edit copies a file into; and it
+has no encoders or devices. It is configured LGPL 2.1: no GPL, version-3 or nonfree component.
 
-[av_format.cpp](../src/av_format.cpp) owns what FFmpeg's answers become: codec names in Diffractor's
-short form, a pixel format as chroma and depth, the coded sample type, and iTunes' `rtng` advisory kept
-out of the rating; its metadata probe decodes only H.264 key frames, which is where the decoder applies
-the SPS. Audio is converted only through a resampler `swr_init` accepted, which refuses invalid formats
-and channel layouts. Architecture dispatch must use real compiled kernels or exclude
-foreign-architecture sources; unresolved SIMD symbols must never be answered by no-op stubs.
+[av_format.cpp](../src/av_format.cpp) owns what FFmpeg's answers become: codec names in Diffractor's short form, a
+pixel format as chroma and depth, the coded sample type, and iTunes' `rtng` advisory kept out of the rating; its
+metadata probe decodes only H.264 key frames, which is where the decoder applies the SPS. Audio is converted only
+through a resampler `swr_init` accepted, which refuses invalid formats and channel layouts. Architecture dispatch
+must use real compiled kernels or exclude foreign-architecture sources; unresolved SIMD symbols must never be
+answered by no-op stubs.
 
-Windows configuration is architecture-specific. Linux uses FFmpeg's configure/build system rather
-than restating its codec inventory in application CMake. On Linux, FFmpeg's reported version label
-can identify the surrounding Diffractor checkout rather than the GitHub commit archive; use the pin
-manifest, not that label, to identify the exact upstream snapshot.
+The Windows configuration is architecture-specific. Linux uses FFmpeg's own configure and make rather than
+restating its codec inventory in application CMake; there FFmpeg's reported version label can name the surrounding
+Diffractor checkout rather than the commit archive, so the pin manifest, not that label, identifies the upstream
+snapshot.
 
 ### FFmpeg Configuration And Upgrade Checklist
 
@@ -181,8 +189,8 @@ manifest, not that label, to identify the exact upstream snapshot.
   deleted source names, and retain assembly include paths, unique object names and Win32
   exclusions. The atomics compatibility layer needs both `compat/atomics` and
   `compat/atomics/win32` on the MSVC include path.
-- The monolithic Windows archive compiles a shared implementation only once,
-  not also through the forwarding sources used by upstream's separate libraries.
+- The monolithic Windows archive compiles a shared implementation only once, not also through the forwarding
+  sources upstream's separate libraries use.
 - Compare the Windows/Linux component sets with `tools/compare_ffmpeg_config.py`. Explain any
   intentional platform difference in `cmake/vendored/ffmpeg-config-divergence.txt`; do not simply
   accept a changed baseline. A working Windows build does not verify the Linux configuration.
@@ -207,7 +215,7 @@ comment records it.
 
 | Dependency | Integration that an import must preserve |
 | --- | --- |
-| libfiles, libdesktop, lib64 | A new commit pin in their `cmake/Diffractor*.cmake` module, pushed there first. test_metadata's records of libfiles' reading of every fixture packet, whole and cut short, and of every packet it writes must hold, as must the metadata behaviors [metadata.md](metadata.md) describes; [file-io.md](file-io.md) owns the write path and rollback boundary. A successful build proves none of them. |
+| libfiles, libdesktop, lib64, libmug | A new commit pin in their `cmake/Diffractor*.cmake` module, pushed there first. test_metadata's records of libfiles' reading of every fixture packet, whole and cut short, and of every packet it writes must hold, as must the metadata behaviors [metadata.md](metadata.md) describes; [file-io.md](file-io.md) owns the write path and rollback boundary. A successful build proves none of them. |
 | libpng / zlib-ng | Upgraded in libfiles: a new archive pin, with the headers their own builds generate - libpng's `pnglibconf.h`, zlib-ng's `zlib.h`, `zconf.h` and `zlib_name_mangling.h`, in libfiles' `cmake/` - brought up to the release. Use the upstream source lists to identify added or removed units; zlib-ng's per-instruction-set sources need their compiler flags. libpng is built in C alone; turning on its SIMD filters is a change to measure, not part of an upgrade. |
 | libheif / libde265 | Upgraded in libfiles: a new archive pin, with the headers their own builds generate - libheif's `heif_version.h`, libde265's `config.h` and `de265-version.h`, in libfiles' `cmake/` - brought up to the release. Keep static linkage, the selected decoder backends, the libaom encoder and libde265's platform configuration; do not enable additional encoder/plugin dependencies implicitly - an HEVC encoder, x265, is GPL. Keep libheif's FFmpeg decoder plugin, which [DiffractorHeif.cmake](../cmake/DiffractorHeif.cmake) builds from libfiles' libheif: [files_heif.cpp](../src/files_heif.cpp) registers it and names it for HEVC images, which it decodes faster than libde265 and, unlike libde265's 32-bit build, bit-exactly. |
 | libjpeg-turbo | Upgraded in libfiles: a new archive pin, with the configuration headers its `cmake/libjpeg-turbo/` carries for MSVC and for GCC and Clang brought up to the release. Use the upstream source lists to identify added or removed units, and preserve the high-bit-depth libraries. |
@@ -241,34 +249,29 @@ build takes libaom's SIMD and the 32-bit one its C alone.
 
 ### libopenmpt
 
-A new archive pin, of the `.autotools` source release. Build `common/`, `libopenmpt/`, `sounddsp/`,
-`soundlib/` and `src/`; `common/version.cpp` takes the release's `build/svn_version/svn_version.h`
-when no other is on the include path. Do not build player plugins or test programs into the library.
-Native tracker playback uses its C++ and interactive interfaces directly, so it is a required
-dependency on both platforms. Modules reach the player through the native PCM bridge rather than
-the FFmpeg module demuxer.
-Its FFmpeg demuxer must remain present on both platforms: both FFmpeg recipes name the fetched tree,
-which is why [CMakeLists.txt](../CMakeLists.txt) fetches it before any recipe runs.
+A new archive pin, of the `.autotools` source release. Build `common/`, `libopenmpt/`, `sounddsp/`, `soundlib/`
+and `src/`; `common/version.cpp` takes the release's `build/svn_version/svn_version.h` when no other is on the
+include path. Do not build player plugins or test programs into the library. Native tracker playback uses its C++
+and interactive interfaces directly, so it is a required dependency on both platforms, and modules reach the
+player through the native PCM bridge rather than the FFmpeg module demuxer. That demuxer must still remain present
+on both platforms: both FFmpeg recipes name the fetched tree, which is why [CMakeLists.txt](../CMakeLists.txt)
+fetches it before any recipe runs.
 
-## Face Detection
+## Faces
 
-libfacedetection supplies the network [faces](faces.md) describes and the weights it was trained to,
-compiled in from `src/facedetectcnn-data.cpp`. A new commit pin keeps these:
+libmug owns face detection and recognition, with the networks, their pins and their conversion:
+libfacedetection's YuNet weights and the OpenCV Zoo's SFace, converted as libmug's build runs - with
+only Python's standard library, so the build needs a Python 3 interpreter - and run on libmug's own
+kernels. Its [design](https://github.com/ZacWalk/libmug/blob/main/docs/design.md#the-networks) says how
+each is stored, and its tests hold its detector to libfacedetection's and its vectors to OpenCV's
+FaceRecognizerSF. Upgrading either network is libmug's change; here it keeps these:
 
-- Build its Highway detector, `highway/src/`, with those weights: not upstream's
-  `highway/CMakeLists.txt`, which finds Highway as an installed package and builds tests and
-  benchmarks, and not `src/facedetectcnn.cpp`, whose SIMD is chosen by a compile-time macro.
-- Leave `FDT_HW_ENABLE_X86_AVX2` and `FDT_HW_ENABLE_HYBRID_CEILING` undefined. Upstream compiles the
-  whole library for AVX2 to use them, which would fault on a processor at the SSE2 baseline
-  Diffractor builds for, and its Highway kernels do not dispatch at run time.
-  `hw_kernels_intrinsics.cpp` stays in the source list: the network's layers call it, and without the
-  switch it forwards to the scalar kernels.
-- Highway is libfiles', which must stay a release upstream's detector supports - 1.3.0 or later.
-- Diffractor feeds the network itself rather than calling `facedetect_hw_cnn`, so it relies on
-  `ForwardNetworkHwTo`, `DecodeAndConcatHwTo` and the 32-channel input blob `ImageToInitialBlobHwTo`
-  builds. `/test:*detect*face*` holds what Diffractor finds to what that entry point finds, over the
-  photographs at `mobile/Android/FaceDetection/app/src/main/assets/` in the fetched archive; an
-  upgrade that moves them moves the tests' path in [test_faces.cpp](../src/test_faces.cpp).
+- Highway is libfiles', named to libmug as `LIBMUG_HIGHWAY_TARGET`, so the application links one copy.
+- The face tests read libfacedetection's sample photographs from the archive libmug fetches, at
+  `mobile/Android/FaceDetection/app/src/main/assets/`; an upgrade that moves them moves the tests' path
+  in [test_faces.cpp](../src/test_faces.cpp) and in [test_mcp_session.py](../tools/test_mcp_session.py).
+- A new network moves libmug's model id, and so the one every face record carries: the collection's
+  faces are read again.
 
 ## Assets
 
@@ -289,6 +292,11 @@ packaged data, not source dependencies, but the same redistribution rule applies
 
 - [dd-dependencies.json](../cmake/dd-dependencies.json): the pinned archives, and
   [DiffractorFetch.cmake](../cmake/DiffractorFetch.cmake), which fetches them.
+- [DiffractorLibdesktop.cmake](../cmake/DiffractorLibdesktop.cmake),
+  [DiffractorLibfiles.cmake](../cmake/DiffractorLibfiles.cmake), [DiffractorLib64.cmake](../cmake/DiffractorLib64.cmake)
+  and [DiffractorLibmug.cmake](../cmake/DiffractorLibmug.cmake): the sibling libraries' pinned commits and the
+  checkouts built in their place; [DiffractorHeif.cmake](../cmake/DiffractorHeif.cmake): libheif's FFmpeg decoder
+  plugin.
 - `cmake/vendored/`: owned source selection, definitions, and generated configuration.
 - [DiffractorDependency.cmake](../cmake/DiffractorDependency.cmake) and
   [DiffractorCompilerPolicy.cmake](../cmake/DiffractorCompilerPolicy.cmake): common dependency and
@@ -296,11 +304,10 @@ packaged data, not source dependencies, but the same redistribution rule applies
 - [files.cpp](../src/files.cpp), the decoders gated on their libraries
   ([files_heif.cpp](../src/files_heif.cpp), [files_jxl.cpp](../src/files_jxl.cpp) and
   [files_raw.cpp](../src/files_raw.cpp)), [av_format.cpp](../src/av_format.cpp),
-  [metadata.cpp](../src/metadata.cpp), [util_spell.cpp](../src/util_spell.cpp),
-  [util_zip.cpp](../src/util_zip.cpp) and [model_faces_detect.cpp](../src/model_faces_detect.cpp):
-  application-owned wrappers.
-- `tools/compare_ffmpeg_config.py` and `tools/fluent_icons.py`:
-  reproducible integration checks and generators.
+  [metadata.cpp](../src/metadata.cpp), [util_spell.cpp](../src/util_spell.cpp) and
+  [util_zip.cpp](../src/util_zip.cpp): application-owned wrappers.
+- `tools/compare_ffmpeg_config.py` and `tools/fluent_icons.py`: reproducible integration checks and
+  generators.
 - [ffmpeg_msvc.cmake](../cmake/vendored/ffmpeg_msvc.cmake) and
   [ffmpeg_msvc.local.cmake](../cmake/vendored/ffmpeg_msvc.local.cmake): Windows source inventory,
   assembly configuration and architecture exclusions; `cmake/vendored/ffmpeg-windows/`: the
@@ -308,6 +315,7 @@ packaged data, not source dependencies, but the same redistribution rule applies
 - [test_files.cpp](../src/test_files.cpp), [test_metadata.cpp](../src/test_metadata.cpp),
   [test_av.cpp](../src/test_av.cpp), [test_text.cpp](../src/test_text.cpp),
   [test_util.cpp](../src/test_util.cpp) and [test_faces.cpp](../src/test_faces.cpp):
-  application-level format, metadata, media, text and face detection checks.
+  application-level format, metadata, media, text, face detection and face recognition checks.
 - `dd.ps1` (`Copy-LicenceTexts`) and `installer/diff.nsi`: the licence texts each release package
-  carries - the LGPL and GPL texts, and libaom's licence and patent licence.
+  carries - the LGPL and GPL texts, libaom's licence and patent licence, and the licences of the
+  libfacedetection and SFace weights libmug compiles in.

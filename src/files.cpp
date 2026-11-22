@@ -19,6 +19,7 @@
 #include "av_format.h"
 #include "av_sid.h"
 #include "metadata.h"
+#include "model_faces.h"
 #include "util_text.h"
 
 #include "libfiles/decode.h"
@@ -1611,7 +1612,8 @@ namespace
 // orientation_override, the orientation is the one the file's EXIF gives.
 core::surface_ptr files::decode_jpeg(const core::cspan data, const sizei target_extent, const bool can_use_yuv,
                                      const std::optional<core::orientation> orientation_override, bool& is_yuv,
-                                     const core::cancel_token& token, const decode_intent intent)
+                                     const core::cancel_token& token, const decode_intent intent,
+                                     const bool fit_within_target)
 {
 	is_yuv = false;
 
@@ -1623,6 +1625,7 @@ core::surface_ptr files::decode_jpeg(const core::cspan data, const sizei target_
 		libfiles::decode_options options;
 		options.target_width = static_cast<uint32_t>(std::max(0, target_extent.cx));
 		options.target_height = static_cast<uint32_t>(std::max(0, target_extent.cy));
+		options.fit_within_target = fit_within_target;
 		options.allow_nv12 = can_use_yuv;
 		options.smooth_chroma = intent != decode_intent::thumbnail;
 		// Shown in sRGB's colours where a profile describes others; an edit works in the file's own.
@@ -1814,6 +1817,11 @@ core::surface_ptr files::image_to_surface(const core::const_image_ptr& image, co
 core::surface_ptr files::image_to_surface(const core::cspan image_buffer_in, const sizei target_extent,
                                           const bool can_use_yuv, const decode_intent intent)
 {
+	return decode_still(image_buffer_in, still_decode_request{target_extent, can_use_yuv, intent});
+}
+
+core::surface_ptr files::decode_still(const core::cspan image_buffer_in, const still_decode_request& request)
+{
 	core::surface_ptr surface_result;
 
 	try
@@ -1824,14 +1832,14 @@ core::surface_ptr files::image_to_surface(const core::cspan image_buffer_in, con
 
 			if (still && still->decode)
 			{
-				surface_result = still->decode(*this, image_buffer_in, {target_extent, can_use_yuv, intent});
+				surface_result = still->decode(*this, image_buffer_in, request);
 			}
 
 			if (is_empty(surface_result))
 			{
 				// Everything without a decoder of its own - GIF, BMP, TIFF, TGA, SGI, the portable
 				// pixmaps, DPX - reaches ffmpeg, which carries all of them on every platform.
-				surface_result = av_decode_still(image_buffer_in, target_extent);
+				surface_result = av_decode_still(image_buffer_in, request.target_extent);
 			}
 		}
 	}
@@ -4225,6 +4233,24 @@ static void add_dated(prop::item_metadata& md, const libfiles::dated& d)
 	md.dates.add(date_source_of(d.source), value, offset);
 }
 
+// A file's face regions as it states them, packed with the dimensions it says it measured them on: they are turned
+// upright as they are read back (docs/faces.md#22-where-a-region-is).
+static core::cached face_regions_of(const libfiles::properties& p)
+{
+	std::vector<faces::stored_region> stored;
+	stored.reserve(p.faces.size());
+
+	for (const auto& face : p.faces)
+	{
+		faces::stored_region region;
+		region.name = face.name;
+		if (face.area) region.area = rectd{face.area->left, face.area->top, face.area->width, face.area->height};
+		stored.emplace_back(std::move(region));
+	}
+
+	return faces::pack_regions(stored, {p.faces_width, p.faces_height});
+}
+
 void apply_properties(prop::item_metadata& md, const libfiles::properties& p)
 {
 	using libfiles::property;
@@ -4282,6 +4308,13 @@ void apply_properties(prop::item_metadata& md, const libfiles::properties& p)
 		md.orientation = static_cast<core::orientation>(*p.orientation);
 	if (p.states(property::panorama)) md.panorama = panorama_of(p.panorama);
 
+	// Whom the picture names, and where, as the file states it.
+	if (p.states(property::people))
+	{
+		md.people = core::cache(core::combine(p.people));
+		md.face_regions = face_regions_of(p);
+	}
+
 	// A position the index cannot hold pins the item nowhere rather than somewhere wrong.
 	if (p.states(property::location) && p.location)
 	{
@@ -4292,19 +4325,8 @@ void apply_properties(prop::item_metadata& md, const libfiles::properties& p)
 	for (const auto& d : p.dates) add_dated(md, d);
 }
 
-// What makes a picture or a video HDR, by the H.273 transfer its own colour description names, else by the gain
-// map it carries.
-static prop::hdr_kind hdr_kind_of(const uint8_t transfer, const bool gain_map)
-{
-	if (transfer == 16) return prop::hdr_kind::pq;
-	if (transfer == 18) return prop::hdr_kind::hlg;
-	return gain_map ? prop::hdr_kind::gain_map : prop::hdr_kind::none;
-}
-
-// The colour space a file says its pixels are in: its ICC profile's own name, else the primaries its coded colour
-// description names, as photographers and video editors each call them - BT.709's primaries are sRGB's. Nothing
-// for a file that says neither, rather than the sRGB it is most likely to be.
-static core::cached color_profile_of(const std::span<const uint8_t> icc, const uint8_t primaries, const bool video)
+// An ICC profile's own name, as the profile states it, or nothing for a file without one.
+static core::cached icc_profile_of(const std::span<const uint8_t> icc)
 {
 	if (!icc.empty())
 	{
@@ -4316,16 +4338,7 @@ static core::cached color_profile_of(const std::span<const uint8_t> icc, const u
 		}
 	}
 
-	switch (primaries)
-	{
-	case 1: return core::cache(video ? "BT.709"sv : "sRGB"sv);
-	case 5:
-	case 6: return core::cache("BT.601"sv);
-	case 9: return core::cache("BT.2020"sv);
-	case 11: return core::cache("DCI-P3"sv);
-	case 12: return core::cache("Display P3"sv);
-	default: return {};
-	}
+	return {};
 }
 
 prop::item_metadata_ptr file_scan_result::to_props() const
@@ -4420,13 +4433,18 @@ prop::item_metadata_ptr file_scan_result::to_props() const
 	if (!prop::is_null(pixel_format)) result->pixel_format = pixel_format;
 	if (orientation_applied || orientation != core::orientation::top_left) result->orientation = orientation;
 
-	// What the picture or video is coded as, from the file alone: no packet states these.
+	// What the picture or video is coded as, from the file alone: no packet states these. Its colour is kept as the
+	// file states it, and its profile and HDR read from that.
 	result->bit_depth = picture.bit_depth;
 	if (animated) result->picture_flags |= prop::picture_flag::animated;
 	if (picture.alpha) result->picture_flags |= prop::picture_flag::alpha;
-	result->hdr = hdr_kind_of(colour_transfer, gain_map);
+	if (gain_map) result->picture_flags |= prop::picture_flag::gain_map;
+	if (media != nullptr && colour_primaries != 0) result->picture_flags |= prop::picture_flag::video;
+	result->icc_profile = icc_profile_of(metadata.icc);
+	result->colour_primaries = colour_primaries;
+	result->colour_transfer = colour_transfer;
+	result->read_colour();
 	if (frame_rate > 0.0 && frame_rate < 100000.0) result->frame_rate = static_cast<float>(frame_rate);
-	result->color_profile = color_profile_of(metadata.icc, colour_primaries, media != nullptr);
 	if (!prop::is_null(contents)) result->contents = contents;
 
 	return result;
@@ -4748,7 +4766,8 @@ namespace
 core::surface_ptr decode_still_jpeg(files& ff, const core::cspan data, const still_decode_request& request)
 {
 	bool is_yuv = false;
-	auto decoded = ff.decode_jpeg(data, request.target_extent, request.can_use_yuv, {}, is_yuv, {}, request.intent);
+	auto decoded = ff.decode_jpeg(data, request.target_extent, request.can_use_yuv, {}, is_yuv, {}, request.intent,
+	                              request.fit_within_target);
 
 	if (!is_valid(decoded)) return {};
 
@@ -4783,8 +4802,8 @@ file_type still_file_type(const libfiles::image_format format)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Still-image scanning. Every still format - JPEG, PNG, WebP, GIF, TIFF, PSD, BMP, HEIF and AVIF, and
 // JPEG XL - is read by libfiles, whose result is mapped onto file_scan_result here; a format adds what
-// libfiles leaves to its caller, decoding a HEIF thumbnail item or JPEG XL's Brotli. Embedded thumbnails
-// are read and decoded only for a caller that wants one.
+// libfiles leaves to its caller, decoding a HEIF thumbnail item; libfiles decompresses JPEG XL's
+// Brotli-compressed boxes itself. Embedded thumbnails are read and decoded only for a caller that wants one.
 
 // Reached only for an embedded thumbnail whose format load_image_file cannot wrap, which needs a
 // files instance to decode. Borrows the caller's rather than building a second libjpeg context.

@@ -10,7 +10,9 @@
 
 // clang-format off
 #define IDI_APP_ICON   1
-#define IDR_MANIFEST   2
+// Windows reads an executable's manifest only as resource 1 - CREATEPROCESS_MANIFEST_RESOURCE_ID - and an icon of the
+// same number is a different resource type, so the two do not collide.
+#define IDR_MANIFEST   1
 // clang-format on
 
 // Next default values for new objects

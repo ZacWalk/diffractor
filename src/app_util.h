@@ -172,6 +172,8 @@ struct import_source
 	core::folder_path path;
 	bool selected = false;
 	df::item_set items;
+	// A phone or camera a cable connects as a device rather than a drive, whose files are staged to be analyzed.
+	platform::portable_device_t device;
 };
 
 enum class import_action
@@ -185,6 +187,10 @@ struct import_result
 {
 	core::folder_path folder;
 	item_import_set imports;
+	// Where each imported file now is.
+	std::vector<core::file_path> created;
+	// What a move took, from where to where, so a change made to it earlier in the session follows it.
+	std::vector<std::pair<core::file_path, core::file_path>> moved;
 	// Rows whose files no longer matched the review. They wrote nothing and need a fresh analysis.
 	uint32_t refused = 0;
 	// Rows that arrived but whose requested created date the filesystem refused. The file is there,
@@ -242,6 +248,46 @@ extern std::function<std::optional<platform::file_op_result>(core::file_path des
 
 std::optional<import_source> calc_import_selected_source(const view_state& s);
 std::vector<import_source> calc_import_sources(std::optional<import_source> selected_source);
+
+// The folders at the top of a phone's or camera's storage that hold what it took.
+inline const std::vector<std::string_view> device_media_folders = {"DCIM", "Pictures", "Movies"};
+
+// What staging a device's files left in the staging folder, ready to analyze as any folder's are.
+struct device_staging
+{
+	// Copied now, or by an earlier Analyze and unchanged on the device since.
+	size_t staged = 0;
+	// Left on the device, because an import already took them.
+	size_t previously_imported = 0;
+	// The names of the files the device would not give up; the rest are staged regardless.
+	std::vector<std::string> unreadable;
+	// Why staging stopped short, when it did: cancelled, or a copy that could not be written.
+	platform::file_op_result stopped{platform::file_op_result_code::OK};
+	// How much more room the drive staging is on needed for what was still to copy, which stopped it before it began.
+	uint64_t short_of_space = 0;
+};
+
+using device_copier = std::function<platform::portable_copy_result(const std::vector<platform::portable_copy_t>&)>;
+
+// Copies the files a phone or camera holds into staging, under the folders the device keeps them in, so Import can
+// analyze them as it does a card's: docs/design.md#guided-operations. A file an import already took stays on the
+// device; one an earlier Analyze staged, its size and time unchanged, is not copied again; and what staging holds that
+// the device no longer offers - imported since, or gone from it - is removed, so the folder holds what the device
+// offers now. What is still to copy must fit on staging's drive, with room to spare, or nothing is copied. The listing
+// must be whole: one a cancel cut short would take the rest away.
+device_staging stage_device_files(const std::vector<platform::portable_file_t>& files,
+                                  const item_import_set& previous_imported, core::folder_path staging,
+                                  const device_copier& copy);
+
+// Where Import stages devices' files: a folder of the application's own in the system's temporary folder, holding a
+// folder for each running instance, named by its process, which holds one for each device it reads.
+core::folder_path device_staging_root();
+core::folder_path device_staging_folder(const platform::portable_device_t& device);
+// The lock an instance holds while it runs, so that another clears only what an instance that has ended left staged.
+std::string device_staging_lock_name(uint32_t process_id);
+// Clears what staging holds under root but for a running instance's: this instance's, which holds nothing as Import
+// opens, an ended one's, and anything else there.
+void clear_abandoned_device_staging(core::folder_path root);
 
 // The removable drives Import offers as sources: those holding media, in drive order, at most max. The
 // limit applies after the filter, so fixed drives and empty card-reader slots cannot use it up.
@@ -374,6 +420,14 @@ std::vector<convert_item_plan> plan_convert_outputs(core::folder_path write_fold
 
 // Shared by every destination-writing operation: returns the first free " (n)" variant.
 core::file_path next_free_destination(core::file_path destination);
+
+// A whole file written as a copy beside it that then takes its place, so a write that fails leaves what was there:
+// a project saved, the face book exported. Empty when it was written, otherwise why not; where it must not replace a
+// file, one already there is refused.
+std::string save_file_replacing(core::file_path path, core::cspan bytes, bool fail_if_exists = false);
+// A document read whole as text: empty where it cannot be read whole, is empty, or holds more than max_bytes - a
+// refusal is better than reading a gigabyte of something that is not one.
+std::string read_text_file(core::file_path path, uint64_t max_bytes);
 
 // One vocabulary for every operation that writes to a destination.
 

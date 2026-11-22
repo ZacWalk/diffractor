@@ -1459,7 +1459,7 @@ static void should_turn_a_jxl_repacked_from_a_jpeg_as_the_jpeg_would_turn()
 }
 
 // A JPEG XL takes a metadata edit where it keeps its packet. The fixture is libjxl's, its EXIF and packet
-// Brotli-compressed between the two parts of its codestream: read with Diffractor's own Brotli, the first
+// Brotli-compressed between the two parts of its codestream: read with libfiles' own Brotli decoder, the first
 // edit writes them plain where they stood, and the next, which fits, is patched. The picture never changes.
 static void should_rate_and_tag_a_jxl()
 {

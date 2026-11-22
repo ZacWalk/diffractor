@@ -1118,51 +1118,6 @@ public:
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-class save_buttons_control final : public view_element, public std::enable_shared_from_this<save_buttons_control>
-{
-	ui::button_ptr _ok;
-	ui::button_ptr _abort;
-	ui::button_ptr _cancel;
-
-public:
-	save_buttons_control(const ui::frame_ptr& /*h*/, std::function<void()> fn_save, std::function<void()> fn_dont,
-	                     std::function<void()> fn_cancel)
-	{
-		_ok = ui::make_button(tt.button_save, std::move(fn_save), true);
-		_abort = ui::make_button(tt.button_dont_save, std::move(fn_dont));
-		_cancel = ui::make_button(tt.button_cancel, std::move(fn_cancel));
-	}
-
-	void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
-	{
-		visit(_ok);
-		visit(_abort);
-		visit(_cancel);
-	}
-
-	sizei measure(render::measure_context& mc, const int width_limit) const override
-	{
-		return {width_limit, mc.text_line_height(render::font_face::dialog) + mc.padding2 * 4};
-	}
-
-	void layout(render::measure_context& mc, const recti bounds_in) override
-	{
-		bounds = bounds_in;
-		const auto width = bounds.width() / 3;
-
-		auto rok = bounds;
-		auto rab = bounds;
-		auto rcan = bounds;
-
-		rab.left = rok.right = rok.left + width;
-		rab.right = rcan.left = rcan.right - width;
-
-		_ok->layout(mc, rok.inflate(-mc.padding1));
-		_abort->layout(mc, rab.inflate(-mc.padding1));
-		_cancel->layout(mc, rcan.inflate(-mc.padding1));
-	}
-};
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1458,8 +1413,9 @@ view_controller_ptr edit_histogram_control::controller_from_location(const view_
 	return std::make_shared<edit_tone_handle_controller>(host, shared_from_this(), handle, element_offset, reach);
 }
 
-// The before-and-after handle on the photo's left edge. Held, its line follows the pointer across the picture: the
-// picture's own colour left of it, the edit's right. Let go - or Escape - and it slides back to the edge.
+// The before-and-after handle beside the photo's left edge. Held, its line follows the pointer across the view: the
+// original as the file shows it left of it, the photo as the edit will save it right. Let go - or Escape - and it
+// slides back to where it rests.
 class edit_compare_controller final : public view_controller
 {
 	edit_view& _view;
@@ -2652,7 +2608,7 @@ bool edit_view::can_exit()
 		                                                    str_format(tt.has_changes.sv(), _path.name()),
 		                                                    dialog_previews())),
 			std::make_shared<divider_element>(),
-			std::make_shared<save_buttons_control>(dlg->_frame, save_fn, cancel_fn, [dlg] { dlg->close(true); }),
+			ui::save_discard_cancel(save_fn, cancel_fn, [dlg] { dlg->close(true); }, true),
 		};
 
 		dlg->show_modal(controls);
@@ -2704,7 +2660,7 @@ void edit_view::select_item(const df::item_element_ptr& item)
 	                                                    str_format(tt.has_changes.sv(), _path.name()),
 	                                                    dialog_previews())),
 		std::make_shared<divider_element>(),
-		std::make_shared<save_buttons_control>(dlg->_frame, save_fn, discard_fn, [dlg] { dlg->close(true); }),
+		ui::save_discard_cancel(save_fn, discard_fn, [dlg] { dlg->close(true); }, true),
 	};
 
 	dlg->show_modal(controls);
@@ -2836,13 +2792,15 @@ void edit_view::save(const core::file_path src_path, const core::file_path dst_p
 			update_result->error_message = core::utf8_cast(e.what());
 		}
 
-		s.queue_ui([update_result, detach, dst_path, me, photo_metadata, video_metadata, music_metadata,
+		s.queue_ui([&s, update_result, detach, dst_path, me, photo_metadata, video_metadata, music_metadata,
 		            has_pixel_changes, dlg, complete = std::move(complete)]() mutable
 		{
 			detach.reset();
 
 			if (update_result->success())
 			{
+				s.record_change(icon_index::edit, tt.command_edit.sv(), {dst_path});
+
 				if (photo_metadata)
 				{
 					if (me.has_changes()) record_feature_use(features::edit_photo_metadata);
@@ -2952,6 +2910,7 @@ void edit_view::save_av(const core::file_path src_path, const core::file_path ds
 			if (success)
 			{
 				record_feature_use(is_video ? features::edit_video : features::edit_audio);
+				s.record_change(icon_index::edit, tt.command_edit.sv(), {dst_path});
 
 				// What was saved is no longer a draft, and the file now holds something else to plan from.
 				if (const auto self = weak.lock(); self && self->_path == dst_path)
@@ -3529,13 +3488,25 @@ const edit_histogram& edit_view::histogram()
 	return _histogram_counts;
 }
 
+// The before-and-after handle's knob, large enough to grab beside a photo of any size.
+static int compare_knob_diameter(const render::measure_context& mc)
+{
+	return core::round(mc.icon_cxy * 1.5);
+}
+
 void edit_view::compare_at(const int x)
 {
-	if (_compare_picture.width() <= 0) return;
+	if (_compare_track.width() <= 0) return;
 	_comparing = true;
 	_compare.reset(static_cast<float>(
-		std::clamp((x - _compare_picture.left) / static_cast<double>(_compare_picture.width()), 0.0, 1.0)));
+		std::clamp((x - _compare_track.left) / static_cast<double>(_compare_track.width()), 0.0, 1.0)));
 	_host->frame()->invalidate();
+}
+
+int edit_view::compare_rest_x(const int picture_left, const int knob_diameter, const int margin, const int edge_gap)
+{
+	const auto radius = knob_diameter / 2;
+	return std::max(radius + edge_gap, picture_left - radius - margin);
 }
 
 void edit_view::compare_release()
@@ -3562,26 +3533,26 @@ void edit_view::animate()
 	_host->invalidate(ui::host_invalid::animations);
 }
 
-void edit_view::draw_compare(render::draw_context& dc, const recti picture, const int line_x, const float alpha)
+void edit_view::draw_compare(render::draw_context& dc, const recti shown, const int line_x, const bool engaged,
+                             const float alpha)
 {
 	const auto scale1 = std::max(1, core::round(dc.scale_factor));
-	const auto engaged = line_x > picture.left;
 	const auto accent = core::color(ui::style::colors.dialog_selected_background, alpha * (engaged ? 1.0f : 0.8f));
 
 	if (engaged)
 	{
-		dc.draw_rect(recti(line_x - scale1, picture.top, line_x + scale1, picture.bottom), accent);
+		dc.draw_rect(recti(line_x - scale1, shown.top, line_x + scale1, shown.bottom), accent);
 
 		// Each side named beside the line, where there is room for its name.
 		const auto label = [&](const std::string_view text, const bool left)
 		{
 			const auto extent = dc.measure_text(text, render::font_face::dialog, render::text_style::single_line,
-			                                    picture.width())
+			                                    shown.width())
 			                        .inflate(dc.padding1);
-			const auto room = left ? line_x - picture.left : picture.right - line_x;
+			const auto room = left ? line_x - shown.left : shown.right - line_x;
 			if (room < extent.cx + dc.padding2 * 2) return;
 			const auto x = left ? line_x - dc.padding2 - extent.cx : line_x + dc.padding2;
-			const recti bounds(x, picture.top + dc.padding2, x + extent.cx, picture.top + dc.padding2 + extent.cy);
+			const recti bounds(x, shown.top + dc.padding2, x + extent.cx, shown.top + dc.padding2 + extent.cy);
 			dc.draw_rounded_rect(bounds, core::color(0, alpha * 0.6f), dc.padding1);
 			dc.draw_text(text, bounds, render::font_face::dialog, render::text_style::single_line_center,
 			             core::color(ui::style::colors.view_text, alpha), {});
@@ -3591,9 +3562,9 @@ void edit_view::draw_compare(render::draw_context& dc, const recti picture, cons
 		label(tt.command_edit_preview, false);
 	}
 
-	// A round knob on the line - at rest, on the picture's left edge - with an arrow each way.
-	const auto diameter = core::round(dc.icon_cxy * 1.5);
-	const auto center = pointi(line_x, (picture.top + picture.bottom) / 2);
+	// A round knob on the line - at rest, beside the picture's left edge - with an arrow each way.
+	const auto diameter = compare_knob_diameter(dc);
+	const auto center = pointi(line_x, (shown.top + shown.bottom) / 2);
 	_compare_handle = recti(center.x - diameter / 2, center.y - diameter / 2, center.x - diameter / 2 + diameter,
 	                        center.y - diameter / 2 + diameter);
 	dc.fill_ellipse(_compare_handle, accent);
@@ -3806,7 +3777,7 @@ void edit_view_controls::create_controls()
 		_view->changed();
 	};
 
-	_info = create_view_info_element(tt.edit_info);
+	_info = std::make_shared<view_info_element>(icon_index::edit, tt.command_edit, tt.edit_info);
 	_straighten_title = std::make_shared<ui::title_control>(icon_index::rotate_clockwise, tt.straighten);
 	_straighten_slider = std::make_shared<log_slider_control>(_frame, std::string_view{}, _edit_state._straighten,
 	                                                          -44.9, 44.9, changed_func);
@@ -4124,35 +4095,87 @@ void edit_view::render(render::draw_context& dc, view_controller_ptr /*controlle
 		const auto sampler = calc_sampler(image_view_bounds.extent().round(), _texture->dimensions(),
 		                                  core::orientation::top_left);
 
-		// The edit's colour on its perspective; the perspective alone is the picture's own colour, drawn left of the
-		// before-and-after line, so the two sides meet.
+		// The edit's colour on its perspective, which turns the picture's texture as the save will.
 		auto texture_transform = edit_color_transform(_edit_state._edits);
-		render::texture_transform original_colors;
 		if (_edit_state._edits.has_perspective())
 		{
 			const auto display_angle = to_radian(-_edit_state._edits.rotation_angle());
 			const auto angle_sin = sin(display_angle);
 			const auto angle_cos = cos(display_angle);
-			original_colors.perspective_horizontal = static_cast<float>(
+			texture_transform.perspective_horizontal = static_cast<float>(
 				_edit_state._edits.perspective_horizontal() * angle_cos -
 				_edit_state._edits.perspective_vertical() * angle_sin);
-			original_colors.perspective_vertical = static_cast<float>(
+			texture_transform.perspective_vertical = static_cast<float>(
 				_edit_state._edits.perspective_horizontal() * angle_sin +
 				_edit_state._edits.perspective_vertical() * angle_cos);
-			original_colors.has_perspective = true;
-			texture_transform.perspective_horizontal = original_colors.perspective_horizontal;
-			texture_transform.perspective_vertical = original_colors.perspective_vertical;
 			texture_transform.has_perspective = true;
 		}
+		// The original as the file shows it - whole, upright and in its own colour - and the photo as the edit will
+		// save it - cropped, turned, straightened and coloured - each fitted to bounds: Preview's two columns, and
+		// the two sides of the before-and-after line.
+		const quadd original_image_bounds(_loaded.dimensions());
+		const auto original_selection_bounds = _edit_state._original_edits.effective_crop_bounds(_loaded.dimensions());
+		const auto original_angle = -original_selection_bounds.angle();
+		const auto crop_rotated_bounds = selection_bounds.transform(affined().rotate(selection_angle)).bounding_rect();
+
+		const auto comparison_transform = [&](const recti bounds)
+		{
+			const rectd target_bounds(bounds);
+			const auto scale = std::min(target_bounds.Width / crop_rotated_bounds.Width,
+			                            target_bounds.Height / crop_rotated_bounds.Height);
+			const auto transform = affined()
+			                           .translate(-image_bounds.center_point())
+			                           .rotate(selection_angle)
+			                           .scale(scale)
+			                           .translate(target_bounds.center());
+			const auto transformed_crop = selection_bounds.transform(transform).bounding_rect();
+			return transform.translate(target_bounds.center() - transformed_crop.center());
+		};
+		const auto original_transform = [&](const recti bounds)
+		{
+			const rectd target_bounds(bounds);
+			const auto original_rotated_bounds = original_selection_bounds.transform(affined().rotate(original_angle))
+			                                         .bounding_rect();
+			const auto scale = std::min(target_bounds.Width / original_rotated_bounds.Width,
+			                            target_bounds.Height / original_rotated_bounds.Height);
+			const auto transform = affined()
+			                           .translate(-original_image_bounds.center_point())
+			                           .rotate(original_angle)
+			                           .scale(scale)
+			                           .translate(target_bounds.center());
+			const auto transformed_crop = original_selection_bounds.transform(transform).bounding_rect();
+			return transform.translate(target_bounds.center() - transformed_crop.center());
+		};
+
+		// Each picture is clipped to its crop and to bounds, which is a column, or a side of the line.
+		const auto draw_comparison_image = [&](const recti bounds, const affined& transform, const bool edited)
+		{
+			const auto& comparison_image_bounds = edited ? image_bounds : original_image_bounds;
+			const auto transformed_image_bounds = comparison_image_bounds.transform(transform);
+			const auto crop_rect =
+				(edited ? selection_bounds : original_selection_bounds).transform(transform).bounding_rect();
+			constexpr auto rounding_tolerance = 1e-6;
+			const recti crop_clip(static_cast<int>(std::ceil(crop_rect.left() - rounding_tolerance)),
+			                      static_cast<int>(std::ceil(crop_rect.top() - rounding_tolerance)),
+			                      static_cast<int>(std::floor(crop_rect.right() + rounding_tolerance)),
+			                      static_cast<int>(std::floor(crop_rect.bottom() + rounding_tolerance)));
+			const auto comparison_clip = crop_clip.intersection(bounds).intersection(clip_rect);
+			const auto comparison_sampler = calc_sampler(transformed_image_bounds.extent().round(),
+			                                             _texture->dimensions(), core::orientation::top_left);
+			dc.clip_bounds(comparison_clip);
+			if (edited && texture_transform.has_changes())
+				dc.draw_texture(_texture, transformed_image_bounds, _texture->dimensions(), alpha, comparison_sampler,
+				                texture_transform);
+			else dc.draw_texture(_texture, transformed_image_bounds, _texture->dimensions(), alpha, comparison_sampler);
+			dc.restore_clip();
+			return crop_clip;
+		};
+
 		if (_edit_state._preview_mode)
 		{
 			const auto outer_padding = dc.padding2 * 2;
 			const auto column_gap = dc.padding2 * 2;
 			const auto label_height = dc.text_line_height(render::font_face::dialog) + dc.padding1;
-			const quadd original_image_bounds(_loaded.dimensions());
-			const auto original_selection_bounds = _edit_state._original_edits.effective_crop_bounds(
-				_loaded.dimensions());
-			const auto original_angle = -original_selection_bounds.angle();
 			const auto column_width = std::max(1, (_extent.cx - outer_padding * 2 - column_gap) / 2);
 			const auto image_top = outer_padding + label_height;
 			const recti original_bounds(outer_padding, image_top, outer_padding + column_width,
@@ -4160,59 +4183,6 @@ void edit_view::render(render::draw_context& dc, view_controller_ptr /*controlle
 			const recti edited_bounds(original_bounds.right + column_gap, image_top,
 			                          std::max(original_bounds.right + column_gap + 1, _extent.cx - outer_padding),
 			                          original_bounds.bottom);
-
-			const auto comparison_transform = [&](const recti bounds)
-			{
-				const rectd target_bounds(bounds);
-				const auto scale = std::min(target_bounds.Width / selection_rotated_bounds.Width,
-				                            target_bounds.Height / selection_rotated_bounds.Height);
-				const auto transform = affined()
-				                           .translate(-image_bounds.center_point())
-				                           .rotate(selection_angle)
-				                           .scale(scale)
-				                           .translate(target_bounds.center());
-				const auto transformed_crop = selection_bounds.transform(transform).bounding_rect();
-				return transform.translate(target_bounds.center() - transformed_crop.center());
-			};
-			const auto original_transform = [&](const recti bounds)
-			{
-				const rectd target_bounds(bounds);
-				const auto original_rotated_bounds =
-					original_selection_bounds.transform(affined().rotate(original_angle)).bounding_rect();
-				const auto scale = std::min(target_bounds.Width / original_rotated_bounds.Width,
-				                            target_bounds.Height / original_rotated_bounds.Height);
-				const auto transform = affined()
-				                           .translate(-original_image_bounds.center_point())
-				                           .rotate(original_angle)
-				                           .scale(scale)
-				                           .translate(target_bounds.center());
-				const auto transformed_crop = original_selection_bounds.transform(transform).bounding_rect();
-				return transform.translate(target_bounds.center() - transformed_crop.center());
-			};
-
-			const auto draw_comparison_image = [&](const recti bounds, const affined& transform, const bool edited)
-			{
-				const auto& comparison_image_bounds = edited ? image_bounds : original_image_bounds;
-				const auto transformed_image_bounds = comparison_image_bounds.transform(transform);
-				const auto crop_rect =
-					(edited ? selection_bounds : original_selection_bounds).transform(transform).bounding_rect();
-				constexpr auto rounding_tolerance = 1e-6;
-				const recti crop_clip(static_cast<int>(std::ceil(crop_rect.left() - rounding_tolerance)),
-				                      static_cast<int>(std::ceil(crop_rect.top() - rounding_tolerance)),
-				                      static_cast<int>(std::floor(crop_rect.right() + rounding_tolerance)),
-				                      static_cast<int>(std::floor(crop_rect.bottom() + rounding_tolerance)));
-				const auto comparison_clip = crop_clip.intersection(bounds).intersection(clip_rect);
-				const auto comparison_sampler = calc_sampler(transformed_image_bounds.extent().round(),
-				                                             _texture->dimensions(), core::orientation::top_left);
-				dc.clip_bounds(comparison_clip);
-				if (edited && texture_transform.has_changes())
-					dc.draw_texture(_texture, transformed_image_bounds, _texture->dimensions(), alpha,
-					                comparison_sampler, texture_transform);
-				else
-					dc.draw_texture(_texture, transformed_image_bounds, _texture->dimensions(), alpha,
-					                comparison_sampler);
-				dc.restore_clip();
-			};
 
 			const auto original_transform_value = original_transform(original_bounds);
 			const auto edited_transform = comparison_transform(edited_bounds);
@@ -4237,24 +4207,30 @@ void edit_view::render(render::draw_context& dc, view_controller_ptr /*controlle
 			else dc.draw_texture(_texture, image_view_bounds, _texture->dimensions(), alpha, sampler);
 		};
 
-		// Left of the before-and-after line the picture's own colour, right of it the edit's.
+		// The before-and-after handle rests clear of the picture's left edge where the view has room, so it covers
+		// none of the picture, and its line travels from there to the view's right.
 		const auto picture = image_view_bounds.bounding_rect().round().intersection(recti(_extent));
-		_compare_picture = picture;
+		const auto view_margin = pad30 / 2;
+		const auto rest_x = compare_rest_x(picture.left, compare_knob_diameter(dc), view_margin, dc.padding1);
+		_compare_track = recti(rest_x, picture.top, std::max(rest_x + 1, _extent.cx - view_margin), picture.bottom);
 		const auto line_x = compare_line_x();
 
-		if (line_x > picture.left)
+		if (line_x > _compare_track.left)
 		{
-			dc.clip_bounds(recti(clip_rect.left, clip_rect.top, line_x, clip_rect.bottom).intersection(clip_rect));
-			draw_picture(original_colors);
-			dc.restore_clip();
-			dc.clip_bounds(recti(line_x, clip_rect.top, clip_rect.right, clip_rect.bottom).intersection(clip_rect));
-			draw_picture(texture_transform);
-			dc.restore_clip();
+			// A true before and after: left of the line the original as the file shows it, right of it the photo as
+			// the edit will save it, each fitted to the view as Preview fits its columns. Its crop is the picture
+			// rather than a frame drawn over it, so the frame and its handles wait until the line is back.
+			const recti area(view_margin, view_margin, std::max(view_margin + 1, _extent.cx - view_margin),
+			                 std::max(view_margin + 1, _extent.cy - view_margin));
+			const auto before = draw_comparison_image(recti(clip_rect.left, clip_rect.top, line_x, clip_rect.bottom),
+			                                          original_transform(area), false);
+			const auto after = draw_comparison_image(recti(line_x, clip_rect.top, clip_rect.right, clip_rect.bottom),
+			                                         comparison_transform(area), true);
+			draw_compare(dc, before.make_union(after).intersection(recti(_extent)), line_x, true, alpha);
+			return;
 		}
-		else
-		{
-			draw_picture(texture_transform);
-		}
+
+		draw_picture(texture_transform);
 
 		const auto draw_crop = selection_bounds.crop(rectd(0, 0, image_extent.cx, image_extent.cy));
 		const auto actual_size = draw_crop.actual_extent();
@@ -4330,7 +4306,7 @@ void edit_view::render(render::draw_context& dc, view_controller_ptr /*controlle
 			             core::color(ui::style::colors.warning_background, alpha), {});
 		}
 
-		draw_compare(dc, picture, line_x, alpha);
+		draw_compare(dc, picture, line_x, false, alpha);
 	}
 	else if (_media_element)
 	{

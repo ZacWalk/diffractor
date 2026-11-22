@@ -10,6 +10,7 @@
 // items each suggestion finds.
 
 #pragma once
+#include "model_search.h"
 #include "ui_controllers.h"
 #include "ui_dialog.h"
 
@@ -75,13 +76,13 @@ inline bool find_auto_complete(const std::vector<std::string_view>& queries, con
 }
 
 static std::vector<render::text_highlight_t> make_highlights(const ui::match_highlights& match,
-                                                             const core::color highlight_clr)
+                                                             const core::color highlight_clr, size_t offset = 0)
 {
 	std::vector<render::text_highlight_t> highlights(match.size());
 
 	for (auto i = 0u; i < match.size(); i++)
 	{
-		highlights[i].offset = static_cast<uint32_t>(match[i].offset);
+		highlights[i].offset = static_cast<uint32_t>(offset + match[i].offset);
 		highlights[i].length = static_cast<uint32_t>(match[i].length);
 		highlights[i].clr = highlight_clr;
 	}
@@ -93,6 +94,17 @@ static std::string auto_complete_lead(std::string lead)
 {
 	if (!lead.empty() && !core::is_white_space(lead.back())) lead.push_back(' ');
 	return lead;
+}
+
+// Shape one line: measuring the lead separately can discard its trailing space.
+static void draw_prediction_text(render::draw_context& dc, recti bounds, const std::string& lead,
+                                 std::string_view value, const ui::match_highlights& match,
+                                 core::color highlight, core::color foreground)
+{
+	auto line = auto_complete_lead(lead);
+	const auto highlights = make_highlights(match, highlight, line.size());
+	line.append(value);
+	dc.draw_text(line, highlights, bounds, render::font_face::dialog, render::text_style::single_line, foreground, {});
 }
 
 // The count a prediction carries, right-aligned and quieter than its text. Answers the width it took so
@@ -215,18 +227,7 @@ public:
 		rr.left = icon_bounds.right + dc.padding2;
 		rr.right -= draw_match_count(dc, count, rr);
 
-		if (!core::is_empty(lead))
-		{
-			const auto lead_text = auto_complete_lead(lead);
-			const auto lead_extent = dc.measure_text(lead_text, render::font_face::dialog,
-			                                         render::text_style::single_line, bounds.width());
-			dc.draw_text(lead_text, {}, rr, render::font_face::dialog, render::text_style::single_line, clr, {});
-			rr.left += lead_extent.cx;
-		}
-
-		const auto highlights = make_highlights(match, highlight_clr);
-		dc.draw_text(folder.text(), highlights, rr, render::font_face::dialog, render::text_style::single_line, clr,
-		             {});
+		draw_prediction_text(dc, rr, lead, folder.text(), match, highlight_clr, clr);
 	}
 
 	void dispatch_event(const view_element_event& event) override
@@ -256,6 +257,11 @@ public:
 	std::string text;
 	ui::match_highlights match;
 	icon_index icon;
+	std::string person_name;
+	core::const_surface_ptr portrait;
+	mutable render::texture_ptr portrait_texture;
+	// Drawn in place of the text where it says more than the text it puts in the box: "New person: Zac".
+	std::string label;
 
 	text_match(ui::complete_strategy_t& parent, std::string t, std::string l, ui::match_highlights m = {},
 	           const int w = 1, const icon_index icon_in = icon_index::search) :
@@ -286,21 +292,25 @@ public:
 			dc.measure_text("X", render::font_face::dialog, render::text_style::single_line, bounds.width()).cy;
 		auto icon_bounds = rr;
 		icon_bounds.right = icon_bounds.left + icon_width;
-		xdraw_icon(dc, icon, icon_bounds, clr, {});
+		if (portrait && !portrait_texture)
+		{
+			portrait_texture = dc.create_texture();
+			if (portrait_texture && portrait_texture->update(portrait) == render::texture_update_result::failed)
+				portrait_texture.reset();
+		}
+		if (portrait_texture)
+		{
+			const auto square = recti(icon_bounds.left, icon_bounds.center().y - icon_width / 2,
+			                          icon_bounds.right, icon_bounds.center().y - icon_width / 2 + icon_width);
+			dc.draw_texture(portrait_texture, square, recti(portrait->dimensions()), dc.colors.alpha,
+			                render::texture_sampler::bilinear, static_cast<float>(icon_width) / 2);
+		}
+		else xdraw_icon(dc, icon, icon_bounds, clr, {});
 		rr.left = icon_bounds.right + dc.padding2;
 		rr.right -= draw_match_count(dc, count, rr);
 
-		if (!core::is_empty(lead))
-		{
-			const auto lead_text = auto_complete_lead(lead);
-			const auto lead_extent = dc.measure_text(lead_text, render::font_face::dialog,
-			                                         render::text_style::single_line, bounds.width());
-			dc.draw_text(lead_text, {}, rr, render::font_face::dialog, render::text_style::single_line, clr, {});
-			rr.left += lead_extent.cx;
-		}
-
-		const auto highlights = make_highlights(match, highlight_clr);
-		dc.draw_text(text, highlights, rr, render::font_face::dialog, render::text_style::single_line, clr, {});
+		if (label.empty()) draw_prediction_text(dc, rr, lead, text, match, highlight_clr, clr);
+		else dc.draw_text(label, rr, render::font_face::dialog, render::text_style::single_line, clr, {});
 	}
 
 	void dispatch_event(const view_element_event& event) override

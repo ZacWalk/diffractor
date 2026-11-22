@@ -1935,6 +1935,31 @@ static void should_rank_the_most_common_values()
 	assert_equal("value-199", top_five[4], "highest non-tie retained");
 }
 
+static void should_move_paths_with_their_folders()
+{
+	// The running platform's spelling, as path identity is: case aside on Windows, not on Linux.
+	const auto root = core::folder_path(core::windows_path_semantics ? "c:\\photos" : "/photos");
+	const auto from = root.combine("2024");
+	const auto to = root.combine("archive").combine("2024");
+	const std::vector<std::pair<core::folder_path, core::folder_path>> moves{{from, to}};
+
+	const auto moved = df::moved_with_folder(from.combine("june").combine_file("a.jpg"), moves);
+	assert_equal(true, moved.has_value() && *moved == to.combine("june").combine_file("a.jpg"),
+	             "a picture beneath the folder moves with it");
+	assert_equal(false, df::moved_with_folder(root.combine("20245").combine_file("a.jpg"), moves).has_value(),
+	             "a folder whose name only begins the same stays");
+	assert_equal(false, df::moved_with_folder(root.combine_file("2024.jpg"), moves).has_value(),
+	             "as does a file beside the folder");
+	assert_equal(core::case_insensitive_path_identity,
+	             df::moved_with_folder(root.combine("2024").combine_file("A.JPG"), moves).has_value() &&
+	                 df::moved_with_folder(core::folder_path(core::windows_path_semantics ? "C:\\PHOTOS\\2024"
+	                                                                                      : "/PHOTOS/2024")
+	                                           .combine_file("b.jpg"),
+	                                       moves)
+	                     .has_value(),
+	             "a folder spelled in another case is the same folder only where the filesystem says so");
+}
+
 void register_util_tests(view_state& /*state*/, test_registry& tests)
 {
 	tests.add("Should natural compare"s, should_icmp_natural);
@@ -1945,6 +1970,7 @@ void register_util_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should cancel superseded tokens"s, should_cancel_superseded_tokens);
 	tests.add("Should group elements by folder"s, should_group_elements_by_folder);
 	tests.add("Should follow the filesystem for path identity"s, should_follow_the_filesystem_for_path_identity);
+	tests.add("Should move paths with their folders"s, should_move_paths_with_their_folders);
 	// SRC-004 - direct children of the Linux root were parsed as folder-only paths.
 	tests.add("Should parse root child paths"s, should_parse_files_directly_under_the_root);
 	tests.add("Should report file presence"s, should_report_file_presence);

@@ -3,9 +3,9 @@
     Self-test for tools/lint_repo.ps1: proves each rule can actually fail.
 
 .DESCRIPTION
-    docs/testing.md: "A test that cannot fail is worse than no test." That applies to the lint
-    itself -- a rule whose regex silently stopped matching would report PASS forever and quietly
-    stop guarding its boundary.
+    docs/testing.md#proving-a-test-is-worth-having: "A test must be able to fail for the defect it
+    claims to cover." That applies to the lint itself -- a rule whose regex silently stopped
+    matching would report PASS forever and quietly stop guarding its boundary.
 
     Each case appends a deliberate violation to a real file, runs the lint, asserts the matching
     rule reported FAIL, then restores the file byte for byte. Restoring by bytes matters: the
@@ -34,7 +34,7 @@ $cases = @(
     @{ Rule = 'no-capture-and-move'; File = 'src/model_search.cpp'; Text = "`nstatic void lint_selftest_init_capture(std::string s) { consume([t = s] { return t; }, std::move(s)); }`n" }
     # A digit separator is not a character literal: read as one, it hid the rest of the file.
     @{ Rule = 'no-capture-and-move'; File = 'src/model_search.cpp'; Text = "`nconstexpr auto lint_selftest_count = 100'000;`nstatic void lint_selftest_separated(std::string s) { consume([s] { return s; }, std::move(s)); }`n" }
-    @{ Rule = 'frame-accessor'; File = 'src/ui_map.h'; Text = "`n// _frame->invalidate();`n" }
+    @{ Rule = 'frame-accessor'; File = 'src/app_sidebar.h'; Text = "`n// _frame->invalidate();`n" }
     @{ Rule = 'doc-links'; File = 'docs/testing.md'; Text = "`n[nope](does-not-exist.md)`n" }
     @{ Rule = 'doc-anchors'; File = 'docs/testing.md'; Text = "`n[nope](design.md#no-such-heading)`n" }
     @{ Rule = 'doc-code-anchors'; File = 'docs/testing.md'; Text = "`nsrc/model_does_not_exist.cpp`n" }

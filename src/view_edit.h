@@ -166,7 +166,7 @@ public:
 	edit_view_state& _edit_state;
 	std::shared_ptr<edit_view> _view;
 
-	std::shared_ptr<text_element> _info;
+	std::shared_ptr<class view_info_element> _info;
 	std::shared_ptr<ui::title_control> _straighten_title;
 	std::shared_ptr<log_slider_control> _straighten_slider;
 	std::shared_ptr<log_slider_control> _perspective_horizontal_slider;
@@ -307,12 +307,13 @@ class edit_view final : public view_base, public std::enable_shared_from_this<ed
 	std::vector<std::array<float, 3>> _histogram_samples;
 	edit_histogram _histogram_counts;
 	std::optional<size_t> _histogram_counted_at;
-	// The before-and-after handle on the photo's left edge: how far across the picture its line stands - 0 at rest,
-	// where the edit shows whole - and whether it is held. Let go, it slides back. Where the picture and the handle
-	// were last drawn, which the handle is found and dragged against.
+	// The before-and-after handle beside the photo's left edge: how far along its track its line stands - 0 at rest,
+	// where the edit shows whole - and whether it is held. Let go, it slides back. The track runs from where the
+	// handle rests, clear of the picture where the view has room, to the view's right; it and the handle are where
+	// they were last drawn, which the handle is found and dragged against.
 	ui::animate_alpha _compare;
 	bool _comparing = false;
-	recti _compare_picture;
+	recti _compare_track;
 	recti _compare_handle;
 
 	friend class selection_move_controller<this_type>;
@@ -429,19 +430,20 @@ public:
 	void toggle_preview();
 	// The colour histogram of the photo as edited, which the panel draws.
 	const edit_histogram& histogram();
-	// The before-and-after handle held with the pointer at x, its line following it across the picture; and let go,
-	// when it slides back to the picture's edge.
+	// The before-and-after handle held with the pointer at x, its line following it along its track; and let go,
+	// when it slides back to where it rests.
 	void compare_at(int x);
 	void compare_release();
-	// How far across the picture the before-and-after line stands, 0 at rest; and where it was last drawn.
+	// How far along its track the before-and-after line stands, 0 at rest; and where it was last drawn.
 	float compare_position() const { return _compare.val(); }
-	int compare_line_x() const
-	{
-		return _compare_picture.left + core::round(_compare.val() * _compare_picture.width());
-	}
+	int compare_line_x() const { return _compare_track.left + core::round(_compare.val() * _compare_track.width()); }
+	// The track's x where the handle rests: clear of the picture's left edge where the view has room, else as far
+	// left as the view shows the whole handle.
+	static int compare_rest_x(int picture_left, int knob_diameter, int margin, int edge_gap);
 	// Steps what slides or fades - the before-and-after line going back, the straighten grid - until it settles.
 	void animate();
-	void draw_compare(render::draw_context& dc, recti picture, int line_x, float alpha);
+	// The line and its labels over `shown` - the pictures on either side of it - and the handle on it.
+	void draw_compare(render::draw_context& dc, recti shown, int line_x, bool engaged, float alpha);
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, hit_test_context& ctx) override;
 

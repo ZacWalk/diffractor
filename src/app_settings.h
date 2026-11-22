@@ -1,4 +1,4 @@
-﻿// This file is part of the Diffractor photo and video organizer
+// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -110,6 +110,7 @@ namespace features
 	// for the draft that Share falls back to where the system has no share sheet.
 	constexpr uint64_t share = 1ull << 58;
 	constexpr uint64_t view_options = 1ull << 59;
+	constexpr uint64_t view_explore = 1ull << 60;
 	// A lossless trim, sound removal or turn saved from Edit, of a video and of a sound file.
 	constexpr uint64_t edit_video = 1ull << 61;
 	constexpr uint64_t edit_audio = 1ull << 62;
@@ -128,7 +129,10 @@ namespace features
 		case view_type::sync: return view_sync;
 		case view_type::locate: return view_locate;
 		case view_type::tags: return view_tags;
+		case view_type::explore: return view_explore;
 		case view_type::options: return view_options;
+		// docs/faces.md#11-privacy-and-recovery: face search counts nothing it is used for.
+		case view_type::faces:
 		case view_type::none: break;
 		}
 		return 0;
@@ -224,7 +228,7 @@ public:
 	// view_splitter_max units. Each view keeps its own position; zero means never dragged, so
 	// the view still gets its default proportion.
 	static constexpr int view_splitter_max = 10000;
-	static constexpr int view_splitter_count = 7;
+	static constexpr int view_splitter_count = 8;
 	std::array<int, view_splitter_count> view_splitter_positions{};
 	int view_splitter(view_type view) const;
 	bool set_view_splitter(view_type view, int pos);
@@ -462,6 +466,26 @@ public:
 		bool operator==(const index_t&) const = default;
 	} collection;
 
+	// docs/faces.md#31-turning-it-on-and-off: face search is off until the user turns it on, reading photos, videos or
+	// both, and a pause lasts across restarts until the user resumes.
+	struct faces_t
+	{
+		static constexpr int min_tile_size = 64;
+		static constexpr int max_tile_size = 224;
+		static constexpr int default_tile_size = 104;
+		bool photos = false;
+		bool videos = false;
+		bool paused = false;
+		// The width of the People pane in device-independent pixels; 0 for its default.
+		int groups_width = 0;
+		int tile_size = default_tile_size;
+		// docs/faces.md#95-naming-a-face: naming a picture's only face goes on to the next picture.
+		bool next_after_naming = false;
+
+		bool is_on() const { return photos || videos; }
+		bool operator==(const faces_t&) const = default;
+	} faces;
+
 	struct search_t
 	{
 		static constexpr int count = 10;
@@ -485,6 +509,9 @@ extern settings_t setting;
 // changes the user's collection, settings or index.
 platform::setting_file_ptr app_settings_store();
 core::folder_path app_cache_folder();
+// Where what the user made and nothing rebuilds is kept - the face database (docs/faces.md#64-the-face-database):
+// the application's own data folder, or the -profile folder.
+core::folder_path app_data_folder();
 void use_profile_folder(core::folder_path folder);
 // From now on, settings are read from where they are kept and what changes them lasts as long as the process: an
 // agent session's (docs/agents.md).

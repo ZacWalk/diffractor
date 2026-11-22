@@ -25,6 +25,12 @@ FFmpeg nasm         Win32 pre-includes config-x86.asm and defines PREFIX; x64 pr
 
 == Deliberately not carried
 
+/Os                 FavorSizeOrSpeed Size, in Release. Beside /O2 it made cl favour small code in
+                    every Release unit - the code /O1 makes, FFmpeg's C, libfiles and the codecs
+                    included. Release favours speed, as every application in the workspace does:
+                    dropping it grew the x64 executable from 55.8 MB to 68.0 MB, and libmug's
+                    kernels alone had run a tenth slower under it.
+
 STRICT              Win32 Release and WinStore only, and WIN32 itself was defined in every
 _WINSOCK_DEPRECATED configuration except those two. That is drift between configurations of one
 _NO_WARNINGS        product rather than a 32-bit requirement, so the CMake build states what the

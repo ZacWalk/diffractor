@@ -18,8 +18,8 @@
 // rather than merely unlikely.
 //
 // Run does not re-scan the sources or re-derive the plan. Each row is revalidated against its own
-// files immediately before that row acts - see import_copy in app_util.cpp and docs/file-io.md
-// section 9.1 - which matters most here because the source is usually the slowest device involved, a
+// files immediately before that row acts - see import_copy in app_util.cpp and docs/file-io.md#contract -
+// which matters most here because the source is usually the slowest device involved, a
 // card reader or a phone. The collision policy decides how much proving Run has to do: every policy
 // except Replace leaves the destination free, and a fail-if-exists write proves that atomically with
 // no window for a file to appear, so only Replace has to check that it is still overwriting the file
@@ -27,6 +27,12 @@
 //
 // A row whose files moved on writes nothing and is reported as failed with the reason stated, and
 // contributes no import history, so a later import still offers it. The rows that still match run.
+//
+// A phone or camera a cable connects as a device rather than a drive has no path to scan, so Analyze first copies
+// what its camera folders hold - less what an import already took - into a staging folder of the application's own,
+// and analyzes that as it would a card; a file the device will not give up is named, and the rest staged. Import
+// copies from a device whatever Move says, and the staged copies are removed once a run, the view, or another source
+// is done with them.
 
 #include "pch.h"
 #include "model.h"
@@ -72,7 +78,8 @@ view_controls_host_ptr import_view::controls(const ui::frame_ptr& owner)
 {
 	auto result = std::make_shared<view_controls_host>(_state);
 	const auto& frame = owner;
-	result->_controls = {create_view_info_element(tt.import_info), std::make_shared<text_element>(tt.import_preparing)};
+	result->_controls = {
+		std::make_shared<view_info_element>(icon_index::import, tt.command_import, tt.import_preparing)};
 	result->_frame = frame;
 
 	const std::weak_ptr<import_view> weak_view = shared_from_this();
@@ -118,7 +125,7 @@ void import_view::populate_controls(const view_controls_host_ptr& result, const 
 {
 	std::vector<view_element_ptr> controls;
 	auto selection_thumbnails = std::make_shared<ui::selection_thumbnails_control>(frame);
-	controls.emplace_back(create_view_info_element(tt.import_info));
+	controls.emplace_back(std::make_shared<view_info_element>(icon_index::import, tt.command_import, tt.import_info));
 	controls.emplace_back(selection_thumbnails);
 	controls.emplace_back(std::make_shared<divider_element>());
 
@@ -148,6 +155,8 @@ void import_view::populate_controls(const view_controls_host_ptr& result, const 
 			}
 		},
 		                                                 radio_group_scope);
+		// A phone keeps its pictures: Import copies from one, whatever Move says.
+		if (!src.device.id.empty()) check->child(std::make_shared<text_element>(tt.import_device_copies));
 		controls.emplace_back(check);
 		is_first_source = false;
 		++source_index;
@@ -211,9 +220,9 @@ void import_view::populate_controls(const view_controls_host_ptr& result, const 
 
 void import_view::update_rows(const import_analysis_result& analysis_result, const import_options& options)
 {
-	const auto gray_text_color = core::darken(ui::style::colors.view_text, 0.22f);
-	const auto blue_text_color = core::lighten(ui::style::colors.dialog_selected_background, 0.55f);
-	const auto orange_text_color = core::lighten(ui::style::colors.important_background, 0.55f);
+	const auto gray_text_color = ui::style::tone_text(ui::style::tone::muted);
+	const auto blue_text_color = ui::style::tone_text(ui::style::tone::accent);
+	const auto orange_text_color = ui::style::tone_text(ui::style::tone::caution);
 
 	std::vector<row_element_ptr> rows;
 	std::vector<std::string> text;
@@ -236,6 +245,8 @@ void import_view::update_rows(const import_analysis_result& analysis_result, con
 
 			if (i.already_exists) collisions += 1;
 
+			// The Action column sorts by what each row does - imports, then what exists, then what was imported
+			// before - rather than by how the action reads.
 			switch (i.action)
 			{
 			case import_action::import:
@@ -266,13 +277,13 @@ void import_view::update_rows(const import_analysis_result& analysis_result, con
 				}
 
 				row->_icons[2] = icon_index::next;
-				row->_order = 1;
+				row->_keys[0] = 1;
 				imports += 1;
 				break;
 			case import_action::already_exists:
 				row->_text_color[1] = gray_text_color;
 				row->_text_color[3] = gray_text_color;
-				row->_order = 2;
+				row->_keys[0] = 2;
 				row->_text[0] = tt.exists;
 				exists += 1;
 				break;
@@ -281,12 +292,12 @@ void import_view::update_rows(const import_analysis_result& analysis_result, con
 				row->_text_color[3] = gray_text_color;
 				row->_text_color[0] = orange_text_color;
 				row->_text[0] = tt.previously_imported;
-				row->_order = 3;
+				row->_keys[0] = 3;
 				already_imported += 1;
 				break;
 			}
 
-			if (row->_order == 1) row->_work_index = work_index++;
+			if (i.action == import_action::import) row->_work_index = work_index++;
 			rows.emplace_back(row);
 		}
 	}
@@ -295,8 +306,9 @@ void import_view::update_rows(const import_analysis_result& analysis_result, con
 	_analysis = analysis_result;
 	_analysis_options = options;
 	_analysis_valid = true;
-	_status = std::format("{} {}   {} {}   {} {}", imports, tt.import, exists, tt.exists, already_imported,
-	                      tt.previously_imported);
+	// What a device still holds that an import already took was left on it rather than staged, so it has no row.
+	_status = std::format("{} {}   {} {}   {} {}", imports, tt.import, exists, tt.exists,
+	                      already_imported + _left_on_device, tt.previously_imported);
 
 	// State the named policy that resolved the destination collisions rather than leaving it implicit.
 	// Block Run and Skip report every collision, because that is what they answer. Replace and
@@ -361,7 +373,50 @@ bool import_view::can_analyze() const
 
 	// Mirrors what calc_import_root would collect, without building the root set on the UI thread.
 	return std::ranges::any_of(_sources, [](const import_source& src)
-	{ return src.selected && (!src.path.is_empty() || !src.items.empty()); });
+	{ return src.selected && (!src.path.is_empty() || !src.items.empty() || !src.device.id.empty()); });
+}
+
+std::optional<platform::portable_device_t> import_view::selected_device() const
+{
+	if (_select_other_folder) return {};
+
+	for (const auto& src : _sources)
+	{
+		if (src.selected && !src.device.id.empty()) return src.device;
+	}
+
+	return {};
+}
+
+void import_view::show_progress(const size_t generation, std::string text)
+{
+	if (!is_processing_generation(generation)) return;
+	_status = std::move(text);
+	_state.invalidate_view(view_invalid::status);
+}
+
+// The staged copies are the device's files, not the user's: nothing is kept once the view no longer needs them.
+void import_view::clear_staging()
+{
+	if (_staging.is_empty()) return;
+
+	_state.queue_async(async_queue::work, [staging = std::exchange(_staging, {})]
+	{
+		std::error_code ec;
+		std::filesystem::remove_all(platform::to_stream_path(staging), ec);
+	});
+	_left_on_device = 0;
+}
+
+void import_view::activate(const sizei extent)
+{
+	review_list::activate(extent);
+
+	// Held while this instance runs, so another opening Import leaves what this one stages alone.
+	if (!_staging_lock)
+		_staging_lock = platform::try_lock_instance(device_staging_lock_name(platform::process_id())).lock;
+
+	_state.queue_async(async_queue::work, [] { clear_abandoned_device_staging(device_staging_root()); });
 }
 
 void import_view::run()
@@ -424,8 +479,15 @@ void import_view::run()
 
 		// The token reads cancel_source without owning it, and this hop can outlive the
 		// run status that otherwise keeps the source alive.
-		s.queue_ui([&s, view, folder = copy_result.folder, detach, processing_generation, token, cancel_source]
+		s.queue_ui([&s, view, folder = copy_result.folder, created = copy_result.created, moved = copy_result.moved,
+		            detach, processing_generation, token, cancel_source]() mutable
 		{
+			// The files arrived whatever became of the run's view, and what moved takes its earlier changes with it.
+			s.move_changed(moved);
+			s.record_change(icon_index::import, tt.command_import.sv(), std::move(created));
+			// A device's staged copies have done their work, imported or not.
+			view->clear_staging();
+
 			// Navigation is the run's own conclusion, so a run the user cancelled or
 			// replaced must not take the view somewhere when its worker finally
 			// finishes - by then the user has moved on and would be pulled back.
@@ -448,9 +510,13 @@ void import_view::run()
 
 void import_view::analyze()
 {
-	const auto import_root = calc_import_root(_sources, _select_other_folder);
+	auto import_root = calc_import_root(_sources, _select_other_folder);
+	const auto device = selected_device();
 
-	const auto options = make_import_options();
+	auto options = make_import_options();
+	// A phone or camera keeps its pictures: what Import takes from one is copied, whatever Move says.
+	if (device) options.is_move = false;
+
 	if (options.dest_folder.is_empty())
 	{
 		_analysis.clear();
@@ -461,6 +527,13 @@ void import_view::analyze()
 	}
 
 	_analysis_valid = false;
+	// What another device, or no device, was staged for is no use to this plan.
+	if (const auto staging = device ? device_staging_folder(*device) : core::folder_path{}; staging != _staging)
+	{
+		clear_staging();
+		_staging = staging;
+	}
+	_left_on_device = 0;
 	begin_processing(0);
 	const auto processing_generation = this->processing_generation();
 	const auto cancel_source = processing_cancel_source();
@@ -469,8 +542,8 @@ void import_view::analyze()
 
 	// The token points into cancel_source without owning it, and the next Analyze replaces the view's
 	// copy while this one may still be scanning, so the workers hold the source for as long as the token.
-	_state._async.queue_database([&s = _state, import_root, view = shared_from_this(), options, token, cancel_source,
-	                              processing_generation](const database& db)
+	_state._async.queue_database([&s = _state, import_root, device, staging = _staging, view = shared_from_this(),
+	                              options, token, cancel_source, processing_generation](const database& db)
 	{
 		item_import_set previous_imported;
 		try
@@ -491,18 +564,12 @@ void import_view::analyze()
 			return;
 		}
 
-		s.queue_async(async_queue::work,
-		              [&s, import_root, previous_imported, view, options, token, cancel_source, processing_generation]
+		s.queue_async(async_queue::work, [&s, import_root, device, staging, previous_imported, view, options, token,
+		                                  cancel_source, processing_generation]() mutable
 		{
-			import_analysis_result analysis_result;
-			try
+			const auto fail = [&s, view, processing_generation](std::string error)
 			{
-				const auto items = s.item_index.scan_items(import_root, true, true, token);
-				analysis_result = import_analysis(items, options, previous_imported, token);
-			}
-			catch (const std::exception& e)
-			{
-				s.queue_ui([view, processing_generation, error = core::utf8_cast(e.what())]
+				s.queue_ui([view, processing_generation, error = std::move(error)]
 				{
 					if (!view->is_processing_generation(processing_generation)) return;
 					view->end_processing();
@@ -511,16 +578,92 @@ void import_view::analyze()
 					view->_status = error;
 					view->_state.invalidate_view(view_invalid::status | view_invalid::command_state);
 				});
+			};
+
+			import_analysis_result analysis_result;
+			size_t left_on_device = 0;
+			std::vector<std::string> unreadable;
+			try
+			{
+				if (device)
+				{
+					// A phone is read through the device rather than a path, so its files are staged where the
+					// analysis can read them as it reads a card's.
+					const auto name = device->name.empty() ? std::string(tt.import_device.sv()) : device->name;
+					const auto say = [&s, view, processing_generation](std::string text)
+					{
+						s.queue_ui([view, processing_generation, text = std::move(text)]() mutable
+						{ view->show_progress(processing_generation, std::move(text)); });
+					};
+
+					say(str_format(tt.import_reading_device_fmt.sv(), name));
+					const auto files = platform::portable_device_files(device->id, device_media_folders, token);
+
+					// A listing cut short by a cancel is not what the device holds, so nothing is staged from it.
+					if (!token.is_cancelled())
+					{
+						if (files.empty())
+						{
+							fail(str_format(tt.import_device_empty_fmt.sv(), name));
+							return;
+						}
+
+						const auto staged = stage_device_files(files, previous_imported, staging,
+						                                       [&](const std::vector<platform::portable_copy_t>& copies)
+						{
+							const auto total = copies.size();
+							say(str_format(tt.import_copying_device_fmt.sv(), name, 0, total));
+							return platform::copy_from_portable_device(device->id, copies, token,
+							                                           [&say, &name, total](const size_t tried)
+							{ say(str_format(tt.import_copying_device_fmt.sv(), name, tried, total)); });
+						});
+
+						if (staged.short_of_space > 0)
+						{
+							fail(str_format(tt.import_device_no_space_fmt.sv(), name,
+							                platform::format_size(core::file_size(staged.short_of_space))));
+							return;
+						}
+
+						if (staged.stopped.failed() && !token.is_cancelled())
+						{
+							fail(staged.stopped.format_error());
+							return;
+						}
+
+						left_on_device = staged.previously_imported;
+						unreadable = staged.unreadable;
+						(void)platform::create_folder(staging);
+						import_root.folders.emplace(staging);
+						say(std::string(tt.analyzing.sv()));
+					}
+				}
+
+				const auto items = s.item_index.scan_items(import_root, true, true, token);
+				analysis_result = import_analysis(items, options, previous_imported, token);
+			}
+			catch (const std::exception& e)
+			{
+				fail(std::string(core::utf8_cast(e.what())));
 				return;
 			}
 
 			if (!token.is_cancelled())
 			{
-				s.queue_ui([analysis_result, options, import_root, view, processing_generation]
+				s.queue_ui([analysis_result, options, view, processing_generation, left_on_device,
+				            unreadable = std::move(unreadable)]
 				{
 					if (!view->is_processing_generation(processing_generation)) return;
 					view->end_processing();
+					view->_left_on_device = left_on_device;
 					view->update_rows(analysis_result, options);
+
+					// What the device would not give up has no row, so the status says it.
+					if (!unreadable.empty())
+					{
+						view->_status += "   ";
+						view->_status += format_plural_text(tt.import_device_unreadable_fmt, unreadable);
+					}
 				});
 			}
 			else

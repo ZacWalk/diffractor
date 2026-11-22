@@ -13,7 +13,7 @@
 #include "app_util.h"
 #include "view_list.h"
 
-class import_view final : public list_view, public std::enable_shared_from_this<import_view>
+class import_view final : public review_list, public std::enable_shared_from_this<import_view>
 {
 	bool _select_other_folder = false;
 	std::vector<import_source> _sources;
@@ -24,11 +24,20 @@ class import_view final : public list_view, public std::enable_shared_from_this<
 	// The processing generation a Run began. Refresh re-plans, and a Run still under way is executing
 	// the plan already reviewed, so it is left alone rather than cancelled partway.
 	size_t _run_generation = 0;
+	// Where the device the plan reads was staged, and what it left on the device as imported already; nothing
+	// for a plan that reads no device.
+	core::folder_path _staging;
+	size_t _left_on_device = 0;
+	// Says to other instances that this one runs, so the staging it holds is not taken from it.
+	platform::instance_lock_ptr _staging_lock;
 
 	void invalidate_analysis();
+	// The phone or camera chosen as the source, if one is.
+	std::optional<platform::portable_device_t> selected_device() const;
+	void clear_staging();
 
 public:
-	import_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host)) { col_count = 4; }
+	import_view(view_state& state, view_host_ptr host) : review_list(state, std::move(host)) { col_count = 4; }
 
 	std::array<text_t, max_col_count> col_titles() override
 	{
@@ -65,7 +74,16 @@ public:
 		_status.clear();
 		_analysis.clear();
 		_analysis_valid = false;
+		clear_staging();
 	}
+
+	// Nothing this instance stages is in use as Import opens, so its staging, and what instances that have ended left,
+	// is cleared away.
+	void activate(sizei extent) override;
+
+	// What a worker reading the plan's source has got to, said on the status line while that plan is the one
+	// processing.
+	void show_progress(size_t generation, std::string text);
 
 	view_controls_host_ptr controls(const ui::frame_ptr& owner);
 	void populate_controls(const view_controls_host_ptr& host, const ui::frame_ptr& frame);

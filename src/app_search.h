@@ -22,7 +22,8 @@ class view_state;
 // The address bar's completion strategy. Built through a factory so the ranking and content rules
 // it implements can be driven from a test without a window; the concrete type stays in app_search.cpp.
 std::shared_ptr<ui::complete_strategy_t> make_search_auto_complete(view_state& state,
-                                                                   std::function<void(std::string)> set_text);
+                                                                   std::function<void(std::string)> set_text,
+                                                                   std::function<void()> repaint = {});
 
 class search_edit_session
 {

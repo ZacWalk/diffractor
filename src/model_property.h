@@ -55,6 +55,7 @@ struct search_presence_mask
 	static constexpr uint32_t year = 1 << 25u;
 	static constexpr uint32_t doc_id = 1 << 26u;
 	static constexpr uint32_t panorama = 1 << 27u;
+	static constexpr uint32_t person = 1 << 28u;
 
 	uint32_t types = 0;
 
@@ -136,6 +137,10 @@ namespace prop
 		constexpr uint8_t animated = 1 << 0;
 		// An alpha channel: the picture may be transparent in places.
 		constexpr uint8_t alpha = 1 << 1;
+		// A gain map, by which a display that shows HDR brightens the picture: Ultra HDR, ISO 21496-1 or Apple's.
+		constexpr uint8_t gain_map = 1 << 2;
+		// Its colour description is a video stream's, whose primaries are named as video editors name them.
+		constexpr uint8_t video = 1 << 3;
 	}
 
 	// Which patch of the sphere a file's pixels cover, in GPano's terms: a notional full panorama
@@ -345,6 +350,10 @@ namespace prop
 	extern key frame_rate;
 	extern key contents;
 	extern key picture_flags;
+	extern key person;
+	extern key face_regions;
+	extern key icc_profile;
+	extern key colour_coding;
 
 	constexpr bool is_null(const std::string_view s)
 	{
@@ -484,10 +493,21 @@ namespace prop
 		core::cached label;
 		core::cached doc_id;
 		// The colour space the file says its pixels are in: an ICC profile's own name, or the primaries a coded
-		// colour description names - "Display P3", "BT.2020".
+		// colour description names - "Display P3", "BT.2020". Read, with hdr, from the colour the file states below.
 		core::cached color_profile;
+		// The colour the file states, kept as it states it, from which color_profile and hdr are read as the record
+		// is, so a correction to how they are named needs nothing read again: its ICC profile's name, and the H.273
+		// primaries and transfer its coded colour description names, 0 where it names none.
+		core::cached icc_profile;
+		uint8_t colour_primaries = 0;
+		uint8_t colour_transfer = 0;
 		// What a Commodore disk or tape holds: the names of the files on it, one a line, as it lists them.
 		core::cached contents;
+		// Whom the picture's metadata names, joined as tags are: docs/faces.md#21-reading-names.
+		core::cached people;
+		// Its face regions as the file states them, packed by faces::pack_regions and turned upright, against the
+		// dimensions and orientation above, by faces::unpack_regions.
+		core::cached face_regions;
 
 		gps_coordinate coordinate;
 
@@ -499,7 +519,7 @@ namespace prop
 		// A video's frames a second, averaged where the container times each frame.
 		float frame_rate = 0.0f;
 
-		// locations.md 2.8: metres relative to sea level, negative below it, and km/h. Zero means
+		// docs/locations.md#item-locations: metres relative to sea level, negative below it, and km/h. Zero means
 		// unknown, which reads the same as sea level or standing still and so claims nothing.
 		float altitude = 0.0f;
 		float gps_speed = 0.0f;
@@ -569,6 +589,14 @@ namespace prop
 		bool is_hdr() const { return hdr != hdr_kind::none; }
 		bool is_animated() const { return (picture_flags & picture_flag::animated) != 0; }
 		bool has_alpha() const { return (picture_flags & picture_flag::alpha) != 0; }
+
+		// Whether the file states anything of its colour, and color_profile and hdr read from what it states.
+		bool has_stated_colour() const
+		{
+			return !is_empty(icc_profile) || colour_primaries != 0 || colour_transfer != 0 ||
+			       (picture_flags & picture_flag::gain_map) != 0;
+		}
+		void read_colour();
 
 		// The size the picture is shown at: turned a quarter where its orientation turns it, so a photo the camera
 		// held upright is taller than it is wide whatever its sensor recorded.

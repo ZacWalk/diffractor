@@ -194,9 +194,6 @@ msgstr "作成されたアイテムを開きます。\nCtrl+クリックで変�
 msgid "{} items close to {} in the collection."
 msgstr "コレクション内の {} の近くにあるアイテム数: {}。"
 
-msgid "{} items close to {}"
-msgstr "{}個のアイテム（{}の近く）"
-
 msgid "filter"
 msgstr "フィルター"
 
@@ -227,9 +224,6 @@ msgstr "コレクション管理の詳細。"
 msgid "More information about metadata templates."
 msgstr "メタデータテンプレートの詳細。"
 
-msgid "Videos"
-msgstr "ビデオ"
-
 msgid "Your collection"
 msgstr "あなたのコレクション"
 
@@ -238,9 +232,6 @@ msgstr "カラー"
 
 msgid "Adjust date and time"
 msgstr "日時を調整"
-
-msgid "Advanced Search"
-msgstr "高度な検索"
 
 msgid "Exit"
 msgstr "終了"
@@ -1778,6 +1769,9 @@ msgstr "現在、インデックスデータベースのサイズは {} で、{}
 msgid "Indexing"
 msgstr "インデックス作成"
 
+msgid "Indexing faces"
+msgstr "顔のインデックスを作成中"
+
 msgid "Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works."
 msgstr "検索、重複、合計を完全に保つため、Diffractor がコレクションを読み取っています。その間も閲覧を続けられます。"
 
@@ -1870,6 +1864,9 @@ msgstr "Esc"
 
 msgid "Gets you out of full screen, zoom or other modes."
 msgstr "全画面表示、ズーム、その他のモードを終了します。"
+
+msgid "Closes the current view. In the normal Items view, exits Diffractor."
+msgstr "現在のビューを閉じます。通常のアイテム ビューでは Diffractor を終了します。"
 
 msgid "F1"
 msgstr "F1"
@@ -2663,44 +2660,14 @@ msgstr "{} を保存中..."
 msgid "Failed to Scan."
 msgstr "スキャンに失敗しました。"
 
-msgid "All these terms"
-msgstr "すべてのキーワード"
-
 msgid "Christmas"
 msgstr "クリスマス"
-
-msgid "Search in the collection"
-msgstr "コレクション内を検索"
-
-msgid "From"
-msgstr "開始日"
-
-msgid "Until"
-msgstr "終了日"
-
-msgid "Search in a folder"
-msgstr "フォルダー内を検索"
 
 msgid "Last 7 days"
 msgstr "過去7日間"
 
-msgid "Located within"
-msgstr "範囲内"
-
-msgid "None of these terms"
-msgstr "キーワードを含まない"
-
 msgid "Search criteria or folder"
 msgstr "検索条件またはフォルダー"
-
-msgid "Photos"
-msgstr "写真"
-
-msgid "Select term"
-msgstr "用語を選択"
-
-msgid "Search in subfolders"
-msgstr "サブフォルダー内を検索"
 
 msgid "Searching..."
 msgstr "検索中..."
@@ -3037,12 +3004,6 @@ msgstr "ICC"
 
 msgid "press ctrl+space"
 msgstr "Ctrl+Spaceを押す"
-
-msgid "Scope"
-msgstr "範囲"
-
-msgid "Value"
-msgstr "値"
 
 msgid "Volume 200%"
 msgstr "音量 200%"
@@ -3632,9 +3593,6 @@ msgstr "表示中の画像を拡大または縮小します。0 キーでウィ�
 msgid "Add folders to your collection (F6)"
 msgstr "コレクションにフォルダーを追加 (F6)"
 
-msgid "Select at least one search criterion."
-msgstr "検索条件を 1 つ以上選択してください。"
-
 msgid "Could not check for updates. Check your internet connection and try again."
 msgstr "更新を確認できませんでした。インターネット接続を確認して、もう一度お試しください。"
 
@@ -3788,6 +3746,24 @@ msgstr "{} をレンダリングしました。"
 msgid "Rendering was canceled. Nothing was written."
 msgstr "レンダリングはキャンセルされました。何も書き込まれていません。"
 
+msgid "YouTube Short: upright, three minutes at most"
+msgstr "YouTube ショート: 縦向き、最長 3 分"
+
+msgid "Its items run {}, so it fades out at three minutes."
+msgstr "項目の長さが {} のため、3 分でフェードアウトします。"
+
+msgid "It ends where the tune starts again, so YouTube loops it seamlessly."
+msgstr "曲が最初に戻る位置で終わるため、YouTube で継ぎ目なくループします。"
+
+msgid "Render each item as its own Short"
+msgstr "各項目を個別のショートとしてレンダリング"
+
+msgid "Rendering Short {} of {}"
+msgstr "ショート {}/{} をレンダリング中"
+
+msgid "{} could not be rendered. {}"
+msgstr "{} をレンダリングできませんでした。{}"
+
 msgid "No missing clip was found in that folder."
 msgstr "そのフォルダーに見つからないクリップはありませんでした。"
 
@@ -3819,6 +3795,16 @@ msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "1 個のクリップがソース ファイルを見つけられません。"
 msgstr[1] "{count} 個のクリップがソース ファイルを見つけられません。"
 
+
+msgid "Rendered 1 Short."
+msgid_plural "Rendered {count} Shorts."
+msgstr[0] "1 本のショートをレンダリングしました。"
+msgstr[1] "{count} 本のショートをレンダリングしました。"
+
+msgid "Rendering was canceled after 1 Short."
+msgid_plural "Rendering was canceled after {count} Shorts."
+msgstr[0] "1 本のショートの後でレンダリングがキャンセルされました。"
+msgstr[1] "{count} 本のショートの後でレンダリングがキャンセルされました。"
 
 msgid "Pattern"
 msgstr "パターン"
@@ -4115,3 +4101,541 @@ msgstr "フレームレート"
 
 msgid "Contents"
 msgstr "内容"
+
+msgid "Explore"
+msgstr "探索"
+
+msgid "Reading the collection..."
+msgstr "コレクションを読み込んでいます..."
+
+msgid "Nothing in the collection says when or where it was taken yet."
+msgstr "コレクションには、撮影日時や撮影場所がわかる項目がまだありません。"
+
+msgid "Drag to turn the globe and scroll to zoom. Click a place or a time to show its items."
+msgstr "ドラッグで地球儀を回し、スクロールでズームします。場所や時期をクリックすると、その項目を表示します。"
+
+msgid "Nothing in {}"
+msgstr "{}: 項目なし"
+
+msgid "Nothing yet in {}"
+msgstr "{}: まだ項目なし"
+
+msgid "Taken from {} to {}"
+msgstr "{} から {} まで撮影"
+
+msgid "Taken in {}"
+msgstr "{}に撮影"
+
+msgid "Click to show the items taken there that year."
+msgstr "クリックすると、その年にそこで撮影した項目を表示します。"
+
+msgid "Click to show the year's items."
+msgstr "クリックすると、その年の項目を表示します。"
+
+msgid "Click to show the month's items."
+msgstr "クリックすると、その月の項目を表示します。"
+
+msgid "Click to show the week's items, or drag up or down to take in more weeks."
+msgstr "クリックすると、その週の項目を表示します。上下にドラッグすると、さらに多くの週を含めます。"
+
+msgid "Release to show these weeks' items."
+msgstr "離すと、これらの週の項目を表示します。"
+
+msgid "Click to show the items taken there on this trip."
+msgstr "クリックすると、この旅行でそこで撮影した項目を表示します。"
+
+msgid "Nothing was taken then."
+msgstr "この期間に撮影された項目はありません。"
+
+msgid "1 trip away"
+msgid_plural "{count} trips away"
+msgstr[0] "1回の旅行"
+msgstr[1] "{count}回の旅行"
+
+msgid "1 item taken in {first-name}"
+msgid_plural "{count} items taken in {first-name}"
+msgstr[0] "{first-name}で撮影した1個の項目"
+msgstr[1] "{first-name}で撮影した{count}個の項目"
+
+msgid "Show in Explore"
+msgstr "探索で表示"
+
+msgid "Expand the globe into Explore: where the collection was taken, beside when."
+msgstr "地球儀を探索に拡大して、コレクションがいつどこで撮影されたかを表示します。"
+
+msgid "Recent changes"
+msgstr "最近の変更"
+
+msgid "What you have changed since Diffractor started. Pick a change to see its items again, selected, wherever they are now."
+msgstr "Diffractor の起動以降に変更した内容です。変更を選ぶと、その項目が現在の場所で選択された状態で再び表示されます。"
+
+msgid "Faces"
+msgstr "顔"
+
+msgid "Save names to files"
+msgstr "名前をファイルに保存"
+
+msgid "Export face data"
+msgstr "顔データをエクスポート"
+
+msgid "Import face data"
+msgstr "顔データをインポート"
+
+msgid "Confirm {}"
+msgstr "{} として確定"
+
+msgid "Not {}"
+msgstr "{} ではない"
+
+msgid "Confirm all"
+msgstr "すべて確定"
+
+msgid "Name all"
+msgstr "すべてに名前を付ける"
+
+msgid "Hide all"
+msgstr "すべて非表示"
+
+msgid "Confirm every suggested face here as this person. You are asked first."
+msgstr "ここで提案されたすべての顔をこの人物として確定します。先に確認が表示されます。"
+
+msgid "Name every face in this group as one person: choose a name, or type a new one."
+msgstr "このグループのすべての顔に 1 人の人物として名前を付けます。名前を選ぶか、新しい名前を入力してください。"
+
+msgid "Hide every face in this group from review. Hidden lists them, and Show again brings them back."
+msgstr "このグループのすべての顔を確認対象から非表示にします。[非表示] に一覧表示され、[再表示] で元に戻せます。"
+
+msgid "Move to {}"
+msgstr "{} に移動"
+
+msgid "This name comes from picture files. Renaming it changes those files."
+msgstr "この名前は画像ファイルに記録されています。名前を変更するとファイルも更新されます。"
+
+msgid "Last placement: {} in {}."
+msgstr "直前の操作: {} を {} に配置しました。"
+
+msgid "No people match this filter."
+msgstr "このフィルターに一致する人物はいません。"
+
+msgid "Names in your photos"
+msgstr "写真内の名前"
+
+msgid "Comparing two files"
+msgstr "2 つのファイルを比較"
+
+msgid "Selection summary"
+msgstr "選択内容の概要"
+
+msgid "Choose a date or trip to open its items."
+msgstr "日付または旅行を選ぶと、該当する項目が開きます。"
+
+msgid "Hidden"
+msgstr "非表示"
+
+msgid "Click to rename."
+msgstr "クリックして名前を変更します。"
+
+msgid "No faces have been found yet."
+msgstr "まだ顔が見つかっていません。"
+
+msgid "That name belongs to someone else. Choose a different name."
+msgstr "その名前は別の人物に使われています。別の名前を選んでください。"
+
+msgid "Names will be written into {}: {} and {}. Everything else the files hold is kept."
+msgstr "{} に名前を書き込みます: {}、{}。ファイル内のその他の情報は保持されます。"
+
+msgid "Names will be written into {}: {}. Everything else the files hold is kept."
+msgstr "{} に名前を書き込みます: {}。ファイル内のその他の情報は保持されます。"
+
+msgid "Diffractor face data"
+msgstr "Diffractor の顔データ"
+
+msgid "{} and {} were saved to {}."
+msgstr "{}と{}を {} に保存しました。"
+
+msgid "{} could not be written."
+msgstr "{} を書き込めませんでした。"
+
+msgid "{} and {} were read from {}."
+msgstr "{}と{}を {} から読み込みました。"
+
+msgid "{} could not be read: {}."
+msgstr "{} を読み込めませんでした: {}。"
+
+msgid "Click to show their pictures."
+msgstr "クリックすると、この人物の画像を表示します。"
+
+msgid "Show in face view"
+msgstr "顔ビューで表示"
+
+msgid "Name face"
+msgstr "顔に名前を付ける"
+
+msgid "Choose an existing name or enter a new one."
+msgstr "既存の名前を選ぶか、新しい名前を入力してください。"
+
+msgid "Name as someone else"
+msgstr "別の人物として名前を付ける"
+
+msgid "Choose who this face is instead, or enter a new name."
+msgstr "代わりにこの顔の人物を選ぶか、新しい名前を入力してください。"
+
+msgid "New person: {}"
+msgstr "新しい人物: {}"
+
+msgid "Go to the next picture afterwards"
+msgstr "完了後に次の写真へ移動する"
+
+msgid "Open or select one picture."
+msgstr "写真を 1 枚開くか選択してください。"
+
+msgid "Turn on face search in the Faces view to name faces."
+msgstr "顔に名前を付けるには、[顔] ビューで顔の検出をオンにしてください。"
+
+msgid "No face was found in this picture."
+msgstr "この写真には顔が見つかりませんでした。"
+
+msgid "This picture has more than one face. Point at the one to name."
+msgstr "この写真には複数の顔があります。名前を付ける顔をポイントしてください。"
+
+msgid "The faces found in {} will be removed and face search turned off. Names in your files are kept."
+msgstr "{} で見つかった顔が削除され、顔検索がオフになります。ファイル内の名前は保持されます。"
+
+msgid "The faces found in your pictures will be removed and face search turned off. Names in your files are kept."
+msgstr "画像で見つかった顔が削除され、顔検索がオフになります。ファイル内の名前は保持されます。"
+
+msgid "1 face"
+msgid_plural "{count} faces"
+msgstr[0] "1 個の顔"
+msgstr[1] "{count} 個の顔"
+
+msgid "1 person"
+msgid_plural "{count} people"
+msgstr[0] "1 人"
+msgstr[1] "{count} 人"
+
+msgid "1 decision"
+msgid_plural "{count} decisions"
+msgstr[0] "1 件の決定"
+msgstr[1] "{count} 件の決定"
+
+msgid "1 suggested"
+msgid_plural "{count} suggested"
+msgstr[0] "候補 1 件"
+msgstr[1] "候補 {count} 件"
+
+msgid "1 face named"
+msgid_plural "{count} faces named"
+msgstr[0] "名前を付ける顔 1 個"
+msgstr[1] "名前を付ける顔 {count} 個"
+
+msgid "1 name taken out"
+msgid_plural "{count} names taken out"
+msgstr[0] "削除する名前 1 個"
+msgstr[1] "削除する名前 {count} 個"
+
+msgid "and 1 more picture"
+msgid_plural "and {count} more pictures"
+msgstr[0] "ほか 1 枚の画像"
+msgstr[1] "ほか {count} 枚の画像"
+
+msgid "Hide"
+msgstr "非表示"
+
+msgid "Show again"
+msgstr "再表示"
+
+msgid "Person search"
+msgstr "人物検索"
+
+msgid "Open in folder"
+msgstr "フォルダー内で開く"
+
+msgid "Open pictures with a strong match for this face in Items."
+msgstr "この顔によく似た顔が写っている画像を「アイテム」で開きます。"
+
+msgid "Find pictures of {} in Items."
+msgstr "「アイテム」で {} の画像を探します。"
+
+msgid "Select one face that can be compared."
+msgstr "比較できる顔を1つ選択してください。"
+
+msgid "Select one face to open its picture in Items."
+msgstr "顔を1つ選択すると、その画像を「アイテム」で開けます。"
+
+msgid "Suggested"
+msgstr "候補"
+
+msgid "Similar faces"
+msgstr "似ている顔"
+
+msgid "Unique faces"
+msgstr "単独の顔"
+
+msgid "Small or unclear faces"
+msgstr "小さい顔、不鮮明な顔"
+
+msgid "Finding faces..."
+msgstr "顔を検索しています..."
+
+msgid "Filter people"
+msgstr "人物を絞り込む"
+
+msgid "Clear filter"
+msgstr "フィルターを解除"
+
+msgid "Find similar faces"
+msgstr "似ている顔を検索"
+
+msgid "Scan for faces"
+msgstr "顔を検出する"
+
+msgid "Scan for faces in photos"
+msgstr "写真の顔を検出する"
+
+msgid "Scan for faces in videos"
+msgstr "動画の顔を検出する"
+
+msgid "Faces are found and compared on this computer. Nothing is uploaded."
+msgstr "顔の検出と比較はこのコンピューター上で行われます。何もアップロードされません。"
+
+msgid "Every picture in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused."
+msgstr "コレクション内のすべての画像 ({}) をもう一度読み込みます。このコンピューターでは約 {} かかります。スキャンは一時停止できます。"
+
+msgid "Every video in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused."
+msgstr "コレクション内のすべての動画 ({}) をもう一度読み込みます。このコンピューターでは約 {} かかります。スキャンは一時停止できます。"
+
+msgid "Every picture and video in the collection is read once more - {} and {}, which takes about {} on this computer. The scan can be paused."
+msgstr "コレクション内のすべての画像と動画 ({}、{}) をもう一度読み込みます。このコンピューターでは約 {} かかります。スキャンは一時停止できます。"
+
+msgid "Face scanning is off."
+msgstr "顔の検出はオフです。"
+
+msgid "Pause"
+msgstr "一時停止"
+
+msgid "Resume"
+msgstr "再開"
+
+msgid "Paused"
+msgstr "一時停止中"
+
+msgid "Paused after reading {} of {}."
+msgstr "{} / {} を読み込んだところで一時停止しました。"
+
+msgid "{} of {} read, {} found. About {} left."
+msgstr "{} / {} を読み込み、{} が見つかりました。残り約 {}。"
+
+msgid "All {} read, {} found."
+msgstr "すべて ({}) 読み込み、{} が見つかりました。"
+
+msgid "1 picture could not be read."
+msgid_plural "{count} pictures could not be read."
+msgstr[0] "1 枚の画像を読み込めませんでした。"
+msgstr[1] "{count} 枚の画像を読み込めませんでした。"
+
+msgid "1 file could not be read."
+msgid_plural "{count} files could not be read."
+msgstr[0] "1 個のファイルを読み込めませんでした。"
+msgstr[1] "{count} 個のファイルを読み込めませんでした。"
+
+msgid "1 picture is on a drive or folder that isn't available."
+msgid_plural "{count} pictures are on drives or folders that aren't available."
+msgstr[0] "1 枚の画像が、利用できないドライブまたはフォルダーにあります。"
+msgstr[1] "{count} 枚の画像が、利用できないドライブまたはフォルダーにあります。"
+
+msgid "1 file is on a drive or folder that isn't available."
+msgid_plural "{count} files are on drives or folders that aren't available."
+msgstr[0] "1 個のファイルが、利用できないドライブまたはフォルダーにあります。"
+msgstr[1] "{count} 個のファイルが、利用できないドライブまたはフォルダーにあります。"
+
+msgid "Delete face data"
+msgstr "顔データを削除"
+
+msgid "{} will be renamed {} in {}."
+msgstr "{} の名前を {} に変更します ({})。"
+
+msgid "{0} is also named in {1}. Change the name there to {2} too?"
+msgstr "{0} は {1} にも名前として記録されています。そちらの名前も {2} に変更しますか？"
+
+msgid "Change in files"
+msgstr "ファイル内も変更"
+
+msgid "Only in Diffractor"
+msgstr "Diffractor 内のみ"
+
+msgid "Phone or camera"
+msgstr "スマートフォンまたはカメラ"
+
+msgid "{} (phone or camera)"
+msgstr "{} (スマートフォンまたはカメラ)"
+
+msgid "Reading {}..."
+msgstr "{} を読み込んでいます..."
+
+msgid "Copying from {}: {} of {}"
+msgstr "{} からコピー中: {} / {}"
+
+msgid "No photos or videos were found on {}. If it is locked, unlock it, and if it asks, allow this computer to access its files."
+msgstr "{} に写真やビデオが見つかりませんでした。ロックされている場合はロックを解除し、確認を求められたら、このコンピューターがファイルにアクセスすることを許可してください。"
+
+msgid "There is not enough free space to copy from {}: {} more is needed."
+msgstr "{} からコピーするための空き容量が足りません。あと {} 必要です。"
+
+msgid "Photos and videos are copied from a phone or camera: it keeps its own."
+msgstr "写真とビデオはスマートフォンやカメラからコピーされ、デバイス上には元のファイルが残ります。"
+
+msgid "Person"
+msgstr "人物"
+
+msgid "1 picture"
+msgid_plural "{count} pictures"
+msgstr[0] "1 枚の画像"
+msgstr[1] "{count} 枚の画像"
+
+msgid "1 video"
+msgid_plural "{count} videos"
+msgstr[0] "1 本の動画"
+msgstr[1] "{count} 本の動画"
+
+msgid "1 picture or video"
+msgid_plural "{count} pictures and videos"
+msgstr[0] "1 件の画像または動画"
+msgstr[1] "{count} 件の画像と動画"
+
+msgid "1 minute"
+msgid_plural "{count} minutes"
+msgstr[0] "1 分"
+msgstr[1] "{count} 分"
+
+msgid "1 hour"
+msgid_plural "{count} hours"
+msgstr[0] "1 時間"
+msgstr[1] "{count} 時間"
+
+msgid "1 face selected"
+msgid_plural "{count} faces selected"
+msgstr[0] "1 個の顔を選択"
+msgstr[1] "{count} 個の顔を選択"
+
+msgid "{first-name} could not be read from the device."
+msgid_plural "{first-name} and {other} other files could not be read from the device."
+msgstr[0] "{first-name} をデバイスから読み込めませんでした。"
+msgstr[1] "{first-name} と他の {other} 個のファイルをデバイスから読み込めませんでした。"
+
+msgid "Confirm that the selected faces belong to the indicated person. This changes the face book, not the pictures."
+msgstr "選んだ顔が表示された人物のものであることを確認します。変更されるのは顔の記録だけで、写真は変更されません。"
+
+msgid "Restore the face book to before this last change. The picture files are not changed."
+msgstr "顔の記録を直前の変更前に戻します。写真ファイルは変更されません。"
+
+msgid "People"
+msgstr "人物"
+
+msgid "Confirmed"
+msgstr "確認済み"
+
+msgid "Name faces"
+msgstr "顔に名前を付ける"
+
+msgid "Person name"
+msgstr "人物名"
+
+msgid "Not this person"
+msgstr "この人物ではない"
+
+msgid "Confirm"
+msgstr "確認"
+
+msgid "Name a face in Unknown to start a person. Confirm suggestions, reject a wrong match, or hide faces you do not want to review."
+msgstr "不明な顔に名前を付けると、人物が追加されます。候補を確認または却下したり、確認しない顔を非表示にしたりできます。"
+
+msgid "As you confirm faces, Diffractor learns and gets better at making suggestions."
+msgstr "顔を確定するほど、Diffractor は学習して候補の精度が上がります。"
+
+msgid "Never suggest this person for these faces again. They can still be named as someone else."
+msgstr "これらの顔に対して、この人物を再び候補にしません。別の人物の名前を付けることはできます。"
+
+msgid "Show these faces again without changing their names or rejections."
+msgstr "名前や却下した候補を変更せずに、これらの顔を再表示します。"
+
+msgid "Select one named person."
+msgstr "名前のある人物を1人選択してください。"
+
+msgid "Backup"
+msgstr "バックアップ"
+
+msgid "Export face data saves the people you named and your decisions to a file. Import face data reads one back, on this PC or another."
+msgstr "[顔データをエクスポート] は、名前を付けた人物と確認結果をファイルに保存します。[顔データをインポート] は、この PC でも別の PC でも、そのファイルを読み込みます。"
+
+msgid "Names you confirm stay in Diffractor until you save them. Saving writes them into the photos, where other photo apps can read them."
+msgstr "確認した名前は、保存するまで Diffractor 内にのみ保持されます。保存すると写真に書き込まれ、他の写真アプリでも読み取れるようになります。"
+
+msgid "Scan for faces to name people and review suggested matches."
+msgstr "顔をスキャンして人物に名前を付け、候補を確認します。"
+
+msgid "Your face data is kept in {}."
+msgstr "顔データの保存場所：{}"
+
+msgid "Face data cannot be saved: the database could not be opened."
+msgstr "データベースを開けなかったため、顔データを保存できません。"
+
+msgid "Your latest face changes could not be saved yet. Diffractor keeps trying; Export face data keeps a copy now."
+msgstr "最新の顔の変更をまだ保存できていません。Diffractor は保存を再試行し続けます。今すぐコピーを残すには [顔データをエクスポート] を使用してください。"
+
+msgid "Another Diffractor window is changing faces, so this window only shows them. It can change them once that window closes."
+msgstr "別の Diffractor ウィンドウで顔を変更中のため、このウィンドウでは表示のみ行います。そのウィンドウを閉じると、このウィンドウでも変更できるようになります。"
+
+msgid "Read only: another Diffractor window is changing faces."
+msgstr "読み取り専用: 別の Diffractor ウィンドウで顔を変更中です。"
+
+msgid "Face changes are not saved yet."
+msgstr "顔の変更はまだ保存されていません。"
+
+msgid "There are no face names to write."
+msgstr "書き込む名前はありません。"
+
+msgid "Names and review decisions stay on this computer unless you export them."
+msgstr "エクスポートしない限り、名前と確認結果はこのコンピューターにのみ保持されます。"
+
+msgid "Also forget names and review decisions made in Diffractor"
+msgstr "Diffractorで付けた名前と確認結果も消去する"
+
+msgid "Forget names and decisions?"
+msgstr "名前と決定を消去しますか？"
+
+msgid "{} and {} made in Diffractor will be forgotten. This cannot be undone: export face data first if you might want them back. Names saved in your photos are kept."
+msgstr "Diffractor で記録した {}と{}を消去します。この操作は元に戻せません。後で必要になる可能性がある場合は、先に顔データをエクスポートしてください。写真に保存した名前は保持されます。"
+
+msgid "Forget"
+msgstr "消去"
+
+msgid "Enter a new name for {}."
+msgstr "{}の新しい名前を入力してください。"
+
+msgid "Updating suggestions..."
+msgstr "候補を更新中…"
+
+msgid "Hide the selected faces from review. Similar faces stay visible. Choose Show again to bring them back."
+msgstr "選択した顔を非表示にします。似た顔は表示されたままです。「再表示」で元に戻せます。"
+
+msgid "Combine people?"
+msgstr "人物を統合しますか？"
+
+msgid "A person named {1} already exists. Combine {0} with {1}? This changes only the face book, not your photos."
+msgstr "{1} という名前の人物がすでに存在します。{0} を {1} に統合しますか？変更されるのは顔の記録だけで、写真は変更されません。"
+
+msgid "Combined {} with {}."
+msgstr "{} を {} に統合しました。"
+
+msgid "These people have changed. Review their names and try again."
+msgstr "人物の情報が変わりました。名前を確認してもう一度お試しください。"
+
+msgid "Face CSVs contain names and biometric face signatures, not filenames. Share only with people you trust."
+msgstr "CSV には名前と顔の生体署名が含まれますが、ファイル名は含まれません。信頼できる相手とのみ共有してください。"
+
+msgid "Face decisions without an unambiguous signature were not exported: {}."
+msgstr "明確な署名がなく、エクスポートできなかった顔の記録数：{}"
+
+msgid "The face book is updating. Wait for recognition to finish, then export again."
+msgstr "顔の記録を更新しています。認識が完了したら、もう一度エクスポートしてください。"

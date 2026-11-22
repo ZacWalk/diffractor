@@ -194,9 +194,6 @@ msgstr "Abre los elementos creados.\nCtrl+clic abre los elementos modificados."
 msgid "{} items close to {} in the collection."
 msgstr "{} elementos de la colección cerca de {}."
 
-msgid "{} items close to {}"
-msgstr "{} elementos cerca de {}"
-
 msgid "filter"
 msgstr "filtro"
 
@@ -227,9 +224,6 @@ msgstr "Más información sobre la gestión de colecciones."
 msgid "More information about metadata templates."
 msgstr "Más información sobre las plantillas de metadatos."
 
-msgid "Videos"
-msgstr "Vídeos"
-
 msgid "Your collection"
 msgstr "Tu colección"
 
@@ -238,9 +232,6 @@ msgstr "Color"
 
 msgid "Adjust date and time"
 msgstr "Ajustar fecha y hora"
-
-msgid "Advanced Search"
-msgstr "Búsqueda avanzada"
 
 msgid "Exit"
 msgstr "Salir"
@@ -1778,6 +1769,9 @@ msgstr "Actualmente la base de datos del índice tiene un tamaño de {} y contie
 msgid "Indexing"
 msgstr "Indexando"
 
+msgid "Indexing faces"
+msgstr "Indexando rostros"
+
 msgid "Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works."
 msgstr "Diffractor está leyendo su colección para que la búsqueda, los duplicados y los totales sigan completos. Puede seguir navegando mientras tanto."
 
@@ -1870,6 +1864,9 @@ msgstr "escape"
 
 msgid "Gets you out of full screen, zoom or other modes."
 msgstr "Te saca de pantalla completa, zoom u otros modos."
+
+msgid "Closes the current view. In the normal Items view, exits Diffractor."
+msgstr "Cierra la vista actual. En la vista Elementos normal, cierra Diffractor."
 
 msgid "F1"
 msgstr "F1"
@@ -2667,44 +2664,14 @@ msgstr "Guardando {}..."
 msgid "Failed to Scan."
 msgstr "Error al escanear."
 
-msgid "All these terms"
-msgstr "Todos estos términos"
-
 msgid "Christmas"
 msgstr "Navidad"
-
-msgid "Search in the collection"
-msgstr "Buscar en la colección"
-
-msgid "From"
-msgstr "Desde"
-
-msgid "Until"
-msgstr "Hasta"
-
-msgid "Search in a folder"
-msgstr "Buscar en una carpeta"
 
 msgid "Last 7 days"
 msgstr "Últimos 7 días"
 
-msgid "Located within"
-msgstr "Ubicado en"
-
-msgid "None of these terms"
-msgstr "Ninguno de estos términos"
-
 msgid "Search criteria or folder"
 msgstr "Criterios de búsqueda o carpeta"
-
-msgid "Photos"
-msgstr "Fotos"
-
-msgid "Select term"
-msgstr "Seleccionar término"
-
-msgid "Search in subfolders"
-msgstr "Buscar en subcarpetas"
 
 msgid "Searching..."
 msgstr "Buscando..."
@@ -3041,12 +3008,6 @@ msgstr "ICC"
 
 msgid "press ctrl+space"
 msgstr "presiona ctrl+espacio"
-
-msgid "Scope"
-msgstr "Ámbito"
-
-msgid "Value"
-msgstr "Valor"
 
 msgid "Volume 200%"
 msgstr "Volumen 200 %"
@@ -3636,9 +3597,6 @@ msgstr "Acerca o aleja la imagen mostrada. Pulse 0 para ajustarla a la ventana."
 msgid "Add folders to your collection (F6)"
 msgstr "Añadir carpetas a su colección (F6)"
 
-msgid "Select at least one search criterion."
-msgstr "Seleccione al menos un criterio de búsqueda."
-
 msgid "Could not check for updates. Check your internet connection and try again."
 msgstr "No se pudo buscar actualizaciones. Compruebe su conexión a Internet e inténtelo de nuevo."
 
@@ -3792,6 +3750,24 @@ msgstr "Se ha renderizado {}."
 msgid "Rendering was canceled. Nothing was written."
 msgstr "El renderizado se ha cancelado. No se ha escrito nada."
 
+msgid "YouTube Short: upright, three minutes at most"
+msgstr "YouTube Short: en vertical, tres minutos como máximo"
+
+msgid "Its items run {}, so it fades out at three minutes."
+msgstr "Sus elementos duran {}, así que se desvanece a los tres minutos."
+
+msgid "It ends where the tune starts again, so YouTube loops it seamlessly."
+msgstr "Termina donde la melodía vuelve a empezar, así que YouTube lo repite sin cortes."
+
+msgid "Render each item as its own Short"
+msgstr "Renderizar cada elemento como un Short propio"
+
+msgid "Rendering Short {} of {}"
+msgstr "Renderizando el Short {} de {}"
+
+msgid "{} could not be rendered. {}"
+msgstr "No se ha podido renderizar {}. {}"
+
 msgid "No missing clip was found in that folder."
 msgstr "No se ha encontrado ningún clip que falte en esa carpeta."
 
@@ -3823,6 +3799,16 @@ msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "1 clip no encuentra su archivo de origen."
 msgstr[1] "{count} clips no encuentran sus archivos de origen."
 
+
+msgid "Rendered 1 Short."
+msgid_plural "Rendered {count} Shorts."
+msgstr[0] "Se ha renderizado 1 Short."
+msgstr[1] "Se han renderizado {count} Shorts."
+
+msgid "Rendering was canceled after 1 Short."
+msgid_plural "Rendering was canceled after {count} Shorts."
+msgstr[0] "El renderizado se ha cancelado tras 1 Short."
+msgstr[1] "El renderizado se ha cancelado tras {count} Shorts."
 
 msgid "Pattern"
 msgstr "Patrón"
@@ -4119,3 +4105,541 @@ msgstr "Velocidad de fotogramas"
 
 msgid "Contents"
 msgstr "Contenido"
+
+msgid "Explore"
+msgstr "Explorar"
+
+msgid "Reading the collection..."
+msgstr "Leyendo la colección..."
+
+msgid "Nothing in the collection says when or where it was taken yet."
+msgstr "Nada en la colección indica todavía cuándo o dónde se tomó."
+
+msgid "Drag to turn the globe and scroll to zoom. Click a place or a time to show its items."
+msgstr "Arrastre para girar el globo y desplácese para acercar. Haga clic en un lugar o un momento para mostrar sus elementos."
+
+msgid "Nothing in {}"
+msgstr "{}: nada"
+
+msgid "Nothing yet in {}"
+msgstr "{}: nada todavía"
+
+msgid "Taken from {} to {}"
+msgstr "Tomados de {} a {}"
+
+msgid "Taken in {}"
+msgstr "Tomados en {}"
+
+msgid "Click to show the items taken there that year."
+msgstr "Haga clic para mostrar los elementos tomados allí ese año."
+
+msgid "Click to show the year's items."
+msgstr "Haga clic para mostrar los elementos del año."
+
+msgid "Click to show the month's items."
+msgstr "Haga clic para mostrar los elementos del mes."
+
+msgid "Click to show the week's items, or drag up or down to take in more weeks."
+msgstr "Haga clic para mostrar los elementos de la semana, o arrastre hacia arriba o hacia abajo para incluir más semanas."
+
+msgid "Release to show these weeks' items."
+msgstr "Suelte para mostrar los elementos de estas semanas."
+
+msgid "Click to show the items taken there on this trip."
+msgstr "Haga clic para mostrar los elementos tomados allí en este viaje."
+
+msgid "Nothing was taken then."
+msgstr "No se tomó nada en ese momento."
+
+msgid "1 trip away"
+msgid_plural "{count} trips away"
+msgstr[0] "1 viaje"
+msgstr[1] "{count} viajes"
+
+msgid "1 item taken in {first-name}"
+msgid_plural "{count} items taken in {first-name}"
+msgstr[0] "1 elemento tomado en {first-name}"
+msgstr[1] "{count} elementos tomados en {first-name}"
+
+msgid "Show in Explore"
+msgstr "Mostrar en Explorar"
+
+msgid "Expand the globe into Explore: where the collection was taken, beside when."
+msgstr "Ampliar el globo en Explorar: dónde y cuándo se tomó la colección."
+
+msgid "Recent changes"
+msgstr "Cambios recientes"
+
+msgid "What you have changed since Diffractor started. Pick a change to see its items again, selected, wherever they are now."
+msgstr "Lo que ha cambiado desde que se inició Diffractor. Elija un cambio para volver a ver sus elementos, seleccionados, dondequiera que estén ahora."
+
+msgid "Faces"
+msgstr "Rostros"
+
+msgid "Save names to files"
+msgstr "Guardar nombres en los archivos"
+
+msgid "Export face data"
+msgstr "Exportar datos de rostros"
+
+msgid "Import face data"
+msgstr "Importar datos de rostros"
+
+msgid "Confirm {}"
+msgstr "Confirmar que es {}"
+
+msgid "Not {}"
+msgstr "No es {}"
+
+msgid "Confirm all"
+msgstr "Confirmar todos"
+
+msgid "Name all"
+msgstr "Nombrar todos"
+
+msgid "Hide all"
+msgstr "Ocultar todos"
+
+msgid "Confirm every suggested face here as this person. You are asked first."
+msgstr "Confirma todos los rostros sugeridos aquí como esta persona. Antes se le pregunta."
+
+msgid "Name every face in this group as one person: choose a name, or type a new one."
+msgstr "Nombra todos los rostros de este grupo como una sola persona: elija un nombre o escriba uno nuevo."
+
+msgid "Hide every face in this group from review. Hidden lists them, and Show again brings them back."
+msgstr "Oculta de la revisión todos los rostros de este grupo. Ocultos los muestra y Mostrar de nuevo los recupera."
+
+msgid "Move to {}"
+msgstr "Mover a {}"
+
+msgid "This name comes from picture files. Renaming it changes those files."
+msgstr "Este nombre procede de los archivos de imagen. Si lo cambias, también cambiarán esos archivos."
+
+msgid "Last placement: {} in {}."
+msgstr "Última asignación: {} en {}."
+
+msgid "No people match this filter."
+msgstr "Ninguna persona coincide con este filtro."
+
+msgid "Names in your photos"
+msgstr "Nombres en sus fotos"
+
+msgid "Comparing two files"
+msgstr "Comparación de dos archivos"
+
+msgid "Selection summary"
+msgstr "Resumen de la selección"
+
+msgid "Choose a date or trip to open its items."
+msgstr "Elige una fecha o un viaje para abrir sus elementos."
+
+msgid "Hidden"
+msgstr "Ocultos"
+
+msgid "Click to rename."
+msgstr "Haga clic para cambiar el nombre."
+
+msgid "No faces have been found yet."
+msgstr "Aún no se ha encontrado ningún rostro."
+
+msgid "That name belongs to someone else. Choose a different name."
+msgstr "Ese nombre pertenece a otra persona. Elige otro nombre."
+
+msgid "Names will be written into {}: {} and {}. Everything else the files hold is kept."
+msgstr "Se escribirán nombres en {}: {} y {}. Se conserva todo lo demás que contienen los archivos."
+
+msgid "Names will be written into {}: {}. Everything else the files hold is kept."
+msgstr "Se escribirán nombres en {}: {}. Se conserva todo lo demás que contienen los archivos."
+
+msgid "Diffractor face data"
+msgstr "Datos de rostros de Diffractor"
+
+msgid "{} and {} were saved to {}."
+msgstr "Se guardaron {} y {} en {}."
+
+msgid "{} could not be written."
+msgstr "No se pudo escribir {}."
+
+msgid "{} and {} were read from {}."
+msgstr "Se leyeron {} y {} de {}."
+
+msgid "{} could not be read: {}."
+msgstr "No se pudo leer {}: {}."
+
+msgid "Click to show their pictures."
+msgstr "Haga clic para mostrar las imágenes de esta persona."
+
+msgid "Show in face view"
+msgstr "Mostrar en la vista de rostros"
+
+msgid "Name face"
+msgstr "Nombrar rostro"
+
+msgid "Choose an existing name or enter a new one."
+msgstr "Elija un nombre existente o escriba uno nuevo."
+
+msgid "Name as someone else"
+msgstr "Nombrar como otra persona"
+
+msgid "Choose who this face is instead, or enter a new name."
+msgstr "Elija a quién pertenece realmente este rostro o escriba un nombre nuevo."
+
+msgid "New person: {}"
+msgstr "Nueva persona: {}"
+
+msgid "Go to the next picture afterwards"
+msgstr "Ir a la siguiente imagen después"
+
+msgid "Open or select one picture."
+msgstr "Abra o seleccione una imagen."
+
+msgid "Turn on face search in the Faces view to name faces."
+msgstr "Active la detección de rostros en la vista Rostros para nombrar rostros."
+
+msgid "No face was found in this picture."
+msgstr "No se encontró ningún rostro en esta imagen."
+
+msgid "This picture has more than one face. Point at the one to name."
+msgstr "Esta imagen tiene más de un rostro. Señale el que quiera nombrar."
+
+msgid "The faces found in {} will be removed and face search turned off. Names in your files are kept."
+msgstr "Se quitarán los rostros encontrados en {} y se desactivará la búsqueda de rostros. Los nombres de sus archivos se conservan."
+
+msgid "The faces found in your pictures will be removed and face search turned off. Names in your files are kept."
+msgstr "Se quitarán los rostros encontrados en sus imágenes y se desactivará la búsqueda de rostros. Los nombres de sus archivos se conservan."
+
+msgid "1 face"
+msgid_plural "{count} faces"
+msgstr[0] "1 rostro"
+msgstr[1] "{count} rostros"
+
+msgid "1 person"
+msgid_plural "{count} people"
+msgstr[0] "1 persona"
+msgstr[1] "{count} personas"
+
+msgid "1 decision"
+msgid_plural "{count} decisions"
+msgstr[0] "1 decisión"
+msgstr[1] "{count} decisiones"
+
+msgid "1 suggested"
+msgid_plural "{count} suggested"
+msgstr[0] "1 sugerido"
+msgstr[1] "{count} sugeridos"
+
+msgid "1 face named"
+msgid_plural "{count} faces named"
+msgstr[0] "1 rostro con nombre"
+msgstr[1] "{count} rostros con nombre"
+
+msgid "1 name taken out"
+msgid_plural "{count} names taken out"
+msgstr[0] "1 nombre quitado"
+msgstr[1] "{count} nombres quitados"
+
+msgid "and 1 more picture"
+msgid_plural "and {count} more pictures"
+msgstr[0] "y 1 imagen más"
+msgstr[1] "y {count} imágenes más"
+
+msgid "Hide"
+msgstr "Ocultar"
+
+msgid "Show again"
+msgstr "Mostrar de nuevo"
+
+msgid "Person search"
+msgstr "Búsqueda de personas"
+
+msgid "Open in folder"
+msgstr "Abrir en carpeta"
+
+msgid "Open pictures with a strong match for this face in Items."
+msgstr "Abre en Elementos las imágenes que contienen un rostro muy parecido."
+
+msgid "Find pictures of {} in Items."
+msgstr "Busca imágenes de {} en Elementos."
+
+msgid "Select one face that can be compared."
+msgstr "Selecciona un rostro que se pueda comparar."
+
+msgid "Select one face to open its picture in Items."
+msgstr "Selecciona un rostro para abrir su imagen en Elementos."
+
+msgid "Suggested"
+msgstr "Sugeridos"
+
+msgid "Similar faces"
+msgstr "Rostros similares"
+
+msgid "Unique faces"
+msgstr "Rostros únicos"
+
+msgid "Small or unclear faces"
+msgstr "Rostros pequeños o poco claros"
+
+msgid "Finding faces..."
+msgstr "Buscando rostros..."
+
+msgid "Filter people"
+msgstr "Filtrar personas"
+
+msgid "Clear filter"
+msgstr "Quitar filtro"
+
+msgid "Find similar faces"
+msgstr "Buscar rostros similares"
+
+msgid "Scan for faces"
+msgstr "Detectar rostros"
+
+msgid "Scan for faces in photos"
+msgstr "Detectar rostros en las fotos"
+
+msgid "Scan for faces in videos"
+msgstr "Detectar rostros en los vídeos"
+
+msgid "Faces are found and compared on this computer. Nothing is uploaded."
+msgstr "Los rostros se encuentran y comparan en este equipo. No se sube nada."
+
+msgid "Every picture in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused."
+msgstr "Se vuelve a leer cada imagen de la colección ({}), lo que tarda aproximadamente {} en este equipo. El análisis se puede pausar."
+
+msgid "Every video in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused."
+msgstr "Se vuelve a leer cada vídeo de la colección ({}), lo que tarda aproximadamente {} en este equipo. El análisis se puede pausar."
+
+msgid "Every picture and video in the collection is read once more - {} and {}, which takes about {} on this computer. The scan can be paused."
+msgstr "Se vuelve a leer cada imagen y cada vídeo de la colección ({} y {}), lo que tarda aproximadamente {} en este equipo. El análisis se puede pausar."
+
+msgid "Face scanning is off."
+msgstr "La detección de rostros está desactivada."
+
+msgid "Pause"
+msgstr "Pausar"
+
+msgid "Resume"
+msgstr "Reanudar"
+
+msgid "Paused"
+msgstr "En pausa"
+
+msgid "Paused after reading {} of {}."
+msgstr "En pausa tras leer {} de {}."
+
+msgid "{} of {} read, {} found. About {} left."
+msgstr "{} de {} leídas, {} encontrados. Tiempo restante: aprox. {}."
+
+msgid "All {} read, {} found."
+msgstr "Lectura completa ({}); {} encontrados."
+
+msgid "1 picture could not be read."
+msgid_plural "{count} pictures could not be read."
+msgstr[0] "No se pudo leer 1 imagen."
+msgstr[1] "No se pudieron leer {count} imágenes."
+
+msgid "1 file could not be read."
+msgid_plural "{count} files could not be read."
+msgstr[0] "No se pudo leer 1 archivo."
+msgstr[1] "No se pudieron leer {count} archivos."
+
+msgid "1 picture is on a drive or folder that isn't available."
+msgid_plural "{count} pictures are on drives or folders that aren't available."
+msgstr[0] "1 imagen está en una unidad o carpeta que no está disponible."
+msgstr[1] "{count} imágenes están en unidades o carpetas que no están disponibles."
+
+msgid "1 file is on a drive or folder that isn't available."
+msgid_plural "{count} files are on drives or folders that aren't available."
+msgstr[0] "1 archivo está en una unidad o carpeta que no está disponible."
+msgstr[1] "{count} archivos están en unidades o carpetas que no están disponibles."
+
+msgid "Delete face data"
+msgstr "Eliminar datos de rostros"
+
+msgid "{} will be renamed {} in {}."
+msgstr "{} pasará a llamarse {} en {}."
+
+msgid "{0} is also named in {1}. Change the name there to {2} too?"
+msgstr "{0} también figura en {1}. ¿Cambiar allí también el nombre a {2}?"
+
+msgid "Change in files"
+msgstr "Cambiar en los archivos"
+
+msgid "Only in Diffractor"
+msgstr "Solo en Diffractor"
+
+msgid "Phone or camera"
+msgstr "Teléfono o cámara"
+
+msgid "{} (phone or camera)"
+msgstr "{} (teléfono o cámara)"
+
+msgid "Reading {}..."
+msgstr "Leyendo {}..."
+
+msgid "Copying from {}: {} of {}"
+msgstr "Copiando de {}: {} de {}"
+
+msgid "No photos or videos were found on {}. If it is locked, unlock it, and if it asks, allow this computer to access its files."
+msgstr "No se encontraron fotos ni vídeos en {}. Si está bloqueado, desbloquéelo y, si lo pide, permita que este equipo acceda a sus archivos."
+
+msgid "There is not enough free space to copy from {}: {} more is needed."
+msgstr "No hay suficiente espacio libre para copiar desde {}: se necesitan {} más."
+
+msgid "Photos and videos are copied from a phone or camera: it keeps its own."
+msgstr "Las fotos y los vídeos se copian desde un teléfono o una cámara: el dispositivo conserva los suyos."
+
+msgid "Person"
+msgstr "Persona"
+
+msgid "1 picture"
+msgid_plural "{count} pictures"
+msgstr[0] "1 imagen"
+msgstr[1] "{count} imágenes"
+
+msgid "1 video"
+msgid_plural "{count} videos"
+msgstr[0] "1 vídeo"
+msgstr[1] "{count} vídeos"
+
+msgid "1 picture or video"
+msgid_plural "{count} pictures and videos"
+msgstr[0] "1 imagen o vídeo"
+msgstr[1] "{count} imágenes y vídeos"
+
+msgid "1 minute"
+msgid_plural "{count} minutes"
+msgstr[0] "1 minuto"
+msgstr[1] "{count} minutos"
+
+msgid "1 hour"
+msgid_plural "{count} hours"
+msgstr[0] "1 hora"
+msgstr[1] "{count} horas"
+
+msgid "1 face selected"
+msgid_plural "{count} faces selected"
+msgstr[0] "1 rostro seleccionado"
+msgstr[1] "{count} rostros seleccionados"
+
+msgid "{first-name} could not be read from the device."
+msgid_plural "{first-name} and {other} other files could not be read from the device."
+msgstr[0] "No se pudo leer {first-name} del dispositivo."
+msgstr[1] "No se pudieron leer {first-name} y otros {other} archivos del dispositivo."
+
+msgid "Confirm that the selected faces belong to the indicated person. This changes the face book, not the pictures."
+msgstr "Confirma que los rostros seleccionados pertenecen a la persona indicada. Cambia el registro de rostros, no las fotos."
+
+msgid "Restore the face book to before this last change. The picture files are not changed."
+msgstr "Restaura el registro de rostros al estado anterior al último cambio. Los archivos de imagen no se modifican."
+
+msgid "People"
+msgstr "Personas"
+
+msgid "Confirmed"
+msgstr "Confirmados"
+
+msgid "Name faces"
+msgstr "Nombrar rostros"
+
+msgid "Person name"
+msgstr "Nombre de la persona"
+
+msgid "Not this person"
+msgstr "No es esta persona"
+
+msgid "Confirm"
+msgstr "Confirmar"
+
+msgid "Name a face in Unknown to start a person. Confirm suggestions, reject a wrong match, or hide faces you do not want to review."
+msgstr "Asigne un nombre a un rostro desconocido para crear una persona. Confirme o rechace sugerencias, u oculte los rostros que no quiera revisar."
+
+msgid "As you confirm faces, Diffractor learns and gets better at making suggestions."
+msgstr "A medida que confirma rostros, Diffractor aprende y mejora sus sugerencias."
+
+msgid "Never suggest this person for these faces again. They can still be named as someone else."
+msgstr "No se volverá a sugerir esta persona para estos rostros. Podrá asignarles otro nombre."
+
+msgid "Show these faces again without changing their names or rejections."
+msgstr "Vuelve a mostrar estos rostros sin cambiar sus nombres ni los rechazos."
+
+msgid "Select one named person."
+msgstr "Seleccione una persona con nombre."
+
+msgid "Backup"
+msgstr "Copia de seguridad"
+
+msgid "Export face data saves the people you named and your decisions to a file. Import face data reads one back, on this PC or another."
+msgstr "Exportar datos de rostros guarda en un archivo las personas a las que dio nombre y sus decisiones. Importar datos de rostros las vuelve a leer, en este equipo o en otro."
+
+msgid "Names you confirm stay in Diffractor until you save them. Saving writes them into the photos, where other photo apps can read them."
+msgstr "Los nombres que confirme permanecen en Diffractor hasta que los guarde. Al guardarlos se escriben en las fotos, donde otras aplicaciones de fotos pueden leerlos."
+
+msgid "Scan for faces to name people and review suggested matches."
+msgstr "Busque rostros para nombrar personas y revisar sugerencias."
+
+msgid "Your face data is kept in {}."
+msgstr "Sus datos de rostros se guardan en {}."
+
+msgid "Face data cannot be saved: the database could not be opened."
+msgstr "No se pueden guardar los datos de rostros: no se pudo abrir la base de datos."
+
+msgid "Your latest face changes could not be saved yet. Diffractor keeps trying; Export face data keeps a copy now."
+msgstr "Aún no se han podido guardar sus últimos cambios en los rostros. Diffractor lo sigue intentando; Exportar datos de rostros guarda una copia ahora."
+
+msgid "Another Diffractor window is changing faces, so this window only shows them. It can change them once that window closes."
+msgstr "Otra ventana de Diffractor está modificando los rostros, así que esta ventana solo los muestra. Podrá modificarlos cuando se cierre esa ventana."
+
+msgid "Read only: another Diffractor window is changing faces."
+msgstr "Solo lectura: otra ventana de Diffractor está modificando los rostros."
+
+msgid "Face changes are not saved yet."
+msgstr "Los cambios en los rostros aún no se han guardado."
+
+msgid "There are no face names to write."
+msgstr "No hay nombres que escribir."
+
+msgid "Names and review decisions stay on this computer unless you export them."
+msgstr "Los nombres y las decisiones permanecen en este equipo a menos que los exporte."
+
+msgid "Also forget names and review decisions made in Diffractor"
+msgstr "Olvidar también los nombres y las decisiones de Diffractor"
+
+msgid "Forget names and decisions?"
+msgstr "¿Olvidar nombres y decisiones?"
+
+msgid "{} and {} made in Diffractor will be forgotten. This cannot be undone: export face data first if you might want them back. Names saved in your photos are kept."
+msgstr "Se olvidarán {} y {} de Diffractor. No se puede deshacer: exporte primero los datos de rostros si es posible que los quiera recuperar. Los nombres guardados en sus fotos se conservan."
+
+msgid "Forget"
+msgstr "Olvidar"
+
+msgid "Enter a new name for {}."
+msgstr "Introduzca un nombre nuevo para {}."
+
+msgid "Updating suggestions..."
+msgstr "Actualizando sugerencias…"
+
+msgid "Hide the selected faces from review. Similar faces stay visible. Choose Show again to bring them back."
+msgstr "Oculta los rostros seleccionados. Los rostros parecidos siguen visibles. Elija Volver a mostrar para recuperarlos."
+
+msgid "Combine people?"
+msgstr "¿Combinar personas?"
+
+msgid "A person named {1} already exists. Combine {0} with {1}? This changes only the face book, not your photos."
+msgstr "Ya existe una persona llamada {1}. ¿Combinar {0} con {1}? Solo cambiará el registro de rostros, no las fotos."
+
+msgid "Combined {} with {}."
+msgstr "Se ha combinado {} con {}."
+
+msgid "These people have changed. Review their names and try again."
+msgstr "Estas personas han cambiado. Compruebe sus nombres e inténtelo de nuevo."
+
+msgid "Face CSVs contain names and biometric face signatures, not filenames. Share only with people you trust."
+msgstr "El CSV contiene nombres y firmas biométricas de rostros, no nombres de archivo. Compártalo solo con personas de confianza."
+
+msgid "Face decisions without an unambiguous signature were not exported: {}."
+msgstr "Decisiones que no se exportaron por no tener una firma inequívoca: {}."
+
+msgid "The face book is updating. Wait for recognition to finish, then export again."
+msgstr "Se está actualizando el registro de rostros. Espere a que termine el reconocimiento y vuelva a exportar."

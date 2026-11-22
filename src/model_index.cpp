@@ -18,6 +18,7 @@
 #include "model_index.h"
 #include "model_index_internal.h"
 #include "model_db.h"
+#include "model_faces_search.h"
 #include "model_locations.h"
 #include "model_property.h"
 #include "model.h"
@@ -249,7 +250,7 @@ static void iterate_items(const df::search_t& search_in, T& results, index_state
 	df::search_t resolved_related;
 	const auto& search = resolve_related(search_in, state, resolved_related);
 
-	df::search_matcher matcher(search, core::utc_now().to_days(), &state.locations());
+	df::search_matcher matcher(search, core::utc_now().to_days(), &state.locations(), state.faces().book().people());
 
 	const auto now = core::utc_now();
 	const auto& selectors = search.selectors();
@@ -649,7 +650,7 @@ index_state::search_context index_state::make_search_context(const search_execut
 
 	if (execution == search_execution::automatic)
 	{
-		if (auto snapshot = search_index())
+		if (auto snapshot = search_index(); snapshot && snapshot->location_version() == _locations.search_names_version())
 		{
 			result.evaluator.emplace(std::move(snapshot), result.folders);
 			if (!result.evaluator->is_useful()) result.evaluator.reset();
@@ -729,7 +730,8 @@ void index_state::update_search_index()
 		const df::search_index_view view(*current, folders);
 		// Date terms are answered from the snapshot only on the day it was read, so the first pass of a new
 		// day reads the collection again.
-		const auto formats_current = current->format_signature() == df::search_index::current_format_signature() &&
+		const auto formats_current = current->location_version() == _locations.search_names_version() &&
+		                             current->format_signature() == df::search_index::current_format_signature() &&
 		                             current->date_day() == core::utc_now().to_days();
 
 		// A small collection's tolerance can pass the point where no search would use the snapshot, so one
@@ -766,7 +768,7 @@ void index_state::update_search_index()
 	}
 
 	const auto start_us = core::now_us();
-	auto built = df::search_index::build(folders, ++_search_index_generation, indexing_active);
+	auto built = df::search_index::build(folders, _locations, ++_search_index_generation, indexing_active);
 	if (!built) return;
 
 	if (built->byte_size() > max_search_index_bytes)
@@ -856,6 +858,99 @@ std::optional<uint64_t> search_counter::try_count_items(const df::search_t& sear
 	return result.summary.total_items().count;
 }
 
+std::vector<index_state::auto_complete_word> search_counter::refinements(const df::search_t& search,
+                                                                        const std::string_view prefix,
+                                                                        const core::cancel_token& token)
+{
+	if (!search.has_terms() || search.has_related() || search.has_selector() || token.is_cancelled()) return {};
+	// Appending a term to an OR need not narrow the whole expression.
+	if (std::ranges::any_of(search.terms(), [](const auto& t)
+	{
+		// Do not resolve locations, compare face hashes or probe volumes to populate a dropdown.
+		return t.modifiers.logical_op == df::search_term_modifier_bool::m_or ||
+		       t.type == df::search_term_type::volume || t.type == df::search_term_type::face ||
+		       t.type == df::search_term_type::location || t.type == df::search_term_type::area ||
+		       t.type == df::search_term_type::remote;
+	})) return {};
+	auto& ctx = context();
+	if (!ctx.evaluator) return {};
+	const auto& index = ctx.evaluator->index();
+	const df::search_matcher matcher(search, core::utc_now().to_days(), &_index.locations(), _index.faces().book().people());
+	core::hash_map<std::string, int, core::ihash, core::ieq> counts;
+	const auto record = [&](const uint32_t doc)
+	{
+		if (token.is_cancelled()) return;
+		const auto add = [&](const df::search_term& t)
+		{
+			if (std::ranges::any_of(search.terms(), [&](const auto& existing)
+			{
+				if (existing.type != t.type) return false;
+				if (t.type == df::search_term_type::media_type) return true;
+				return existing.key == t.key && (t.key != prop::tag || core::icmp(existing.text, t.text) == 0);
+			})) return;
+
+			auto text = df::format_term(t);
+			if (const auto sep = text.find(": "); t.type == df::search_term_type::value && t.key != prop::tag &&
+			    sep != std::string::npos) text.erase(sep + 1, 1);
+			if (prefix.empty() || core::starts(text, prefix) || (!t.text.empty() && core::starts(t.text, prefix)))
+				++counts[text];
+		};
+		const df::search_term_modifier positive(true);
+		add(df::search_term(index.file(doc).ft->group, positive));
+		if (const auto* md = index.metadata(doc))
+		{
+			const auto value = [&](const prop::key_ref key, const core::cached v)
+			{
+				if (!v.is_empty()) add(df::search_term(key, v.sv(), positive));
+			};
+			value(prop::camera_model, md->camera_model);
+			value(prop::lens, md->lens);
+			value(prop::album, md->album);
+			value(prop::label, md->label);
+			if (!prop::is_null(md->rating)) add(df::search_term(prop::rating, static_cast<int>(md->rating), positive));
+			unsigned tags = 0;
+			core::split2(md->tags, true, [&](const std::string_view tag)
+			{
+				if (tags++ < 8) add(df::search_term(prop::tag, core::trim(tag), positive));
+			});
+		}
+	};
+
+	constexpr uint32_t sample = 64;
+	constexpr uint32_t max_probes = 1024;
+	if (index.doc_count() <= max_probes || std::ranges::all_of(search.terms(), [&](const auto& t)
+	{ return index.is_indexed_term(t, false, false); }))
+	{
+		const auto matches = ctx.evaluator->evaluate(matcher, token);
+		if (!token.is_cancelled()) matches.for_each(record, sample);
+	}
+	else
+	{
+		// On a large collection, a term without postings must not trigger a full scan per keystroke.
+		// Probe across the snapshot instead; missing a refinement is preferable to holding up typing.
+		unsigned matched = 0;
+		for (uint64_t i = 0; i < max_probes && matched < sample && !token.is_cancelled(); ++i)
+		{
+			const auto doc = static_cast<uint32_t>(i * index.doc_count() / max_probes);
+			const auto folder = index.doc_folder(doc);
+			if (ctx.evaluator->view().is_clean_entry(folder) && index.listed_docs().test(doc) &&
+			    matcher.match_all_terms(index.folders()[folder].path.text(), index.file(doc), index.metadata(doc))
+			        .is_match())
+			{
+				record(doc);
+				++matched;
+			}
+		}
+	}
+
+	std::vector<index_state::auto_complete_word> result;
+	for (const auto& [text, n] : counts) result.emplace_back(text, std::vector<core::part_t>{}, n);
+	std::ranges::sort(result, [](const auto& l, const auto& r)
+	{ return l.occurrences == r.occurrences ? core::icmp(l.text, r.text) < 0 : l.occurrences > r.occurrences; });
+	if (result.size() > 12) result.resize(12);
+	return result;
+}
+
 search_kept_items search_counter::make_kept_items(const std::vector<core::file_path>& paths)
 {
 	search_kept_items result;
@@ -903,7 +998,7 @@ std::optional<uint64_t> search_counter::count_kept(const df::search_t& search, c
 	auto& ctx = context();
 	if (search.has_selector() || search.has_related() || !ctx.evaluator) return std::nullopt;
 
-	const df::search_matcher matcher(search, core::utc_now().to_days(), &_index.locations());
+	const df::search_matcher matcher(search, core::utc_now().to_days(), &_index.locations(), _index.faces().book().people());
 	const auto docs = ctx.evaluator->evaluate(matcher, token);
 
 	// Documents prepared against another snapshot number other items.
@@ -927,8 +1022,62 @@ std::optional<uint64_t> search_counter::count_kept(const df::search_t& search, c
 /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
 
-index_state::index_state(async_strategy& as, const location_cache& locations) : _async(as), _locations(locations)
+index_state::index_state(async_strategy& as, const location_cache& locations) :
+	_async(as), _locations(locations), _faces(std::make_unique<faces::face_search>(*this, as))
 {
+}
+
+index_state::~index_state() = default;
+
+void index_state::visit_collection_pictures(
+	const bool photos, const bool videos,
+	const std::function<void(core::file_path, const df::index_file_item&, bool video)>& visit) const
+{
+	for (const auto& [folder, node] : _items.all_folders())
+	{
+		if (platform::is_closing) return;
+		if (!node->is_in_collection.load()) continue;
+
+		for (const auto& file : node->files)
+		{
+			if (!file.ft) continue;
+			const auto video = file.ft->group == &file_group::video;
+			if (video ? !videos : (!photos || !file.ft->has_trait(file_traits::bitmap))) continue;
+			if (file.flags && (df::index_item_flags::is_sidecar | df::index_item_flags::is_offline)) continue;
+			if (file.metadata_scanned.load() == core::date_t{} || needs_scan_impl(node, file, false, false)) continue;
+			// The video group holds sound alone too: a file the index found no picture in has no face to find.
+			if (video)
+			{
+				const auto md = file.metadata.load();
+				if (!md || md->width <= 0 || md->height <= 0) continue;
+			}
+			visit(core::file_path(folder, file.name), file, video);
+		}
+	}
+}
+
+void index_state::save_face_record(const core::file_path path, std::vector<uint8_t> record, const uint64_t session)
+{
+	item_db_write write;
+	write.path = path;
+	write.faces = std::move(record);
+	write.faces_session = session;
+	enqueue_db_write(std::move(write));
+}
+
+void index_state::paths_moved(const std::span<const std::pair<core::file_path, core::file_path>> files)
+{
+	if (!files.empty()) _faces->book().moved(files);
+}
+
+void index_state::paths_moved(const std::span<const std::pair<core::folder_path, core::folder_path>> folders)
+{
+	if (!folders.empty()) _faces->book().moved(folders);
+}
+
+int index_state::face_threads()
+{
+	return thumbnail_decode_threads();
 }
 
 void index_state::enqueue_db_write(item_db_write write)
@@ -1815,6 +1964,8 @@ void index_state::scan_uncached(const core::cancel_token& token)
 	core::scope_locked_inc l(indexing);
 	_fully_loaded = false;
 	std::vector<core::file_path> uncached;
+	auto seek_free = _faces->is_enabled();
+	scan_storage_probe storage;
 
 	size_t items_in_index = 0;
 
@@ -1826,6 +1977,7 @@ void index_state::scan_uncached(const core::cancel_token& token)
 		{
 			if (folder.second->is_in_collection)
 			{
+				const auto before = uncached.size();
 				for (const auto& file : folder.second->files)
 				{
 					if (file.ft->can_cache())
@@ -1837,6 +1989,7 @@ void index_state::scan_uncached(const core::cancel_token& token)
 							uncached.emplace_back(folder.first, file.name);
 						}
 					}
+					if (seek_free && uncached.size() != before) seek_free = storage.seek_free(folder.first);
 				}
 			}
 		}
@@ -1852,6 +2005,9 @@ void index_state::scan_uncached(const core::cancel_token& token)
 	};
 
 	publish_progress(stats.index_item_remaining, true);
+
+	const auto permit = uncached.empty() ? faces::scan_io_gate::permit_ptr{} : _faces->scan_io().start_index(seek_free);
+	if (!uncached.empty() && !permit) return;
 
 	// A first index walks the whole collection here, so the database hand-off is grouped: one row at
 	// a time woke the database thread and opened a transaction per file.
@@ -1889,6 +2045,8 @@ void index_state::scan_uncached(const core::cancel_token& token)
 std::vector<folder_scan_item> index_state::scan_items(const core::index_roots& roots, const bool recursive,
                                                       const bool scan_if_offline, const core::cancel_token& token)
 {
+	const auto permit = _faces->scan_io().start_index();
+	if (!permit) return {};
 	const auto now = core::utc_now();
 
 	std::vector<folder_scan_item> results;
@@ -2378,8 +2536,8 @@ void index_state::apply_scan_result(const df::index_folder_item_ptr& folder, con
 			}
 
 			metadata->file_name = file_path.name();
-			current_file.metadata_scanned = now;
 			current_file.metadata.store(metadata);
+			current_file.metadata_scanned = now;
 
 			// Same guard as the database write above: scan_file only computes a CRC when it read the whole
 			// file, so an ordinary thumbnail scan of a video answers zero. Storing that would clear a value
@@ -2548,7 +2706,7 @@ rescan_spec index_state::make_rescan_spec(const item_scan_request& request, cons
 }
 
 void index_state::apply_scan_now(const item_scan_request& request, const file_scan_result& sr, const bool coherent,
-                                 const core::date_t known_modified)
+                                 const core::date_t known_modified, const bool metadata_only)
 {
 	// Reuse the cached folder node - do NOT refresh from the filesystem here. A by-name refresh is
 	// exactly the stale-read window we are avoiding; the scan already carries the authoritative
@@ -2563,6 +2721,8 @@ void index_state::apply_scan_now(const item_scan_request& request, const file_sc
 	}
 
 	const auto revision_changed = coherent && found_file->file_modified.load() != known_modified;
+	const auto modified_before = found_file->file_modified.load();
+	const auto metadata_before = found_file->metadata.load();
 
 	// A coherent scan came through the post-swap handle, so stamping both times from the file's own
 	// modified time makes the later background rescan a no-op. The record's own modified time has to
@@ -2587,17 +2747,90 @@ void index_state::apply_scan_now(const item_scan_request& request, const file_sc
 	                  request.thumbnail_needed, request.had_thumbnail, request.lifetime, true, true, true, nullptr,
 	                  revision_changed, request.thumbnail_generation);
 
+	// A write of metadata alone leaves the pixels its faces were measured on as they were: the face record is
+	// stamped with the file's new time, and turned where only the declared orientation changed, whether face
+	// search is on or off. A coherent write knows that time now; a patch in place learns it from the scan
+	// that follows the write.
+	if (metadata_only)
+	{
+		const auto metadata_after = find_item(request.path).metadata.load();
+		pending_face_restamp pending;
+		pending.from = modified_before;
+		if (metadata_before) pending.orientation_from = metadata_before->orientation;
+		pending.orientation_to = metadata_after ? metadata_after->orientation : pending.orientation_from;
+
+		if (coherent)
+		{
+			if (modified_before != known_modified) restamp_face_record(request.path, pending, known_modified);
+		}
+		else
+		{
+			pending.written_ms = core::now_ms();
+			core::exclusive_lock lock(_face_restamps_rw);
+			_face_restamps[request.path] = pending;
+			_has_face_restamps = true;
+		}
+	}
+
 	publish_item_update(request.lifetime, request.path);
 }
 
-bool index_state::apply_write_scan(const item_scan_request& request, const file_update_result& result)
+void index_state::restamp_face_record(const core::file_path path, const pending_face_restamp& pending,
+                                      const core::date_t to)
+{
+	item_db_write write;
+	write.path = path;
+	write.restamp_faces = item_db_write::face_restamp{pending.from, to, pending.orientation_from,
+	                                                  pending.orientation_to};
+	enqueue_db_write(std::move(write));
+	_faces->restamp(path, pending.from, to, pending.orientation_from, pending.orientation_to);
+	// The marks the user put on its faces turn with it, whether face search is on or off.
+	_faces->book().turned(path, pending.orientation_from, pending.orientation_to);
+}
+
+void index_state::spend_face_restamps(const df::index_folder_item_ptr& folder,
+                                      const std::span<const core::file_path> paths)
+{
+	if (!_has_face_restamps.load()) return;
+
+	// The scan that follows a write comes once the whole batch is written; one that comes later than this is not
+	// that scan, and the picture is read again instead.
+	constexpr int64_t lapse_ms = 30ll * 60 * 1000;
+	const auto cutoff_ms = core::now_ms() - lapse_ms;
+	std::vector<std::pair<core::file_path, pending_face_restamp>> spent;
+	{
+		core::exclusive_lock lock(_face_restamps_rw);
+		std::erase_if(_face_restamps, [cutoff_ms](const auto& entry) { return entry.second.written_ms < cutoff_ms; });
+
+		for (const auto path : paths)
+		{
+			const auto found = _face_restamps.find(path);
+			if (found == _face_restamps.end()) continue;
+			spent.emplace_back(path, found->second);
+			_face_restamps.erase(found);
+		}
+
+		_has_face_restamps = !_face_restamps.empty();
+	}
+
+	for (const auto& [path, pending] : spent)
+	{
+		const auto file = find_file(folder->files, path.name());
+		if (file == folder->files.end()) continue;
+		const auto modified = file->file_modified.load();
+		if (modified.is_valid() && modified != pending.from) restamp_face_record(path, pending, modified);
+	}
+}
+
+bool index_state::apply_write_scan(const item_scan_request& request, const file_update_result& result,
+                                   const bool metadata_only)
 {
 	if (!result.success() || !result.scanned)
 	{
 		return true;
 	}
 
-	apply_scan_now(request, result.scan, result.coherent, core::date_t(result.modified));
+	apply_scan_now(request, result.scan, result.coherent, core::date_t(result.modified), metadata_only);
 	return false;
 }
 
@@ -2925,6 +3158,8 @@ void index_state::index_folders(core::cancel_token token, const bool scan_collec
 	}
 
 	core::scope_locked_inc l(detecting);
+	const auto permit = _faces->scan_io().start_index();
+	if (!permit) return;
 	core::index_roots roots;
 
 	{
@@ -2940,6 +3175,7 @@ void index_state::index_folders(core::cancel_token token, const bool scan_collec
 	int count = 0;
 	int indexed_count = 0;
 	int picture_count = 0;
+	int video_count = 0;
 	stats.index_folder_count = 0;
 	auto next_histogram_publish_ms = core::now_ms();
 	auto exhausted = unique_folder_paths.size() > max_folders_to_index;
@@ -2992,6 +3228,7 @@ void index_state::index_folders(core::cancel_token token, const bool scan_collec
 				}
 				if (file.ft->can_cache()) ++indexed_count;
 				if (file.ft->has_trait(file_traits::bitmap)) ++picture_count;
+				if (file.ft->group == &file_group::video) ++video_count;
 			}
 
 			counted.emplace(folder_path);
@@ -3089,6 +3326,7 @@ void index_state::index_folders(core::cancel_token token, const bool scan_collec
 			}
 			if (file.ft->can_cache()) ++indexed_count;
 			if (file.ft->has_trait(file_traits::bitmap)) ++picture_count;
+			if (file.ft->group == &file_group::video) ++video_count;
 		}
 	}
 
@@ -3118,6 +3356,7 @@ void index_state::index_folders(core::cancel_token token, const bool scan_collec
 		stats.media_item_count = count;
 		stats.index_item_count = indexed_count;
 		stats.picture_item_count = picture_count;
+		stats.video_item_count = video_count;
 
 		_async.queue_database([cached_items = all_indexed_items()](const database& db) { db.clean(cached_items); });
 	}
@@ -4197,6 +4436,8 @@ bool index_state::scan_items(const item_scan_requests& requests, const bool refr
 	{
 		core::measure_ms ms(stats.scan_items_ms);
 		core::scope_locked_inc l(scanning_items);
+		const auto permit = _faces->scan_io().start_index();
+		if (!permit) return false;
 		core::folder_groups items_by_folder;
 		items_by_folder.build(requests, [](const item_scan_request& r) { return r.folder; },
 		                      [](const item_scan_request& r) { return !r.is_folder; });
@@ -4210,6 +4451,15 @@ bool index_state::scan_items(const item_scan_requests& requests, const bool refr
 
 			const auto node = validate_folder(ff.folder, refresh_from_file_system, now);
 			if (!node.folder) continue;
+
+			// The refresh is what learns the time a write patched in place gave its file.
+			if (refresh_from_file_system && _has_face_restamps.load())
+			{
+				std::vector<core::file_path> paths;
+				for (const auto request_index : items_by_folder.elements(ff))
+					paths.emplace_back(requests[request_index].path);
+				spend_face_restamps(node.folder, paths);
+			}
 
 			for (const auto request_index : items_by_folder.elements(ff))
 			{
@@ -4384,6 +4634,8 @@ void index_state::scan_folder(const folder_path folder_path, const df::index_fol
 bool index_state::scan_folder(const folder_path folder_path, const bool mark_is_indexed, const core::date_t timestamp)
 {
 	core::scope_locked_inc l(scanning_items);
+	const auto permit = _faces->scan_io().start_index();
+	if (!permit) return false;
 	const auto node = validate_folder(folder_path, true, timestamp);
 
 	if (node.deferred)
@@ -5314,6 +5566,8 @@ void index_state::queue_validate_changed_folders(core::unique_folders paths)
 
 	_async.queue_async(async_queue::scan_folder, [this, reported = std::move(reported)]
 	{
+		const auto permit = _faces->scan_io().start_index();
+		if (!permit) return;
 		const auto now = core::utc_now();
 		auto changed = false;
 		auto member_changed = false;
@@ -5378,6 +5632,8 @@ void index_state::queue_deferred_validation(const folder_path folder_path, const
 		}
 		else
 		{
+			const auto permit = _faces->scan_io().start_index();
+			if (!permit) return;
 			const auto node = validate_folder(folder_path, true, now);
 			changed = node.was_updated;
 			if (changed && node.folder && node.folder->is_in_collection)

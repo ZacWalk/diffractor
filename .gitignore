@@ -36,6 +36,8 @@ intermediate/
 /exe/COPYING.LGPLv2.1.txt
 /exe/LICENSE.libaom.txt
 /exe/PATENTS.libaom.txt
+/exe/LICENSE.libfacedetection.txt
+/exe/LICENSE.sface.txt
 /.vs
 # Visual Studio's state from `dd.ps1 vs`, which opens exe/diffractor64-d.exe.
 /exe/.vs

@@ -70,7 +70,8 @@ param(
     [ValidateSet("desktop", "store", "run", "run32", "cpu", "linux", "test", "bean", "build", "bump-build", "bump-ver", "deploy", "release", "loc", "code", "vs", "clear-cache", "setup", "configure", "clean", "info", "help", "")]
     [string]$Command = "",
 
-    # Package the version already in the tree, for rebuilding a submission that was never accepted.
+    # Package the version already in the tree: for desktop and store builds of one release, or for rebuilding a
+    # submission that was never accepted.
     [switch]$NoBump,
 
     [Parameter(ValueFromRemainingArguments = $true)]
@@ -282,8 +283,8 @@ function Show-Usage {
     Write-Host "Usage: .\dd.ps1 <command>"
     Write-Host ""
     Write-Host "Commands:"
-    Write-Host "  desktop      Build desktop versions (Win32 + x64), runs tests, auto-increments build number"
-    Write-Host "  store        Build Windows Store version (MSIX), runs tests, auto-increments build number"
+    Write-Host "  desktop      Build desktop versions (Win32 + x64), runs tests, auto-increments build number (-NoBump keeps it)"
+    Write-Host "  store        Build Windows Store version (MSIX), runs tests, auto-increments build number (-NoBump keeps it)"
     Write-Host "  deploy       Deploy desktop build artifacts to Google Cloud Storage"
     Write-Host "  release      Create GitHub release with tag and upload installers"
     Write-Host "  run          Run the recently built diffractor64.exe"
@@ -357,7 +358,7 @@ function Test-VisualStudioEnvironment {
 }
 
 # The build. tools/dd.py owns CMake on both hosts, so this states what to build and nothing about
-# how. See docs/linux.md#retiring-msbuild.
+# how. See docs/linux.md#one-build-description.
 function Invoke-CMakeBuild {
     param(
         [ValidateSet("Debug", "Release")]
@@ -548,8 +549,9 @@ function Copy-LicenceTexts {
     # Diffractor is MPL-2.0, and the binary statically links LGPL libraries - libheif and libde265
     # (LGPL-3.0-or-later, which incorporates the GPL-3.0) and FFmpeg (LGPL-2.1-or-later) - whose texts
     # must travel with every copy, and libaom, whose BSD licence and the Alliance for Open Media's patent
-    # licence ask the same of a binary. The installer, the zip and the Store package each carry all six,
-    # renamed .txt so they open from Explorer.
+    # licence ask the same of a binary, as do the BSD licence of the libfacedetection weights and the Apache
+    # licence of the SFace weights face search compiles in. The installer, the zip and the Store package
+    # each carry all eight, renamed .txt so they open from Explorer.
     param(
         [string]$Destination
     )
@@ -560,13 +562,20 @@ function Copy-LicenceTexts {
     Copy-Item (Join-Path $ScriptDir "licences/LGPL-2.1.txt") (Join-Path $Destination "COPYING.LGPLv2.1.txt") -Force
     Copy-Item (Join-Path $ScriptDir "licences/libaom-BSD-2-Clause.txt") (Join-Path $Destination "LICENSE.libaom.txt") -Force
     Copy-Item (Join-Path $ScriptDir "licences/AOM-Patent-License-1.0.txt") (Join-Path $Destination "PATENTS.libaom.txt") -Force
+    Copy-Item (Join-Path $ScriptDir "licences/libfacedetection-BSD-3-Clause.txt") (Join-Path $Destination "LICENSE.libfacedetection.txt") -Force
+    Copy-Item (Join-Path $ScriptDir "licences/Apache-2.0.txt") (Join-Path $Destination "LICENSE.sface.txt") -Force
 }
 
 function Build-Desktop {
+    param(
+        [switch]$NoBump
+    )
+
     $null = Get-SymStore
 
     # Auto-increment build number before building
-    Invoke-BumpBuild
+    if ($NoBump) { Write-Host "Skipping the build-number bump (-NoBump)." -ForegroundColor Yellow }
+    else { Invoke-BumpBuild }
     
     $version = Get-CurrentVersion
     
@@ -602,6 +611,17 @@ function Build-Desktop {
 
     # Gate on the exact binary being shipped, before it is signed and packaged
     Invoke-Tests -Exe $exe64
+
+    # The installer and the zip ship the 32-bit binary too, and a compiler can break that one alone: MSVC 19.51's x86
+    # whole-program optimisation left FFmpeg's buffer references uninitialised while every x64 test passed.
+    Write-Host ""
+    Write-Host "Running unit tests ($([System.IO.Path]::GetFileName($exe32)))..." -ForegroundColor Yellow
+    Write-Host ""
+    & $exe32 /test | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "32-bit unit tests FAILED (exit code $LASTEXITCODE)." -ForegroundColor Red
+        exit 1
+    }
 
     Write-Host ""
     Invoke-SignTool -Description "desktop executables" -Files @($exe32, $exe64)
@@ -656,6 +676,8 @@ function Build-Desktop {
         "COPYING.LGPLv2.1.txt",
         "LICENSE.libaom.txt",
         "PATENTS.libaom.txt",
+        "LICENSE.libfacedetection.txt",
+        "LICENSE.sface.txt",
         "location-countries.txt",
         "location-places.txt",
         "location-states.txt",
@@ -1562,7 +1584,7 @@ function Deploy-Desktop {
 
 # Main entry point
 switch ($Command) {
-    "desktop" { Build-Desktop }
+    "desktop" { Build-Desktop -NoBump:$NoBump }
     "store" { Build-Store -NoBump:$NoBump }
     "deploy" { Deploy-Desktop }
     "release" { New-GitHubRelease }

@@ -460,10 +460,15 @@ public:
 class history_state final : public core::no_copy
 {
 public:
+	// A search Items listed, with the items selected in it; or a view a search is opened from - Explore or Faces -
+	// which Back and Forward return to as it was left, over the listing behind it.
 	struct history_entry
 	{
 		df::search_t search;
 		core::paths selected;
+		view_type view = view_type::items;
+
+		bool is_view() const { return view != view_type::items; }
 	};
 
 	static constexpr int max_history_size = 32;
@@ -471,6 +476,9 @@ public:
 	ptrdiff_t _pos = -1;
 
 	history_state() = default;
+
+	// The views that join the history as they are opened: those a search is opened from.
+	static bool is_history_view(const view_type v) { return v == view_type::explore || v == view_type::faces; }
 
 	void count_strings(core::string_counts& results, const int weight) const
 	{
@@ -557,7 +565,8 @@ public:
 
 	void replace_current_search(const df::search_t& expected, const df::search_t& replacement)
 	{
-		if (_pos >= 0 && _pos < static_cast<int>(_history.size()) && _history[_pos].search == expected)
+		if (_pos >= 0 && _pos < static_cast<int>(_history.size()) && !_history[_pos].is_view() &&
+		    _history[_pos].search == expected)
 		{
 			_history[_pos].search = replacement;
 		}
@@ -565,18 +574,55 @@ public:
 
 	void history_add(const df::search_t& link, core::paths selected)
 	{
+		push({link, {}, view_type::items}, std::move(selected));
+	}
+
+	// A view a search is opened from, opened over the current entry: it is no new entry where it is the current one.
+	void history_add_view(const view_type v, core::paths selected) { push({{}, {}, v}, std::move(selected)); }
+
+	// What the current entry shows: Items' listing, or a view over it.
+	view_type current_view() const
+	{
+		return _pos >= 0 && _pos < static_cast<int>(_history.size()) ? _history[_pos].view : view_type::items;
+	}
+
+	// The current entry is a view's, and Items shows again with `search`, as a view's Close or a search the view
+	// opens without changing what Items lists leaves it: the entry for that listing beside the view's becomes the
+	// current one - the one after it, where Back came into the view from it, else the one before - or is added.
+	void return_to_items(const df::search_t& search, core::paths selected)
+	{
+		if (current_view() == view_type::items) return;
+
+		for (const auto step : {1, -1})
+		{
+			const auto i = _pos + step;
+			if (i >= 0 && i < static_cast<int>(_history.size()) && !_history[i].is_view() &&
+			    _history[i].search == search)
+			{
+				_pos = i;
+				return;
+			}
+		}
+
+		history_add(search, std::move(selected));
+	}
+
+private:
+	void push(history_entry entry, core::paths selected)
+	{
 		if (_pos != -1)
 		{
-			if (_history[_pos].search == link)
+			const auto& current = _history[_pos];
+			if (current.view == entry.view && (entry.is_view() || current.search == entry.search))
 			{
 				return;
 			}
 
-			_history[_pos].selected = std::move(selected);
+			if (!current.is_view()) _history[_pos].selected = std::move(selected);
 			_history.resize(_pos + 1);
 		}
 
-		_history.emplace_back(link, core::paths{});
+		_history.emplace_back(std::move(entry));
 
 		if (_history.size() > max_history_size)
 		{
@@ -1056,6 +1102,18 @@ struct batch_edit_spec
 	// Decided on the UI thread before the write, so it cannot consult the per-item edits: the caller
 	// states whether this batch can change what is drawn. A pixel edit always can.
 	bool changes_presentation = false;
+	// What the write does, as the session's recent changes name it; none keeps it out of them.
+	icon_index change_icon = icon_index::none;
+	std::string change_title;
+};
+
+// One change the user made to their files this session - what it did, and the items it changed, by their paths as
+// they are now - kept in sight as the session's recent changes: docs/design.md#recent-changes.
+struct session_change
+{
+	icon_index icon = icon_index::none;
+	std::string what;
+	std::vector<core::file_path> paths;
 };
 
 class view_state
@@ -1097,6 +1155,8 @@ private:
 	df::item_set _search_items;
 	df::item_set _display_items;
 	df::item_set _selected;
+	// Counts the changes to what is selected, so what is worked out from it is worked out again only when it changes.
+	uint32_t _selection_generation = 1;
 
 	df::item_element_ptr _focus;
 
@@ -1165,7 +1225,7 @@ private:
 	// than published, because the display language it was resolved in is no longer the current one.
 	uint32_t _resolved_places_generation = 1;
 
-	// locations.md 6.2: the derived timeline for the current result set. Deriving it reads the
+	// docs/locations.md#visits: the derived timeline for the current result set. Deriving it reads the
 	// gazetteer, so it is computed on the location worker from a detached snapshot of the results
 	// and published back complete. The stamp is bumped on every refresh, so a result that arrives
 	// after the results changed is answering a question nobody is asking now.
@@ -1227,6 +1287,8 @@ private:
 	const view_state& operator=(const view_state& other) = delete;
 
 	void refresh_sibling_folders();
+	// One step back or forward through the history: to a listing, opened as any search is, or to a view over it.
+	void browse_history(const view_host_base_ptr& view, int direction);
 	bool open_search(const view_host_base_ptr& view, const df::search_t& search, const core::unique_paths& selection,
 	                 bool external_file);
 	bool open_validated(const view_host_base_ptr& view, const df::search_t& new_search,
@@ -1256,6 +1318,23 @@ public:
 	};
 
 	std::optional<pending_edit_crop_t> _pending_edit_crop;
+
+	// docs/faces.md#93-faces-on-a-picture: the face to select when opening Faces from a picture.
+	std::optional<uint32_t> _pending_face;
+
+	// docs/faces.md#93-faces-on-a-picture: a video opened at a face - paused on the frame the face was found in, the face
+	// outlined - taken by the next session opened for that video, if it opens soon.
+	struct pending_media_start_t
+	{
+		core::file_path path;
+		double time = 0.0;
+		uint32_t face = 0;
+		int64_t asked_ms = 0;
+	};
+
+	std::optional<pending_media_start_t> _pending_media_start;
+	// The face a video was opened at, outlined while its frame shows until the pointer finds another.
+	std::optional<uint32_t> _opened_face;
 
 	std::optional<rectd> take_pending_edit_crop(const core::file_path path)
 	{
@@ -1373,7 +1452,7 @@ public:
 	view_elements_ptr create_selection_controls(bool compact = false);
 	view_element_ptr create_selection_description();
 
-	// locations.md 2.5/2.7: the UI-thread reader of derived location attribution. Resolving reads
+	// docs/locations.md#item-locations: the UI-thread reader of derived location attribution. Resolving reads
 	// the gazetteer file, so this only ever returns an answer already published back from the
 	// location worker; an unknown coordinate queues one resolve and returns null this time.
 	const located_place* derived_location(const gps_coordinate& coord);
@@ -1385,9 +1464,9 @@ public:
 	// The counts describe the index, so a scan that changed it makes them stale.
 	void invalidate_day_counts();
 
-	// locations.md 6.2 / 7.2: the published visit nodes and place breakdown for the current
-	// results. Empty until the worker answers, which keeps the strip out of the first paint after
-	// a search rather than letting it appear and then re-shape itself.
+	// docs/locations.md#visits and docs/locations.md#the-places-row: the published visit nodes and place
+	// breakdown for the current results. Empty until the worker answers, which keeps the strip out of the first
+	// paint after a search rather than letting it appear and then re-shape itself.
 	const df::visit_timeline& visits() const { return _visits; }
 
 	// Takes the detached snapshot on the UI thread and queues the derivation.
@@ -1421,6 +1500,40 @@ public:
 
 	history_state history;
 
+	// Where the user last turned a globe to face - the sidebar's or Explore's, which are one globe at two sizes - and
+	// how many turns there have been, so each takes up a turn made on the other when it next shows. UI thread only.
+	gps_coordinate globe_facing;
+	uint32_t globe_turns = 0;
+
+	void turn_globes(const gps_coordinate facing)
+	{
+		globe_facing = facing;
+		++globe_turns;
+	}
+
+	// The session's recent changes, newest first, and whether an item was changed in it: the working set the user has
+	// touched, kept in sight on its tiles and in Items' Recent changes. For the session alone. UI thread only.
+	static constexpr size_t max_session_changes = 12;
+	void record_change(icon_index icon, std::string_view what, std::vector<core::file_path> paths);
+	// Changed items renamed or moved since: each change follows its item. The moves are taken together, so an item
+	// given a name another gave up in the same rename is not taken for it.
+	void move_changed(const std::vector<std::pair<core::file_path, core::file_path>>& moves);
+	// Folders renamed or moved: the changed items in each, at any depth, follow it - every folder taken together, as
+	// the files are.
+	void move_changed(const std::vector<std::pair<core::folder_path, core::folder_path>>& folder_moves);
+	bool changed_this_session(const core::file_path& path) const
+	{
+		return !_changed_this_session.empty() && _changed_this_session.contains(path);
+	}
+	const std::deque<session_change>& session_changes() const { return _session_changes; }
+	// Opens where changed items are now, with them selected.
+	bool open_changed(const view_host_base_ptr& view, const std::vector<core::file_path>& paths);
+
+private:
+	std::deque<session_change> _session_changes;
+	core::unique_paths _changed_this_session;
+
+public:
 	recent_state recent_folders;
 	recent_state recent_searches;
 	recent_state recent_apps;
@@ -1549,6 +1662,7 @@ public:
 	const df::item_set& search_items() const { return _search_items; }
 
 	const df::item_set& selected_items() const { return _selected; }
+	uint32_t selection_generation() const { return _selection_generation; }
 
 	bool has_gps() const
 	{
@@ -1611,6 +1725,11 @@ public:
 
 	void browse_back(const view_host_base_ptr& view);
 	void browse_forward(const view_host_base_ptr& view);
+	// Whether Back and Forward work where the user is: in Items and Fullscreen, and in the views a search is opened
+	// from, which are themselves in the history.
+	bool can_browse_history() const { return is_items_or_media_view() || history_state::is_history_view(_view_mode); }
+	// Opens Explore or Faces as a step of the history, so Back from the items it opens returns to it as it was left.
+	void open_in_history(view_type v);
 	void close() const;
 
 	df::search_parent parent_search() const { return _parent_search; }
@@ -1650,10 +1769,11 @@ public:
 	bool c64_key_down(char32_t key, platform::key_state keys) const;
 	void c64_joystick_port(int port) const;
 	// The only way to publish a player session onto a display; see display_state_t::_av_generation.
-	// An open handle, when supplied, is moved into the session instead of opening the path again.
+	// An open handle, when supplied, is moved into the session instead of opening the path again. Given a start, the
+	// session opens paused there.
 	void open_av_session(const std::shared_ptr<display_state_t>& d, const df::item_element_ptr& i, bool auto_play,
-	                     int video_track, int audio_track, bool use_last_played_pos,
-	                     platform::file_ptr file = {}) const;
+	                     int video_track, int audio_track, bool use_last_played_pos, platform::file_ptr file = {},
+	                     std::optional<double> start_at = {}) const;
 	// Play and Pause, which the next file selected follows: what they do to the media is remembered as Autoplay,
 	// so moving between files keeps playing, or keeps waiting, without either pressed again.
 	void play(const view_host_base_ptr& view);
@@ -1692,6 +1812,13 @@ public:
 	void select_inverse(const view_host_base_ptr& view);
 	void select_end(const view_host_base_ptr& view, bool forward, bool toggle, bool extend);
 	void select_next(const view_host_base_ptr& view, bool forward, bool toggle, bool extend);
+	// Ctrl with the keys moves the focus alone, as it moves the cursor of every list: to an item, the next or either
+	// end, while what is selected and the anchor a Shift range starts from stay as they are.
+	void move_focus(const df::item_element_ptr& i);
+	void focus_next(bool forward);
+	void focus_end(bool forward);
+	// Ctrl+Space puts the focused item in the selection or takes it out, as it does an entry of any list.
+	void toggle_focus(const view_host_base_ptr& view);
 	void select_next_media(const view_host_base_ptr& view, bool forward);
 	bool select(const view_host_base_ptr& view, std::string_view file_name, bool toggle);
 	void select(const view_host_base_ptr& view, const df::item_elements& items, bool toggle);
@@ -1830,10 +1957,11 @@ public:
 	// The dialog controls bind to int, bool and string references, so the focused item is held here in
 	// the units those controls speak and pushed into the document whenever one of them changes: how long
 	// a photo or a text screen shows, a screen's words or a clip's caption, and whether a video is to be
-	// stabilized.
+	// stabilized. And whether the movie is a YouTube Short, which is the document's and not an item's.
 	int hold_tenths = 40;
 	std::string item_text;
 	bool stabilize = false;
+	bool youtube_short = false;
 
 	void read_from_project();
 };

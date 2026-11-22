@@ -116,10 +116,14 @@ void rename_view::run()
 	const auto results = make_run_status(shared_from_this(), processing_generation, cancel_source, review_status,
 	                                     detach);
 
-	_state.queue_async(async_queue::work, [renames, results, &index = _state.item_index, function = __FUNCTION__]
+	_state.queue_async(async_queue::work,
+	                   [renames, results, &s = _state, &index = _state.item_index, function = __FUNCTION__]
 	{
 		result_scope rr(results);
 		core::unique_folders scan_folders;
+		// The files renamed, from where to where, for the session's recent changes, and the folders.
+		std::vector<std::pair<core::file_path, core::file_path>> renamed;
+		std::vector<std::pair<core::folder_path, core::folder_path>> renamed_folders;
 
 		// Existence alone cannot tell the reviewed file from one that replaced it since. A source
 		// that changed would be moved under a name chosen for content the user never saw, and under
@@ -286,6 +290,10 @@ void rename_view::run()
 			{
 				scan_folders.emplace(rename.source.folder());
 				scan_folders.emplace(rename.destination.folder());
+				if (rename.is_folder)
+					renamed_folders.emplace_back(rename.source.folder().combine(rename.source.name()),
+					                             rename.destination.folder().combine(rename.destination.name()));
+				else renamed.emplace_back(rename.source, rename.destination);
 			}
 			results->end_item(rename.original_name, to_status(result.code));
 		}
@@ -419,6 +427,20 @@ void rename_view::run()
 		}
 
 		index.queue_scan_folders(std::move(scan_folders));
+		index.paths_moved(renamed_folders);
+		index.paths_moved(renamed);
+
+		s.queue_ui([&s, renamed = std::move(renamed), renamed_folders = std::move(renamed_folders)]
+		{
+			s.move_changed(renamed_folders);
+			s.move_changed(renamed);
+
+			std::vector<core::file_path> paths;
+			paths.reserve(renamed.size());
+			for (const auto& [from, to] : renamed) paths.emplace_back(to);
+			s.record_change(icon_index::rename, tt.command_rename.sv(), std::move(paths));
+		});
+
 		rr.complete(first_recovery_error);
 	});
 }
@@ -481,8 +503,8 @@ void rename_view::refresh()
 			const auto view = weak_view.lock();
 			if (!view || generation != view->_analysis_generation) return;
 
-			const auto error_text_color = core::lighten(ui::style::colors.warning_background, 0.55f);
-			const auto rename_text_color = core::lighten(ui::style::colors.dialog_selected_background, 0.55f);
+			const auto error_text_color = ui::style::tone_text(ui::style::tone::failed);
+			const auto rename_text_color = ui::style::tone_text(ui::style::tone::accent);
 			std::vector<row_element_ptr> rows;
 			rows.reserve(renames.size());
 			int count = 0;
@@ -493,8 +515,7 @@ void rename_view::refresh()
 				row->_text[2] = rename.new_name;
 				row->_text_color[2] = rename.valid ? rename_text_color : error_text_color;
 				if (rename.valid && !rename.noop) row->_icons[1] = icon_index::next;
-				row->_order = count++;
-				row->_work_index = row->_order;
+				row->_work_index = count++;
 				rows.emplace_back(std::move(row));
 			}
 
@@ -554,9 +575,15 @@ view_controls_host_ptr rename_view::controls(const ui::frame_ptr& owner)
 	                                                                     [this](std::string_view) { refresh(); });
 
 	const std::vector<view_element_ptr> controls = {
-		create_view_info_element(tt.rename_info),
+		std::make_shared<view_info_element>(icon_index::rename, tt.command_rename_files, tt.rename_info),
 		selection_thumbnails,
 		std::make_shared<text_element>(format_plural_text(tt.rename_fmt, items)),
+		std::make_shared<divider_element>(),
+		std::make_shared<text_element>(tt.rename_template_label),
+		name_template,
+		std::make_shared<ui::edit_control>(frame, tt.rename_template_start_label, setting.rename.start_seq,
+	                                       [this](std::string_view) { refresh(); }),
+		create_collision_policy_control(frame, setting.rename.collision, [this] { refresh(); }),
 		std::make_shared<divider_element>(),
 		std::make_shared<text_element>(tt.rename_help_template_1),
 		std::make_shared<bullet_element>(icon_index::bullet, tt.rename_help_template_2),
@@ -566,13 +593,6 @@ view_controls_host_ptr rename_view::controls(const ui::frame_ptr& owner)
 		std::make_shared<bullet_element>(icon_index::bullet, tt.rename_help_template_example_3),
 		std::make_shared<bullet_element>(icon_index::bullet, tt.rename_help_template_example_4),
 		std::make_shared<link_element>(tt.more_template_information, [] { platform::open(doc_template_url); }),
-		std::make_shared<divider_element>(),
-		std::make_shared<text_element>(tt.rename_template_label),
-		name_template,
-		std::make_shared<ui::edit_control>(frame, tt.rename_template_start_label, setting.rename.start_seq,
-	                                       [this](std::string_view) { refresh(); }),
-		std::make_shared<divider_element>(),
-		create_collision_policy_control(frame, setting.rename.collision, [this] { refresh(); }),
 	};
 
 	for (const auto& c : controls)

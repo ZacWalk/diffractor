@@ -159,8 +159,8 @@ double location_bearing_degrees(const gps_coordinate& from, const gps_coordinate
 
 std::string bearing_descriptor(const located_place& lp)
 {
-	// locations.md 2.7: only steps 3-5 get a bearing. An item that is `at` a place is already
-	// answered by the place name, and a bearing there would only add noise.
+	// docs/locations.md#item-locations: only an item Near a place or Remote gets a bearing. An item that is `at` a
+	// place is already answered by the place name, and a bearing there would only add noise.
 	if (lp.attribution == location_attribution::none || lp.attribution == location_attribution::at) return {};
 
 	const auto place = qualified_name(lp.nearest);
@@ -182,6 +182,17 @@ std::string bearing_descriptor(const located_place& lp)
 
 	compass = core::trim(compass);
 	return str_format(tt.bearing_fmt.sv(), format_distance_km(lp.nearest_km), compass, place);
+}
+
+std::string attributed_name(const located_place& lp)
+{
+	if (!lp.is_located()) return {};
+
+	// `Near` is display honesty: the item still carries that place's identity, so it groups and searches as that place.
+	auto result = qualified_name(lp.place);
+	if (lp.attribution == location_attribution::near) result = str_format(tt.location_near_fmt.sv(), result);
+	if (result.empty()) result = std::string(tt.location_remote.sv());
+	return result;
 }
 
 std::string location_t::str() const
@@ -867,7 +878,7 @@ void location_cache::load_states()
 
 namespace Cols
 {
-	// locations.md 2.1: the flags column is fixed width and sits immediately BEFORE the name
+	// docs/locations.md#place-data: the flags column is fixed width and sits immediately BEFORE the name
 	// column, because the name is followed by a variable-length run of localized names. Mirrors
 	// the layout written by tools/generate_locations.py (CityRecord.__str__).
 	enum GeoNamesCols
@@ -890,7 +901,7 @@ namespace Cols
 static_assert(Cols::name == location_cache_default_name_col,
               "location_cache::_place_name_col default must match the current layout");
 
-// locations.md 2.1: a record from a current file has an all-digit flags column where a stale
+// docs/locations.md#place-data: a record from a current file has an all-digit flags column where a stale
 // file has the place name. Detected once per load; a stale file is then read with the legacy
 // offsets so it degrades to over-qualified names rather than wrong names.
 static bool is_flags_column(const std::string_view s)
@@ -974,7 +985,7 @@ location_t location_cache::build_location(const csv_entry* entries) const
 	const auto lang_bit = _display_lang_bit.load(std::memory_order_relaxed);
 	const auto name_col = _place_name_col;
 
-	// locations.md 2.1: bits 0-1 are the qualification level, bit 2 marks an extent feature.
+	// docs/locations.md#place-data: bits 0-1 are the qualification level, bit 2 marks an extent feature.
 	// A stale file has no flags column, so the record reads as level 0; location_t treats an
 	// absent level conservatively where it matters.
 	const auto flags = name_col == Cols::name ? entries[Cols::flags].to_uint32() : 0u;
@@ -1061,7 +1072,7 @@ void location_cache::load_index()
 			{
 				first_record = false;
 
-				// locations.md 2.1: decide the layout once from the first record. A file without
+				// docs/locations.md#place-data: decide the layout once from the first record. A file without
 				// the flags column is a stale file, not a supported variant - read it with the
 				// legacy offsets so names stay correct, and say so once.
 				_place_name_col = entry_count > Cols::name && is_flags_column(entries[Cols::flags].to_range())
@@ -1147,7 +1158,7 @@ struct location_match_possible
 	// 0 the typed name is the whole place name, 1 it is a prefix of it, 2 it appears anywhere.
 	int name_rank = 2;
 
-	// locations.md 2.2 + 3.4: the record a bare name should resolve to is the one the user means,
+	// docs/locations.md#location-search: the record a bare name should resolve to is the one the user means,
 	// which is the exact spelling first and then the largest place. Ordering by proximity to the
 	// default location alone answered "London" with whichever hamlet happened to be nearest.
 	bool operator<(const location_match_possible& other) const
@@ -1427,12 +1438,22 @@ location_matches location_cache::auto_complete(const std::string_view query, con
 
 location_t location_cache::find_by_name(const std::string_view query) const
 {
+	return find_named_record(query, false);
+}
+
+uint32_t location_cache::find_enclosing_city(const std::string_view query) const
+{
+	return find_named_record(query, true).enclosing_city();
+}
+
+location_t location_cache::find_named_record(const std::string_view query, const bool require_common_parent) const
+{
 	core::shared_lock lock(_rw);
 
 	location_t result;
 	if (query.empty()) return result;
 
-	// locations.md 3.1: a place query is a name, optionally qualified by region and country.
+	// docs/locations.md#location-search: a place query is a name, optionally qualified by region and country.
 	auto query_parts = core::split(query, true, [](const char c) { return c == ','; });
 
 	for (auto&& part : query_parts)
@@ -1462,7 +1483,7 @@ location_t location_cache::find_by_name(const std::string_view query) const
 	if (!_places_map) return result;
 
 	// The canonical record is the exact-name match with the largest population, so a bare
-	// name never resolves to an unrelated substring completion (locations.md defect 1).
+	// name never resolves to an unrelated substring completion (docs/locations.md#location-search).
 	auto best_population = -1.0;
 
 	for (const auto& line_offset : ngram_matches)
@@ -1488,11 +1509,18 @@ location_t location_cache::find_by_name(const std::string_view query) const
 		{
 			const auto qualifier = query_parts[i];
 			qualifiers_matched = core::icmp(state.sv(), qualifier) == 0 ||
+			                     core::icmp(entries[Cols::countryCode].to_range(), qualifier) == 0 ||
 			                     core::icmp(country.localized_name(_display_lang_bit.load()).sv(), qualifier) == 0 ||
 			                     core::icmp(country.name().sv(), qualifier) == 0;
 		}
 
 		if (!qualifiers_matched) continue;
+
+		if (require_common_parent)
+		{
+			const auto parent = _place_name_col == Cols::name ? entries[Cols::flags].to_uint32() >> 3 : 0;
+			if (!parent || (result.id && parent != result.enclosing_city())) return {};
+		}
 
 		const auto population = entries[Cols::population].to_double();
 
@@ -1524,7 +1552,7 @@ location_t location_cache::find_by_id(const uint32_t id) const
 	return result;
 }
 
-// locations.md 4.1: a degree of longitude is only a degree of latitude's worth of ground at the
+// docs/locations.md#place-data: a degree of longitude is only a degree of latitude's worth of ground at the
 // equator, so a nearest-place search over raw degrees ranks somewhere too far east or west as
 // nearer than somewhere just up the road. collect_within_km already corrects for this; the same
 // factor, and the same floor near the poles, applies to the nearest-point search.
@@ -1651,7 +1679,7 @@ void location_cache::collect_within_km(const double x, const double y, const dou
 	}
 }
 
-location_t location_cache::find_largest_attributed(const double x, const double y) const
+location_t location_cache::find_largest_attributed(const double x, const double y, const double max_km) const
 {
 	const gps_coordinate at(x, y);
 	if (!at.is_valid()) return {};
@@ -1660,7 +1688,7 @@ location_t location_cache::find_largest_attributed(const double x, const double 
 	if (_tree.is_empty()) return {};
 
 	std::vector<kd_coordinates_t> candidates;
-	collect_within_km(x, y, location_attribution_radius_km(1000000.0), candidates);
+	collect_within_km(x, y, max_km, candidates);
 
 	const kd_coordinates_t* largest = nullptr;
 	auto largest_km = std::numeric_limits<double>::max();
@@ -1668,7 +1696,7 @@ location_t location_cache::find_largest_attributed(const double x, const double 
 	for (const auto& candidate : candidates)
 	{
 		const auto km = at.distance_in_kilometers(gps_coordinate(candidate.x, candidate.y));
-		if (km > location_attribution_radius_km(candidate.population)) continue;
+		if (km > std::min(max_km, location_attribution_radius_km(candidate.population))) continue;
 
 		if (!largest || candidate.population > largest->population ||
 		    (candidate.population == largest->population && km < largest_km))
@@ -1683,8 +1711,41 @@ location_t location_cache::find_largest_attributed(const double x, const double 
 	return build_location(largest->offset);
 }
 
-// locations.md 2.5: the attribution ladder. Step 1 (stored text) belongs to the caller; step 4
-// (water bodies) arrives with location-waters.txt in 2.6 and currently falls through to remote.
+gps_search_names::names gps_search_names::at(const location_cache& locations, const gps_coordinate coordinate)
+{
+	if (!coordinate.is_valid() || !locations.is_index_loaded()) return {};
+	const attribution_cell cell(coordinate);
+	if (const auto it = _cells.find(cell); it != _cells.end()) return it->second;
+
+	const auto lat = std::clamp((cell.lat + 0.5) * cell.degrees, -90.0, 90.0);
+	const auto lon = (cell.lon + 0.5) * cell.degrees;
+	country_loc country;
+	const auto local = locations.find_attributed(lat, lon, &country);
+	names result{local.place.place, local.place.state, local.place.country, country.name, {}};
+	if (local.attribution == location_attribution::at && local.place.enclosing_city())
+		result.back() = locations.find_by_id(local.place.enclosing_city()).place;
+	if (_cells.size() >= 8192) _cells.clear();
+	_cells.emplace(cell, result);
+	return result;
+}
+
+uint32_t gps_search_names::parent_of(const location_cache& locations, const core::cached place,
+                                    const core::cached state, const core::cached country)
+{
+	if (place.is_empty() || !locations.is_index_loaded()) return 0;
+	const std::array key{place.id, state.id, country.id};
+	if (const auto it = _place_parents.find(key); it != _place_parents.end()) return it->second;
+	std::string query(place.sv());
+	if (!state.is_empty()) query += std::format(", {}", state);
+	if (!country.is_empty()) query += std::format(", {}", country);
+	const auto id = locations.find_enclosing_city(query);
+	if (_place_parents.size() >= 8192) _place_parents.clear();
+	_place_parents.emplace(key, id);
+	return id;
+}
+
+// docs/locations.md#item-locations: the attribution ladder. Its first step, stored text, belongs to the caller;
+// water bodies arrive with location-waters.txt and currently fall through to remote.
 located_place location_cache::find_attributed(const double x, const double y, country_loc* country) const
 {
 	if (country) *country = {};
@@ -1780,8 +1841,8 @@ located_place location_cache::find_attributed(const double x, const double y, co
 
 	if (_places_map)
 	{
-		// locations.md 2.7 needs the nearest record even when it was too far to attribute, so a
-		// remote item can still say what it was 410 km north-west of.
+		// The bearing descriptor (docs/locations.md#item-locations) needs the nearest record even when it was
+		// too far to attribute, so a remote item can still say what it was 410 km north-west of.
 		result.nearest = build_location(closest.offset);
 
 		if (attribution != location_attribution::remote)

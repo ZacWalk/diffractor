@@ -7,9 +7,9 @@
 
 // Purpose: Draws Movie's audio clips. A SID tune or a tracker module is its monitor, drawn from a display of its own
 // whose clock is the frame's moment; any other audio file is the visualizer's bars, fed from its decoded sound,
-// beside its cover art. Each frame is laid out on a landscape frame under the file's title and drawn by the software
-// renderer, whose text engine belongs to the worker drawing. SID tunes are shared, one render per tune of a file, by
-// every reader of their pictures and sound.
+// beside its cover art. Each frame is laid out under the file's title, on a landscape frame or a Short's upright one,
+// and drawn by the software renderer, whose text engine belongs to the worker drawing. SID tunes are shared, one
+// render per tune of a file, by every reader of their pictures and sound.
 
 #include "pch.h"
 #include "view_movie_audio.h"
@@ -33,6 +33,20 @@ namespace
 	// The smallest frame drawn. One asked for smaller - a tile of the strip - is drawn at this size and shrunk,
 	// because panels and text drawn a tenth of their size are not a picture of anything.
 	constexpr sizei least_drawn_extent{640, 360};
+	// An upright frame is a Short's, which fills a phone's screen, and so does its picture: inside a margin this part of
+	// the frame's width all round, with a SID monitor drawn as large as that holds, its voices stacked beside its register
+	// grid. YouTube lays its title and buttons over it as over a video's picture; only the movie's words keep clear of
+	// them.
+	constexpr double upright_margin = 0.025;
+	// A Short is watched on a phone, so the title and byline over its picture are this much larger than a movie's.
+	constexpr double upright_caption_scale = 1.3;
+
+	// The rate a clip's pictures move at in a Short: a SID tune's play routine runs once a frame of the machine it was
+	// written for - 312 lines of 63 cycles at the PAL clock, 263 of 65 at the NTSC one - and a tracker module steps at
+	// the 50 a second of the Amiga it came from.
+	constexpr double sid_pal_picture_rate = 985248.0 / (63.0 * 312.0);
+	constexpr double sid_ntsc_picture_rate = 1022727.0 / (65.0 * 263.0);
+	constexpr double tracker_picture_rate = 50.0;
 
 	// The bars hear this much of the sound before a frame that does not follow the last, so they stand where
 	// playing would have left them.
@@ -180,7 +194,7 @@ public:
 
 	int song() const { return _song; }
 
-	core::const_surface_ptr frame(double seconds, sizei max_dim, const core::cancel_token& abandon);
+	core::const_surface_ptr frame(double seconds, sizei max_dim, const core::cancel_token& abandon, sizei shape);
 
 private:
 	enum class kind
@@ -195,6 +209,8 @@ private:
 	void hear(double seconds);
 	void read_sound(double from);
 	void draw_scene(sizei extent, double seconds);
+	double fill_scale(sizei extent, double base, recti frame);
+	std::pair<render::font_face, render::font_face> caption_faces(double scale, bool upright, int width) const;
 	recti arrange_monitor(render::draw_context& dc, recti below);
 	recti arrange_bars(recti below, double scale) const;
 	void draw_bars(render::draw_context& dc, recti panel, double scale, double seconds);
@@ -241,6 +257,9 @@ private:
 	render::draw_context_device_ptr _dc;
 	core::surface_ptr _canvas;
 	av_scaler _scaler;
+	// The scale an upright frame of this size draws its SID monitor at, once searched for.
+	sizei _fill_extent;
+	double _fill_scale = 0.0;
 };
 
 bool movie_audio_frames_impl::open()
@@ -427,7 +446,13 @@ void movie_audio_frames_impl::read_sound(const double from)
 void movie_audio_frames_impl::draw_scene(const sizei extent, const double seconds)
 {
 	auto& dc = *_dc;
-	const auto scale = extent.cy / 1080.0 * ui_scale_at_1080;
+	// Sized by the frame's shorter side, so a movie's text and panels are the Media view's on a 1080-line screen.
+	const auto base = std::min(extent.cx, extent.cy) / 1080.0 * ui_scale_at_1080;
+	const auto upright = extent.cy > extent.cx;
+	if (auto* const sid = dynamic_cast<sid_monitor_control*>(_monitor.get())) sid->arrange_upright(upright);
+	const auto frame = recti(extent).inflate(upright ? -core::round(extent.cx * upright_margin)
+	                                                 : -core::round(40 * base));
+	const auto scale = upright ? fill_scale(extent, base, frame) : base;
 
 	dc.scale_metrics(scale);
 	_dc->begin_draw(extent, std::max(1, core::round(render::default_font_size * scale)), {});
@@ -439,11 +464,10 @@ void movie_audio_frames_impl::draw_scene(const sizei extent, const double second
 	dc.time_now = seconds;
 	dc.clear(core::color(ui::style::colors.view_background, 1.0f));
 
-	const auto margin = core::round(40 * scale);
 	const auto gap = core::round(ui::panel_element::spacing * scale);
-	const auto frame = recti(extent).inflate(-margin);
-	const auto title_cy = dc.text_line_height(render::font_face::title);
-	const auto byline_cy = _byline.empty() ? 0 : dc.text_line_height(render::font_face::dialog);
+	const auto [title_face, byline_face] = caption_faces(scale, upright, frame.width());
+	const auto title_cy = dc.text_line_height(title_face);
+	const auto byline_cy = _byline.empty() ? 0 : dc.text_line_height(byline_face);
 	const auto caption_cy = title_cy + byline_cy + gap * 3;
 
 	// The picture is laid out under the caption to learn how tall it is, and the two are then centred together.
@@ -453,14 +477,13 @@ void movie_audio_frames_impl::draw_scene(const sizei extent, const double second
 	const auto top = frame.top + shift;
 
 	// The file's title, and who made it, over the picture.
-	dc.draw_text(_title, recti(frame.left, top, frame.right, top + title_cy), render::font_face::title,
+	dc.draw_text(_title, recti(frame.left, top, frame.right, top + title_cy), title_face,
 	             render::text_style::single_line_center, core::color(ui::style::colors.view_text, 1.0f), {});
 
 	if (!_byline.empty())
 	{
-		dc.draw_text(_byline, recti(frame.left, top + title_cy, frame.right, top + title_cy + byline_cy),
-		             render::font_face::dialog, render::text_style::single_line_center,
-		             core::color(monitor_palette::text_muted(), 1.0f), {});
+		dc.draw_text(_byline, recti(frame.left, top + title_cy, frame.right, top + title_cy + byline_cy), byline_face,
+		             render::text_style::single_line_center, core::color(monitor_palette::text_muted(), 1.0f), {});
 	}
 
 	_art_bounds = {};
@@ -480,6 +503,83 @@ void movie_audio_frames_impl::draw_scene(const sizei extent, const double second
 	{
 		draw_bars(dc, picture.offset(0, shift), scale, seconds);
 	}
+}
+
+// The scale an upright frame's SID monitor fills it at, the title over it: as large as the frame's height holds,
+// across its width. Laid out at `base` across `base / s` of the width, the monitor is the one drawn at `s` made
+// `s / base` times larger - its text and its panels grow together - so each step of the search is a layout rather
+// than a drawing, and the scale found is then checked with its text at that size, which comes in whole points.
+// Searched once for each size of frame.
+double movie_audio_frames_impl::fill_scale(const sizei extent, const double base, const recti frame)
+{
+	if (!dynamic_cast<sid_monitor_control*>(_monitor.get()) || frame.is_empty()) return base;
+	if (_fill_extent == extent && _fill_scale > 0.0) return _fill_scale;
+
+	auto& dc = *_dc;
+	const auto text_at = [&](const double s)
+	{
+		dc.scale_metrics(s);
+		_dc->begin_draw(extent, std::max(1, core::round(render::default_font_size * s)), {});
+	};
+	const auto height_at = [&](const double drawn, const double laid_out)
+	{
+		const auto gap = core::round(ui::panel_element::spacing * laid_out);
+		const auto width = std::max(1, core::round(frame.width() * laid_out / drawn));
+		const auto [title_face, byline_face] = caption_faces(laid_out, true, width);
+		const auto caption_cy = dc.text_line_height(title_face) +
+		                        (_byline.empty() ? 0 : dc.text_line_height(byline_face)) + gap * 3;
+		return (caption_cy + _monitor->measure(dc, width).cy) * drawn / laid_out;
+	};
+
+	text_at(base);
+	auto fits = base;
+
+	if (height_at(base, base) <= frame.height())
+	{
+		auto overflows = base * 4.0;
+
+		for (auto i = 0; i < 12; ++i)
+		{
+			const auto mid = (fits + overflows) / 2.0;
+			if (height_at(mid, base) <= frame.height()) fits = mid;
+			else overflows = mid;
+		}
+
+		for (auto i = 0; i < 8 && fits > base; ++i)
+		{
+			text_at(fits);
+			if (height_at(fits, fits) <= frame.height()) break;
+			fits = std::max(base, fits * 0.98);
+		}
+	}
+
+	_fill_extent = extent;
+	_fill_scale = fits;
+	return fits;
+}
+
+// The faces the title and byline are drawn in at a scale: the title and dialog faces, as the context's base font size
+// sizes them, or in a Short the same family a little larger - each where it fits the frame's width, so a long title is
+// never cut off.
+std::pair<render::font_face, render::font_face> movie_audio_frames_impl::caption_faces(const double scale,
+                                                                                       const bool upright,
+                                                                                       const int width) const
+{
+	if (!upright) return {render::font_face::title, render::font_face::dialog};
+
+	const auto base = std::max(1, core::round(render::default_font_size * scale));
+	const auto larger = [&](const render::font_face face, const double size, const std::string_view text)
+	{
+		render::font_desc desc;
+		desc.family = "Calibri";
+		desc.size = std::max(1, core::round(size * upright_caption_scale));
+		const auto font = render::make_font(desc);
+		const auto fits = text.empty() ||
+		                  _dc->measure_text(text, font, render::text_style::single_line, 100000).cx <= width;
+		return fits ? font : face;
+	};
+
+	return {larger(render::font_face::title, base * 1.5, _title), larger(render::font_face::dialog, base, _byline)};
 }
 
 // Lays the monitor out under the caption and answers where it went. A SID monitor takes the frame's width, its
@@ -548,14 +648,16 @@ void movie_audio_frames_impl::draw_bars(render::draw_context& dc, const recti pa
 }
 
 core::const_surface_ptr movie_audio_frames_impl::frame(const double seconds, const sizei max_dim,
-                                                       const core::cancel_token& abandon)
+                                                       const core::cancel_token& abandon, const sizei shape)
 {
 	if (abandon.is_cancelled() || !open()) return {};
 
-	const auto wanted = core::scale_dimensions(movie_audio_extent, max_dim);
+	const auto wanted = core::scale_dimensions(shape.cx > 0 && shape.cy > 0 ? shape : movie_audio_extent, max_dim);
 	if (wanted.cx <= 0 || wanted.cy <= 0) return {};
 
-	const auto extent = wanted.cy < least_drawn_extent.cy ? least_drawn_extent : wanted;
+	// Never drawn smaller than the least that reads, in the frame's own orientation.
+	const auto least = wanted.cy > wanted.cx ? sizei{least_drawn_extent.cy, least_drawn_extent.cx} : least_drawn_extent;
+	const auto extent = std::min(wanted.cx, wanted.cy) < std::min(least.cx, least.cy) ? least : wanted;
 	const auto at = std::max(0.0, seconds);
 
 	if (!reach(at, abandon)) return {};
@@ -597,13 +699,16 @@ bool is_movie_audio(const core::file_path path)
 
 movie_audio_tunes movie_audio_songs(const core::file_path path)
 {
+	if (is_tracker_extension(path.extension())) return {1, 1, tracker_picture_rate};
 	if (!is_sid_tune(path)) return {};
 
 	sid_tune_render render(path, 0);
 	if (!render.load()) return {0, 0};
 
+	// The tune moves at the frame rate of the machine it was written for: its play routine is called once a frame.
 	const auto details = render.details();
-	return {std::max(1, details.songs), std::clamp(details.song, 1, std::max(1, details.songs))};
+	return {std::max(1, details.songs), std::clamp(details.song, 1, std::max(1, details.songs)),
+	        details.ntsc ? sid_ntsc_picture_rate : sid_pal_picture_rate};
 }
 
 double movie_audio_seconds(const core::file_path path, const int song)
@@ -621,6 +726,15 @@ double movie_audio_seconds(const core::file_path path, const int song)
 	decoder.init_streams(-1, -1, false, false, false);
 	const auto info = decoder.info();
 	return info.has_audio ? std::max(0.0, info.end - info.start) : 0.0;
+}
+
+double movie_audio_loop_seconds(const core::file_path path, const int song)
+{
+	if (!is_sid_tune(path)) return 0.0;
+
+	// Remembered from the scan movie_audio_seconds ran, so asking again runs nothing.
+	const auto length = find_sid_tune_length(path, song);
+	return length.how == sid_tune_length::ending::repeats ? length.seconds : 0.0;
 }
 
 bool open_movie_audio(av_format_decoder& decoder, const core::file_path path, const media_intent intent, const int song)
@@ -652,7 +766,7 @@ int movie_audio_frames::song() const
 }
 
 core::const_surface_ptr movie_audio_frames::frame(const double seconds, const sizei max_dim,
-                                                  const core::cancel_token& abandon)
+                                                  const core::cancel_token& abandon, const sizei shape)
 {
-	return _impl->frame(seconds, max_dim, abandon);
+	return _impl->frame(seconds, max_dim, abandon, shape);
 }

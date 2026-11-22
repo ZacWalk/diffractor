@@ -11,7 +11,7 @@ Owning documents: [implementation](../../docs/implementation.md) for the boundar
 ## This is the only place system code exists
 
 System headers, Windows API calls and OS handle types (`HWND`, `LRESULT`, `WPARAM`, `LPARAM`,
-`<windows.h>`, `d3d11`, `dxgi`, `dwrite`, `shlobj`, `wincodec`) appear **only** in `platform*`
+`<windows.h>`, `d3d11`, `dxgi`, `dwrite`, `shlobj`, `shellapi`, `wincodec`) appear **only** in `platform*`
 files, apart from the entry points in `app.cpp`. The lint enforces this. `test_platform_win.cpp` is
 the single test file permitted system headers, and keeping those tests there is what lets every other
 test file stay free of them.
@@ -19,15 +19,15 @@ test file stay free of them.
 ## Adding to the abstraction
 
 When portable code needs a system capability, add it to libdesktop's
-[libdesktop/platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h) - a change made in libdesktop, under its own
-AGENTS.md - as an intention, not as a thin wrapper over one API. The Linux side must be able to
-implement it honestly. A function named for a Win32 call has already leaked the boundary even
-though it compiles. A service only the window layer can implement is declared in
-libdesktop's [render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render.h) or [ui.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui.h) instead, and implemented by its
-render library's backends (`src/render/win`, `src/render/linux`) - a change made in libdesktop too. What
-stays here is the application's own: its side of FFmpeg's hardware decoding
-(`platform_win_av.cpp`), the Debug build's screen recorder (`platform_win_record.cpp`), its resource
-script and Linux glue (`platform_linux_app.cpp`).
+[libdesktop/platform.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform.h) - a
+change made in libdesktop, under its own AGENTS.md - as an intention the Linux side can implement
+honestly, not as a thin wrapper over one API: a function named for a Win32 call has leaked the boundary
+even though it compiles. A service only the window layer can implement is declared in libdesktop's
+[render.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/render.h) or
+[ui.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/ui.h) instead, and implemented
+by its render backends (`src/render/win`, `src/render/linux`), also in libdesktop. What stays here is the
+application's own: its side of FFmpeg's hardware decoding (`platform_win_av.cpp`), the screen recorder
+(`platform_win_record.cpp`), its resource script and Linux glue (`platform_linux_app.cpp`).
 `src/app.cpp` owns the Windows `wWinMain` and Linux `main`, and both call `platform::run`.
 
 Every new platform capability needs a Linux implementation or an explicit unavailable answer.

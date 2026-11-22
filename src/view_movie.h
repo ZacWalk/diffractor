@@ -44,6 +44,8 @@ struct movie_probe_result
 	// A SID file's tunes, and the one it starts on.
 	int songs = 1;
 	int first_song = 1;
+	// Where a SID tune starts again, when it repeats.
+	double loop_end = 0;
 };
 
 // Opens one source and measures it - a SID file for one of its tunes. File I/O and decoding, so it runs off the UI
@@ -75,6 +77,7 @@ inline movie_clip apply_movie_probe(movie_clip clip, const movie_probe_result& p
 	clip.extent = probe.extent;
 	clip.frame_rate = probe.frame_rate;
 	clip.songs = probe.songs;
+	clip.loop_end = probe.is_audio ? probe.loop_end : 0.0;
 	// The tune a SID file starts on is named once the file is known to hold others, so the panel can say which.
 	if (clip.song == 0 && probe.songs > 1) clip.song = probe.first_song;
 
@@ -180,6 +183,7 @@ struct movie_render_request
 {
 	std::vector<movie_clip> clips;
 	movie_output output;
+	movie_kind kind = movie_kind::movie;
 	core::file_path path;
 	bool fail_if_exists = false;
 };
@@ -204,21 +208,58 @@ movie_render_result render_movie_to_file(const movie_render_request& request, co
                                          const core::cancel_token& token,
                                          const std::shared_ptr<movie_render_control>& control);
 
-// A text screen's words or a caption as the movie shows them on a frame of `frame`: white, edged in
-// black so they read over any picture, centred across the frame, a screen's in its middle and a caption
-// in its lower band. `at` is where its top left goes. The preview and the render both draw text this
-// way, through libdesktop's styled text, which draws on any thread.
+// What rendering each item of a timeline as a Short of its own made: the Shorts written, in order, and the result of
+// the last render, which names why it stopped when it did, and the file it was writing then.
+struct movie_shorts_result
+{
+	std::vector<core::file_path> made;
+	movie_render_result last;
+	std::string failed_name;
+};
+
+// Renders each clip as a YouTube Short of its own into `folder`, one after another, named for what it plays
+// (movie_short_name) and never over a file already there or one made before it. A text screen is a page between
+// clips, not a Short, and is passed over. `report` receives the index of the Short being made and its fraction done.
+// Runs where render_movie_to_file does; a cancel stops it before the next Short, keeping those already made.
+movie_shorts_result render_movie_shorts(const std::vector<movie_clip>& clips, core::folder_path folder,
+                                        const std::function<void(size_t, size_t, double)>& report,
+                                        const core::cancel_token& token);
+
+// A text screen's words or a caption as the movie shows them on a frame of `frame`: white over a soft black
+// shadow - the letters blurred wide behind them - so they read over any picture, centred across the frame, a
+// screen's in its middle and a caption in its lower band, which in a Short sits above what YouTube lays over its
+// foot. `at` is where its top left goes, which the shadow reaches past the letters but never past the frame. The
+// preview and the render both draw text this way, through libdesktop's styled text, which draws on any thread.
 struct movie_text_layer
 {
 	core::surface_ptr surface;
 	pointi at;
+	// Where the letters are in the surface; the shadow is the rest of it.
+	recti letters;
 };
 
-movie_text_layer draw_movie_text(std::string_view text, movie_text_kind kind, sizei frame);
+movie_text_layer draw_movie_text(std::string_view text, movie_text_kind kind, sizei frame,
+                                 movie_kind movie = movie_kind::movie);
 
-// A text screen's whole picture: its words on black, `frame` in size. The preview and the render compose
+// A text screen's words stand on near black - a tenth of the way to white, so the shadow under them shows faintly -
+// and a screen with no words is black. Straight BGRA.
+inline constexpr uint32_t movie_screen_background = 0xff1a1a1au;
+
+// A text screen's whole picture: its words on near black, `frame` in size. The preview and the render compose
 // it as they compose a photo.
-core::surface_ptr draw_movie_screen(std::string_view text, sizei frame);
+core::surface_ptr draw_movie_screen(std::string_view text, sizei frame, movie_kind movie = movie_kind::movie);
+
+// What a Short shows behind a picture of another shape, which sits whole in the middle of it: the picture made to
+// cover the frame, blurred and darkened. Made small, as a frame's shape a sixteenth of its size, and drawn scaled
+// up, so the scaling smooths it further; the preview and the render both make it here. Null for an empty source.
+core::surface_ptr make_movie_backdrop(const core::const_surface_ptr& source, sizei frame);
+
+// Whether a picture of `source`'s shape, fitted into a Short's frame, leaves any of it uncovered.
+bool movie_needs_backdrop(sizei source, sizei frame);
+
+// The name a Short made of one item is saved under, without its extension: its title and who made it as its file
+// or tags say, or its file's name.
+std::string movie_short_name(const movie_clip& clip);
 
 struct movie_frame_cache_completion_decision
 {
@@ -498,9 +539,12 @@ public:
 	movie_view_state& _movie_state;
 	std::shared_ptr<movie_view> _view;
 
-	std::shared_ptr<text_element> _info;
+	std::shared_ptr<class view_info_element> _info;
 	std::shared_ptr<ui::title_control> _movie_title;
+	std::shared_ptr<ui::check_control> _short_check;
 	std::shared_ptr<text_element> _output_text;
+	ui::button_ptr _shorts_button;
+	std::shared_ptr<ui::button_row> _shorts_buttons;
 
 	std::shared_ptr<divider_element> _clip_divider;
 	std::shared_ptr<ui::title_control> _clip_title;
@@ -573,6 +617,7 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 	{
 		std::string text;
 		sizei frame;
+		movie_kind kind = movie_kind::movie;
 		movie_text_layer drawn;
 		render::texture_ptr texture;
 	};
@@ -585,6 +630,7 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 	{
 		std::string text;
 		sizei frame;
+		movie_kind kind = movie_kind::movie;
 		core::surface_ptr surface;
 		render::texture_ptr texture;
 		uint64_t drawn = 0;
@@ -592,6 +638,16 @@ class movie_view final : public view_base, public std::enable_shared_from_this<m
 
 	mutable std::array<preview_screen, 2> _screens;
 	mutable uint64_t _screens_drawn = 0;
+
+	// The backdrop a Short shows behind each of the two pictures a crossfade mixes, made from the picture it was
+	// last made from, which the preview has, or for a video playing in a session from a small frame of it.
+	struct preview_backdrop
+	{
+		core::const_surface_ptr source;
+		render::texture_ptr texture;
+	};
+
+	mutable std::array<preview_backdrop, 2> _backdrops;
 
 	// The preview's picture sources: one per clip a crossfade can mix. Each is a video-only session
 	// the player decodes for, because a preview asked for the next frame every fortieth of a second
@@ -757,6 +813,8 @@ public:
 	// that item, unless the movie is playing, so what is typed is seen.
 	void text_changed();
 	void stabilize_changed();
+	// The panel's YouTube Short check changed: the document's kind follows it, as an edit.
+	void short_changed();
 	void end_edit_group();
 	void trim_current(double start, double end);
 	// Restores the whole source, which is the only way back from a trim that went wrong.
@@ -772,9 +830,16 @@ public:
 	void relink_missing();
 	// Writes the movie. Asks for a destination, then runs on a worker over a snapshot of the document.
 	void render_movie();
+	// Writes each item of a Short's timeline as a Short of its own, into a folder the user picks, named for what
+	// it plays. Runs on a worker, one after another, over a snapshot of the document.
+	void render_shorts();
+	bool can_render_shorts() const;
 	void render_progress(size_t generation, int percent);
 	void render_finished(size_t generation, bool ok, bool cancelled, movie_render_error reason,
 	                     const std::string& message, core::cached name);
+	void render_shorts_progress(size_t generation, size_t index, size_t count, int percent);
+	void render_shorts_finished(size_t generation, size_t made, bool cancelled, movie_render_error reason,
+	                            const std::string& message, const std::string& failed_name);
 
 	bool has_clips() const { return !_movie_state.project.is_empty(); }
 	// Clips the user has changed since the timeline was last saved, seeded or opened: what leaving,
@@ -892,8 +957,14 @@ private:
 	void read_document();
 	void load_project(core::file_path path);
 	recti calc_preview_target(sizei source) const;
+	// Where a picture of `source`'s shape stands in the preview: fitted into the movie's frame, as the render fits it.
+	recti calc_preview_picture(sizei source) const;
 	// Draws the caption over the preview's picture, as the render draws it over the movie's.
 	void draw_preview_caption(render::draw_context& dc, const movie_frame_text& shown) const;
 	// A text screen's picture at the preview's size, as a texture: one already drawn when it can be.
 	render::texture_ptr preview_screen_texture(render::draw_context& dc, const movie_clip& clip, sizei frame) const;
+	// Draws a Short's backdrop behind one of the preview's two pictures, made from `source`, across the movie's
+	// frame at `alpha`. False when it has nothing to make it from yet.
+	bool draw_preview_backdrop(render::draw_context& dc, size_t which, const core::const_surface_ptr& source,
+	                           float alpha) const;
 };

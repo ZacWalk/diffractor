@@ -6,7 +6,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: SQLite database layer for persistent storage. Manages item thumbnails, metadata cache,
-// import history, and web service cache with efficient batch writes.
+// import history, and web service cache with efficient batch writes, and on the same thread the face
+// database the face book is kept in (model_db_faces.h).
 
 #pragma once
 
@@ -18,6 +19,13 @@ struct sqlite3;
 class metadata_packer;
 class index_state;
 class db_statement;
+class face_database;
+
+namespace faces
+{
+	class face_search;
+	struct book_write;
+}
 
 using item_writes_t = platform::queue<item_db_write>;
 
@@ -31,6 +39,9 @@ namespace database_test_seams
 	void visit_folder_thumbnail_candidates(
 		const core::folder_path& root, const std::function<bool(const core::folder_path&)>& visit,
 		const std::function<std::vector<core::folder_path>(const core::folder_path&)>& enumerate);
+	// The versions whose changes to the cached record an upgrade reads files again for, and the current one.
+	std::vector<int> metadata_change_versions();
+	int metadata_version();
 }
 
 struct item_import
@@ -85,6 +96,19 @@ class database final : public core::no_copy
 	// Day of the last PRAGMA optimize, so a session-long connection re-analyses as the index grows.
 	uint32_t _optimized_day = 0;
 
+	// docs/faces.md#64-the-face-database: the face book's own file, which resetting the index leaves alone.
+	std::unique_ptr<face_database> _face_db;
+	core::file_path _face_path;
+	// Held while this process writes the face database: one Diffractor process writes it, and another window on the
+	// same profile reads it until this one closes.
+	platform::instance_lock_ptr _face_writer;
+	// A change could not be written: the book is written whole at the next chance, replacing what the file holds.
+	bool _face_unsaved = false;
+	// The generation of the book last written whole: changes made before it are already in the file.
+	uint64_t _face_written = 0;
+
+	void write_faces_whole();
+
 	bool is_db_thread() const;
 	bool connect();
 	bool prepare_database(bool can_replace);
@@ -125,6 +149,18 @@ public:
 
 	bool is_open() const;
 	void load_index_values() const;
+	// docs/faces.md#31-turning-it-on-and-off: every picture's face record, read into face search as it is turned
+	// on; and removed, as its data is deleted.
+	void load_face_records(faces::face_search& faces) const;
+	void delete_face_records() const;
+	// docs/faces.md#64-the-face-database: opens the face database, on this thread, and reads it into the face book,
+	// before the index loads so the first people and groups are made with it; and writes a change of the book.
+	void open_faces(core::file_path path);
+	void write_faces(const faces::book_write& write);
+	// Asked every few seconds while the face book needs it: a window that only reads the face database takes over
+	// writing it once the window that wrote it closes, and reads it again where that window changed it; a book whose
+	// last change could not be written is written whole.
+	void poll_faces();
 
 	bool has_errors() const;
 
@@ -153,6 +189,7 @@ public:
 	static bool is_audio_or_video_metadata(std::string_view name);
 	static bool is_tracker_module(std::string_view name);
 	static bool is_picture_or_video(std::string_view name);
+	static bool is_picture(std::string_view name);
 	void perform_writes();
 	void perform_writes(std::deque<item_db_write> writes) const;
 	void maintenance(bool is_reset);

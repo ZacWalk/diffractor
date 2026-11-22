@@ -36,7 +36,8 @@ APT_TOOLCHAIN = [
 
 # System copies of fetched libraries, used during bring-up. These are a convenience: the shipped
 # build fetches and builds its own (see docs/third-party.md). FFmpeg is deliberately absent because
-# it is a Diffractor fork and must never come from a distribution.
+# it is upstream FFmpeg at the commit cmake/dd-dependencies.json pins, configured for Diffractor, and must
+# never come from a distribution.
 APT_DEPENDENCIES = [
     "zlib1g-dev",
     "libpng-dev",
@@ -370,6 +371,8 @@ def cmd_configure(args: argparse.Namespace) -> None:
         "-B", str(build_dir(args)),
         "-G", generator,
         f"-DCMAKE_BUILD_TYPE={args.config}",
+        # The interpreter running this, which libmug's tools/models.py, run by the build, then runs under too.
+        f"-DPython3_EXECUTABLE={sys.executable}",
     ]
 
     if ninja and Path(ninja).is_absolute():

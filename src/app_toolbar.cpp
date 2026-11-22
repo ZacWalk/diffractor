@@ -28,6 +28,8 @@
 #include "view_rename.h"
 #include "view_batch.h"
 #include "view_locate.h"
+#include "view_explore.h"
+#include "view_faces.h"
 #include "view_movie.h"
 #include "view_edit.h"
 #include "view_media.h"
@@ -71,8 +73,11 @@ void app_frame::create_toolbars()
 	// Options is not here: its cog starts the status bar, under the sidebar that shows the collection it sets up
 	// first, and it is in the Options menu.
 	const std::vector<ui::command_ptr> tbButtonsNav2 = {
-		find_command(commands::favorite),           find_command(commands::browse_previous_folder),
-		find_command(commands::browse_next_folder), find_command(commands::advanced_search),
+		find_command(commands::favorite),
+		find_command(commands::browse_previous_folder),
+		find_command(commands::browse_next_folder),
+		find_command(commands::explore),
+		find_command(commands::faces),
 		find_command(commands::menu_main),
 	};
 
@@ -130,15 +135,27 @@ void app_frame::create_toolbars()
 	};
 	_filter_edit = ui::make_edit(filter_styles, _state.filter().text(),
 	                             [this](const std::string_view text) { filter_text_changed(text); });
+	filter_styles.cue = tt.faces_filter.sv();
+	_face_filter_edit = ui::make_edit(filter_styles, _view_faces->filter_text(),
+	                                  [this](const std::string_view text) { _view_faces->filter_people(text); });
 
 	_item_size = ui::make_slider(0, settings_t::item_scale_position_max,
 	                             [this](const int pos, const bool tracking) { item_size_changed(pos, tracking); });
 	update_item_size_slider();
+	_face_size = ui::make_slider(settings_t::faces_t::min_tile_size, settings_t::faces_t::max_tile_size,
+	                             [this](const int size, const bool tracking)
+	{
+		if (std::exchange(setting.faces.tile_size, size) != size) invalidate_view(view_invalid::view_layout);
+		if (std::exchange(_face_size_dragging, tracking) && !tracking) queue_ui([this] { focus_view(); });
+		if (!tracking) invalidate_view(view_invalid::options_save);
+	});
+	_face_size->set_pos(setting.faces.tile_size);
 
 	// Every bar a view can declare is built now, before the first layout, so switching views only
 	// shows and hides controls that already exist.
-	const std::shared_ptr<view_base> views[] = {_view_items, _view_media,  _view_edit, _view_movie,  _view_rename,
-	                                            _view_batch, _view_import, _view_sync, _view_locate, _view_tags};
+	const std::shared_ptr<view_base> views[] = {_view_items,  _view_media, _view_edit,    _view_movie,
+	                                            _view_rename, _view_batch, _view_import,  _view_sync,
+	                                            _view_locate, _view_tags,  _view_explore, _view_faces};
 
 	for (const auto& v : views)
 	{
@@ -225,12 +242,17 @@ std::vector<bar_slot> app_frame::measure_bar(render::measure_context& mc, const 
 		switch (part.control)
 		{
 		case bar_control::item_filter:
+		case bar_control::face_filter:
 			// Narrows before anything is cut, but not past what still shows a typed word.
 			result.push_back({{core::round(150 * mc.scale_factor), control_height}, core::round(80 * mc.scale_factor)});
 			break;
 		case bar_control::item_size:
 			// The wheel and the display menu also size thumbnails, so the slider is the first to go.
 			result.push_back({{core::round(100 * mc.scale_factor), control_height}, 0, true});
+			break;
+		case bar_control::face_size:
+			result.push_back(
+				{{core::round(100 * mc.scale_factor), control_height}, core::round(56 * mc.scale_factor), true});
 			break;
 		case bar_control::item_totals:
 			result.push_back(
@@ -373,34 +395,42 @@ void app_frame::filter_text_changed(const std::string_view text)
 	invalidate_view(view_invalid::group_layout | view_invalid::view_redraw);
 }
 
-void app_frame::set_filter_edit_text(const std::string_view text)
+void app_frame::focus_filter(const ui::control_ptr& edit, const bool has_focus)
 {
-	_filter_edit->window_text(text);
-}
-
-void app_frame::focus_filter(const bool has_focus)
-{
-	if (_filter_has_focus == has_focus) return;
-	_filter_has_focus = has_focus;
-	if (has_focus) _filter_edit_original = _state.filter().text();
+	if (has_focus && _focused_filter != edit)
+	{
+		_focused_filter = edit;
+		_filter_edit_original = edit == _face_filter_edit ? std::string(_view_faces->filter_text())
+		                                                  : _state.filter().text();
+	}
+	else if (!has_focus && _focused_filter == edit)
+	{
+		_focused_filter.reset();
+	}
 }
 
 void app_frame::focus_filter_edit()
 {
 	// A box the status bar is not showing - Fullscreen, zoom mode - cannot take the keyboard, or
 	// typing would go somewhere the user cannot see.
-	if (_filter_edit && std::ranges::find(_status_bar->_controls, _filter_edit) != _status_bar->_controls.end())
+	const auto& edit = _view == _view_faces ? _face_filter_edit : _filter_edit;
+	if (edit && std::ranges::find(_status_bar->_controls, edit) != _status_bar->_controls.end())
 	{
-		_filter_edit->focus();
+		edit->focus();
 	}
 }
 
 // Escape abandons the edit: the filter goes back to what it was when the box took focus.
 void app_frame::cancel_filter_edit()
 {
-	if (_state.filter().text() != _filter_edit_original)
+	if (_focused_filter && _focused_filter == _face_filter_edit)
 	{
-		set_filter_edit_text(_filter_edit_original);
+		_view_faces->filter_people(_filter_edit_original);
+		_face_filter_edit->window_text(_filter_edit_original);
+	}
+	else if (_state.filter().text() != _filter_edit_original)
+	{
+		_filter_edit->window_text(_filter_edit_original);
 		filter_text_changed(_filter_edit_original);
 	}
 
@@ -435,7 +465,7 @@ void app_frame::update_item_size_slider() const
 	}
 }
 
-// locations.md 7.1, baseline defect 5: this button now reads only what the grouping and sorting
+// docs/design.md#application-structure: this button now reads only what the grouping and sorting
 // are, because that is the menu it opens. The totals moved to their own affordance next to it,
 // which has no menu, so a user reaching for the count is no longer offered a grouping menu.
 std::string format_items_summary(const group_by grouping, const sort_by order, const df::file_group_histogram& summary,
@@ -490,7 +520,7 @@ std::string format_items_summary(const group_by grouping, const sort_by order, c
 	return str_format(tt.grouped_and_sorted_fmt.sv(), group_text, sort_text);
 }
 
-// locations.md 7.1: the totals read as totals and nothing else. Hovering shows the breakdown by
+// docs/design.md#application-structure: the totals read as totals and nothing else. Hovering shows the breakdown by
 // type; there is no menu behind them.
 std::string format_items_totals(const df::file_group_histogram& summary, const bool is_init_complete)
 {
@@ -672,9 +702,61 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::view_show_sidebar]->visible = !is_edit_view;
 	_commands[commands::browse_forward]->visible = !is_edit_view;
 
-	_commands[commands::advanced_search]->enable = is_media_or_items_view;
-	_commands[commands::browse_back]->enable = is_media_or_items_view && _state.history.can_browse_back();
-	_commands[commands::browse_forward]->enable = is_media_or_items_view && _state.history.can_browse_forward();
+	_commands[commands::explore]->enable = is_media_or_items_view;
+	// An item Explore can place: one taken somewhere or at some time.
+	_commands[commands::explore_item]->enable = is_media_or_items_view && command_item &&
+	                                            command_item->has_explore_place_or_time();
+	_commands[commands::faces]->enable = is_media_or_items_view || (is_idle && view_mode == view_type::explore);
+	{
+		// docs/faces.md#93-faces-on-a-picture: Ctrl+F2 names the face on a picture with just one, and says why not where
+		// there is no such picture.
+		const auto target = is_displaying_item ? only_face_on_picture(_state, command_item->path())
+		                                       : picture_face_target{{}, tt.faces_name_picture_one.sv()};
+		auto& name_picture = _commands[commands::face_name_picture];
+		name_picture->enable = target.face.has_value();
+		name_picture->disabled_reason = target.face ? std::string{} : std::string(target.refusal);
+	}
+	{
+		const auto is_faces_view = is_idle && view_mode == view_type::faces && _view_faces;
+		_commands[commands::face_rename_person]->enable = is_faces_view && _view_faces->can_rename();
+		const auto destination = is_faces_view ? _view_faces->placement_destination() : std::string{};
+		update_toolbar_text(commands::face_follow_placement, destination);
+		_commands[commands::face_follow_placement]->enable = !destination.empty();
+		_commands[commands::face_follow_placement]->text = destination;
+		const auto undo_placement = is_faces_view && _view_faces->can_undo_placement();
+		if (std::exchange(_commands[commands::face_undo_placement]->enable, undo_placement) != undo_placement)
+			invalidate_view(view_invalid::app_layout);
+		_commands[commands::face_hide]->enable = is_faces_view && _view_faces->can_hide();
+		_commands[commands::face_show_again]->enable = is_faces_view && _view_faces->can_show_again();
+		_commands[commands::face_reject]->enable = is_faces_view && _view_faces->can_reject();
+		_commands[commands::face_name]->enable = is_faces_view && _view_faces->can_name_faces();
+		_commands[commands::face_confirm]->enable = is_faces_view && _view_faces->can_confirm();
+
+		// The status bar and the menus name the same target.
+		const auto confirm_text = is_faces_view ? _view_faces->confirm_text() : tt.button_confirm.sv();
+		const auto remove_text = is_faces_view ? _view_faces->remove_text() : tt.faces_reject.sv();
+		update_toolbar_text(commands::face_confirm, std::string(confirm_text));
+		update_toolbar_text(commands::face_reject, std::string(remove_text));
+		_commands[commands::face_confirm]->text = confirm_text;
+		_commands[commands::face_reject]->text = remove_text;
+		_commands[commands::face_search]->enable = is_faces_view && _view_faces->can_search_face();
+		_commands[commands::face_person_search]->enable = is_faces_view && _view_faces->can_search_person();
+		_commands[commands::face_open_in_folder]->enable = is_faces_view && _view_faces->can_open_in_folder();
+		// docs/faces.md#10-saving-names-to-files: not offered in this release, by any button, key or agent; its planning
+		// and writing are kept for when it is.
+		_commands[commands::face_save_names]->enable = false;
+		_commands[commands::face_export]->enable = is_faces_view;
+		_commands[commands::face_import]->enable = is_faces_view && _state.item_index.faces().can_change_book();
+		for (const auto id :
+		     {commands::face_confirm, commands::face_reject, commands::face_rename_person, commands::face_name,
+		      commands::face_search, commands::face_person_search, commands::face_show_again, commands::face_hide})
+		{
+			const auto& cmd = _commands[id];
+			if (std::exchange(cmd->visible, cmd->enable) != cmd->enable) invalidate_view(view_invalid::app_layout);
+		}
+	}
+	_commands[commands::browse_back]->enable = _state.can_browse_history() && _state.history.can_browse_back();
+	_commands[commands::browse_forward]->enable = _state.can_browse_history() && _state.history.can_browse_forward();
 	_commands[commands::browse_next_folder]->enable = is_items_view && _state.has_next_path(true);
 	_commands[commands::browse_next_group]->enable = is_media_or_items_view && _state.has_display_items();
 	_commands[commands::browse_next_item]->enable = is_media_or_items_view && _state.has_display_items();
@@ -729,7 +811,9 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::english]->enable = true;
 	_commands[commands::exit]->enable = true;
 	_commands[commands::favorite]->enable = is_media_or_items_view;
-	_commands[commands::filter_items]->enable = is_items_view;
+	const auto filtering_faces = view_mode == view_type::faces;
+	_commands[commands::filter_items]->enable = is_items_view || (is_idle && filtering_faces);
+	_commands[commands::filter_items]->text = filtering_faces ? tt.faces_filter.sv() : tt.command_filter_items.sv();
 	_commands[commands::filter_audio]->enable = is_items_view;
 	_commands[commands::filter_photos]->enable = is_items_view;
 	_commands[commands::filter_videos]->enable = is_items_view;
@@ -804,6 +888,7 @@ void app_frame::update_button_state(const bool resize)
 	update_toolbar_text(commands::menu_playback, playback_toolbar_text);
 	// The parent must answer the same test as the entries it opens, or it promises what they refuse.
 	_commands[commands::menu_rate_or_label]->enable = can_save_metadata;
+	_commands[commands::menu_recent_changes]->enable = !_state.session_changes().empty();
 	_commands[commands::menu_select]->enable = true;
 	_commands[commands::menu_tools]->enable = has_selection;
 	_commands[commands::menu_tools_toolbar]->enable = has_selection;
@@ -960,10 +1045,11 @@ void app_frame::update_button_state(const bool resize)
 	_commands[commands::view_zoom_fit_width]->enable = is_media_or_items_view && can_zoom;
 	_commands[commands::view_zoom_fill]->enable = is_media_or_items_view && can_zoom;
 	_commands[commands::view_zoom_toggle_fit]->enable = is_media_or_items_view && can_zoom;
-	_commands[commands::view_zoom_in]->enable = is_media_or_items_view && can_zoom;
+	const auto is_explore_view = is_idle && view_mode == view_type::explore;
+	_commands[commands::view_zoom_in]->enable = is_explore_view || (is_media_or_items_view && can_zoom);
 	_commands[commands::view_zoom_pane_flip]->enable = is_media_or_items_view && display && display->is_comparison() &&
 	                                                   can_zoom;
-	_commands[commands::view_zoom_out]->enable = is_media_or_items_view && can_zoom;
+	_commands[commands::view_zoom_out]->enable = is_explore_view || (is_media_or_items_view && can_zoom);
 	_commands[commands::view_zoom_100]->enable = is_media_or_items_view && can_zoom;
 	_commands[commands::menu_zoom]->enable = is_media_or_items_view && can_zoom;
 	_commands[commands::menu_zoom_navigator]->enable = is_media_or_items_view && can_zoom;
@@ -1119,6 +1205,7 @@ void app_frame::update_button_state(const bool resize)
 	{
 		auto open_text = format_selection_summary(_state.selected_items());
 		if (open_text.empty()) open_text = tt.command_open.sv();
+		else open_text = std::format("{} \u00B7 {}", tt.command_open.sv(), open_text);
 		auto& open_status_text = _commands[commands::menu_open_status]->toolbar_text;
 
 		if (open_text != open_status_text)
@@ -1145,11 +1232,14 @@ void app_frame::update_button_state(const bool resize)
 
 	// The filter also changes from elsewhere - the list's own action that shows what it hid clears
 	// it - so the box follows the state unless the user is typing in it.
-	if (!_filter_has_focus)
+	if (_focused_filter != _filter_edit)
 	{
 		const auto filter_text = _state.filter().text();
-		if (_filter_edit->window_text() != filter_text) set_filter_edit_text(filter_text);
+		if (_filter_edit->window_text() != filter_text) _filter_edit->window_text(filter_text);
 	}
+	const auto face_filter = _view_faces->filter_text();
+	if (_face_filter_edit && _face_filter_edit->window_text() != face_filter)
+		_face_filter_edit->window_text(face_filter);
 
 	update_item_size_slider();
 
@@ -1218,6 +1308,7 @@ std::vector<command_accelerator> default_keyboard_accelerators()
 		{commands::edit_paste, {'V', control}},
 		{commands::edit_cut, {'X', control}},
 		{commands::tool_move_to_folder, {'X', shift | control}},
+		{commands::view_zoom, {'Z'}},
 		{commands::browse_back, {platform::keys::BACK}},
 		{commands::tool_delete, {platform::keys::DEL}},
 		{commands::edit_cut, {platform::keys::DEL, shift}},
@@ -1228,16 +1319,20 @@ std::vector<command_accelerator> default_keyboard_accelerators()
 		{commands::view_help, {platform::keys::F1}},
 		{commands::keyboard, {platform::keys::F1, control}},
 		{commands::tool_rename, {platform::keys::F2}},
+		{commands::face_name_picture, {platform::keys::F2, control}},
 		{commands::browse_search, {platform::keys::F3}},
 		{commands::browse_search, {platform::keys::BROWSER_SEARCH}},
 		{commands::filter_items, {platform::keys::F3, control}},
-		{commands::view_show_sidebar, {platform::keys::F4}},
+		{commands::explore, {platform::keys::F4}},
+		{commands::view_show_sidebar, {platform::keys::F4, shift}},
+		{commands::view_close, close_view_shortcut()},
 		{commands::view_show_sidebar, {platform::keys::BROWSER_FAVORITES}},
 		{commands::refresh, {platform::keys::F5}},
 		{commands::options, {platform::keys::F6}},
 		{commands::playback_auto_play, {platform::keys::F7, control}},
 		{commands::playback_volume_toggle, {platform::keys::F7}},
-		{commands::tool_convert, {platform::keys::F8}},
+		{commands::faces, {platform::keys::F8}},
+		{commands::tool_convert, {platform::keys::F8, control}},
 		{commands::tool_import, {platform::keys::F9}},
 		{commands::browse_recursive, {platform::keys::F9, control}},
 		{commands::tool_sync, {platform::keys::F9, shift | control}},
@@ -1249,19 +1344,18 @@ std::vector<command_accelerator> default_keyboard_accelerators()
 		{commands::edit_paste, {platform::keys::INSERT, shift}},
 		{commands::browse_back, {platform::keys::LEFT, alt}},
 		{commands::browse_previous_folder, {platform::keys::LEFT, alt | control}},
-		{commands::browse_previous_item_extend, {platform::keys::LEFT, control}},
+		{commands::browse_previous_item_extend, {platform::keys::LEFT, shift}},
 		{commands::tool_rotate_anticlockwise, {platform::keys::OEM_4}},
 		{commands::tool_rotate_clockwise, {platform::keys::OEM_6}},
 		{commands::tool_file_properties, {platform::keys::RETURN, shift | control}},
 		{commands::browse_open_in_file_browser, {platform::keys::RETURN, shift}},
 		{commands::tool_open_with, {platform::keys::RETURN, control}},
-		{commands::view_zoom, {platform::keys::SPACE, control}},
 		{commands::view_zoom_pane_flip, {platform::keys::TAB}},
 		{commands::play, {platform::keys::SPACE}},
 		{commands::slideshow, {platform::keys::SPACE, shift}},
 		{commands::browse_forward, {platform::keys::RIGHT, alt}},
 		{commands::browse_next_folder, {platform::keys::RIGHT, alt | control}},
-		{commands::browse_next_item_extend, {platform::keys::RIGHT, control}},
+		{commands::browse_next_item_extend, {platform::keys::RIGHT, shift}},
 		{commands::browse_parent, {platform::keys::UP, alt}},
 		{commands::browse_previous_group, {platform::keys::PRIOR}},
 		{commands::browse_next_group, {platform::keys::NEXT}},
@@ -1366,6 +1460,8 @@ void app_frame::update_command_text()
 	def_command(commands::menu_open, command_group::none, icon_index::open_one, tt.command_open, tt.tooltip_open);
 	def_command(commands::menu_open_status, command_group::none, icon_index::open_one, tt.command_open,
 	            tt.tooltip_open);
+	def_command(commands::menu_recent_changes, command_group::none, icon_index::yesterday, tt.command_recent_changes,
+	            tt.tooltip_recent_changes);
 	def_command(commands::browse_open_containingfolder, command_group::navigation, icon_index::none,
 	            tt.command_show_in_folder);
 	def_command(commands::browse_open_googlemap, command_group::open, icon_index::location, tt.command_open_google_map);
@@ -1505,7 +1601,35 @@ void app_frame::update_command_text()
 	def_command(commands::view_zoom_navigator_off, command_group::media_playback, icon_index::none,
 	            tt.command_zoom_navigator_off);
 	def_command(commands::favorite, command_group::navigation, icon_index::star, tt.command_favorite);
-	def_command(commands::advanced_search, command_group::navigation, icon_index::search, tt.command_advanced_search);
+	def_command(commands::explore, command_group::navigation, icon_index::world, tt.command_explore);
+	def_command(commands::explore_item, command_group::navigation, icon_index::world, tt.command_explore_item);
+	def_command(commands::faces, command_group::navigation, icon_index::album_artist, tt.command_faces);
+	def_command(commands::face_rename_person, command_group::none, icon_index::rename, tt.command_face_rename_person);
+	def_command(commands::face_undo_placement, command_group::none, icon_index::undo, tt.platform_text.menu_undo,
+	            tt.faces_undo_hint);
+	_commands[commands::face_undo_placement]->highlight = true;
+	_commands[commands::face_undo_placement]->toolbar_text = tt.platform_text.menu_undo.sv();
+	def_command(commands::face_follow_placement, command_group::none, icon_index::none, tt.faces_person_name);
+	def_command(commands::face_hide, command_group::none, icon_index::cancel, tt.command_face_hide, tt.faces_hide_hint);
+	def_command(commands::face_show_again, command_group::none, icon_index::preview, tt.command_face_show_again,
+	            tt.faces_show_hint);
+	def_command(commands::face_reject, command_group::none, icon_index::remove2, tt.faces_reject, tt.faces_reject_hint);
+	def_command(commands::face_name, command_group::none, icon_index::next, tt.faces_name_faces);
+	def_command(commands::face_name_picture, command_group::tools, icon_index::person, tt.faces_name_face,
+	            tt.faces_name_face_hint);
+	def_command(commands::face_confirm, command_group::none, icon_index::check, tt.button_confirm,
+	            tt.faces_confirm_hint);
+	def_command(commands::face_search, command_group::none, icon_index::search, tt.face_search,
+	            tt.faces_search_tooltip);
+	def_command(commands::face_person_search, command_group::none, icon_index::person, tt.command_face_person_search);
+	def_command(commands::face_open_in_folder, command_group::none, icon_index::open_items,
+	            tt.command_face_open_in_folder);
+	_commands[commands::face_search]->disabled_reason = tt.faces_search_disabled.sv();
+	_commands[commands::face_person_search]->disabled_reason = tt.faces_person_search_disabled.sv();
+	_commands[commands::face_open_in_folder]->disabled_reason = tt.faces_open_in_folder_disabled.sv();
+	def_command(commands::face_save_names, command_group::none, icon_index::save, tt.command_face_save_names);
+	def_command(commands::face_export, command_group::none, icon_index::save, tt.command_face_export);
+	def_command(commands::face_import, command_group::none, icon_index::import, tt.command_face_import);
 	def_command(commands::group_album, command_group::group_by, icon_index::none, tt.command_group_album);
 	def_command(commands::group_aspect_ratio, command_group::group_by, icon_index::none, tt.command_group_aspect_ratio);
 	def_command(commands::group_presence, command_group::group_by, icon_index::none, tt.command_group_presence);
@@ -1556,6 +1680,17 @@ void app_frame::update_command_text()
 	// their hints are assigned after the formatting pass that would otherwise clear them.
 	_commands[commands::browse_previous_item]->keyboard_accelerator_text = tt.platform_text.keyboard_left;
 	_commands[commands::browse_next_item]->keyboard_accelerator_text = tt.platform_text.keyboard_right;
+	// And so are the Faces view's F2, Delete, C and H, which act on what it has selected.
+	_commands[commands::face_rename_person]->keyboard_accelerator_text = platform::format_keyboard_accelerator(
+		{{platform::keys::F2, 0}});
+	_commands[commands::face_name]->keyboard_accelerator_text = platform::format_keyboard_accelerator(
+		{{platform::keys::F2, 0}});
+	_commands[commands::face_reject]->keyboard_accelerator_text = platform::format_keyboard_accelerator(
+		{{platform::keys::DEL, 0}});
+	_commands[commands::face_confirm]->keyboard_accelerator_text = platform::format_keyboard_accelerator({{U'C', 0}});
+	_commands[commands::face_hide]->keyboard_accelerator_text = platform::format_keyboard_accelerator({{U'H', 0}});
+	_commands[commands::face_show_again]->keyboard_accelerator_text = platform::format_keyboard_accelerator(
+		{{U'H', 0}});
 
 	// clang-format off
 	for (const auto id : {
@@ -1571,7 +1706,10 @@ void app_frame::update_command_text()
 		     commands::tool_movie_render, commands::tool_movie_relink,
 		     commands::menu_group_toolbar, commands::filter_photos, commands::filter_videos,
 		     commands::filter_audio, commands::options_save, commands::options_cancel,
-		     commands::options_help
+		     commands::options_help, commands::face_rename_person,
+		     commands::face_hide, commands::face_show_again,
+		     commands::face_reject, commands::face_name, commands::face_confirm,
+		     commands::face_search, commands::face_person_search
 	     })
 	// clang-format on
 	{
@@ -1672,15 +1810,27 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 
 		keyboard_accelerator = forward ? tt.platform_text.keyboard_right : tt.platform_text.keyboard_left;
 	}
+	else if (id == commands::face_undo_placement && _view_faces && _view_faces->can_undo_placement())
+	{
+		hover.elements->add(std::make_shared<text_element>(_view_faces->undo_detail(), render::font_face::dialog,
+		                                                   render::text_style::multiline, flex_item::new_line));
+	}
 	else if (id == commands::menu_group_toolbar)
 	{
 		hover.elements->clear();
 		hover.elements->add(make_icon_element(icon_index::group, flex_item::no_break));
 
-		// locations.md 7.1: the breakdown belongs to the totals affordance now; repeating it here
+		// docs/design.md#application-structure: the breakdown belongs to the totals affordance now; repeating it here
 		// would put it back where a user reaching for grouping does not want it.
 		hover.elements->add(std::make_shared<text_element>(tt.group_sort_tooltip, render::font_face::dialog,
 		                                                   render::text_style::multiline, flex_item::line_break));
+	}
+	else if (command && command->enable && _view_faces &&
+	         (id == commands::face_search || id == commands::face_person_search || id == commands::face_confirm ||
+	          id == commands::face_reject || id == commands::face_hide || id == commands::face_show_again ||
+	          id == commands::face_name || id == commands::face_rename_person))
+	{
+		_view_faces->search_tooltip(hover, id);
 	}
 	else if (id == commands::browse_open_containingfolder)
 	{
@@ -1797,22 +1947,15 @@ void app_frame::tooltip(view_hover_element& hover, const commands id) const
 		}
 	}
 
-	if (keyboard_accelerator.empty())
+	if (id == commands::exit && close_shortcut_target() == commands::exit)
 	{
-		if (command)
-		{
-			if (core::is_empty(keyboard_accelerator))
-			{
-				keyboard_accelerator = command->keyboard_accelerator_text;
-			}
-		}
+		const auto display = _state.display_state();
+		if (!_view_has_focus || !display || !display->is_running_c64())
+			keyboard_accelerator = platform::format_keyboard_accelerator({close_view_shortcut()});
 	}
 
-	if (!keyboard_accelerator.empty())
-	{
-		keyboard_accelerator = std::format("{} {}", tt.keyboard_accelerator_press, keyboard_accelerator);
-		hover.elements->add(std::make_shared<action_element>(keyboard_accelerator));
-	}
+	if (keyboard_accelerator.empty() && command) keyboard_accelerator = command->keyboard_accelerator_text;
+	add_shortcut_hint(hover, keyboard_accelerator);
 }
 // locations.md: the totals read as totals and nothing else, and hovering them shows the breakdown by
 // type; the selection's count, on the Open button, breaks down the same way in its tooltip. The status
@@ -1832,6 +1975,9 @@ void app_frame::status_tooltip(view_hover_element& hover) const
 	{
 		hover.elements->add(std::make_shared<text_element>(_view->status(), render::font_face::dialog,
 		                                                   render::text_style::multiline, flex_item::line_break));
+		if (_view == _view_faces && !_view_faces->status_detail().empty())
+			hover.elements->add(std::make_shared<text_element>(_view_faces->status_detail(), render::font_face::dialog,
+			                                                   render::text_style::multiline, flex_item::line_break));
 		hover.active_bounds = hover.window_bounds = _status_text_bounds.offset(origin);
 	}
 }
@@ -1844,7 +1990,8 @@ void app_frame::update_status_hover(const pointi loc)
 	{
 		part = status_part::totals;
 	}
-	else if (_status_text_clipped && !_status_text_bounds.is_empty() && _status_text_bounds.contains(loc))
+	else if ((_status_text_clipped || (_view == _view_faces && !_view_faces->status_detail().empty())) &&
+	         !_status_text_bounds.is_empty() && _status_text_bounds.contains(loc))
 	{
 		part = status_part::status;
 	}
@@ -1860,8 +2007,10 @@ void app_frame::update_tooltip()
 {
 	const auto previous_bounds = _hover.window_bounds;
 	const auto previous_id = _hover.id;
+	const auto previous_delay = _hover.active_delay;
 	const auto was_empty = _hover.is_empty();
 	_hover.clear();
+	_hover.active_delay = bubble_delay::help;
 
 	if (ui::command_active == 0)
 	{
@@ -1878,7 +2027,7 @@ void app_frame::update_tooltip()
 			auto c = setting.show_help_tooltips ? _view_frame->_active_controller : view_controller_ptr{};
 			std::shared_ptr<view_host> frame = _view_frame;
 
-			if (!c)
+			if (!c && setting.show_help_tooltips)
 			{
 				const auto& sidebar = _view_items->sidebar();
 				c = sidebar->_active_controller;
@@ -1907,7 +2056,11 @@ void app_frame::update_tooltip()
 	}
 
 	_tooltip_content_dirty = true;
-	if (was_empty || _hover.is_empty() || previous_bounds != _hover.window_bounds || previous_id != _hover.id)
+	const auto same_timing = previous_delay == _hover.active_delay;
+	const auto target_changed = previous_bounds != _hover.window_bounds || previous_id != _hover.id;
+	if (was_empty || _hover.is_empty() || !same_timing ||
+	    (target_changed && !bubble_delay::follows_pointer(_hover.active_delay) &&
+	     _hover.active_delay != bubble_delay::immediate))
 	{
 		_tooltip_dwell.reset();
 		if (_bubble) _bubble->hide();
@@ -1939,7 +2092,8 @@ void app_frame::update_tooltip_visibility(const uint64_t now_ms, const pointi sc
 	}
 
 	const auto tolerance = std::max(1, core::round(4 * scale_factor));
-	if (!_tooltip_dwell.ready(now_ms, screen_position, tolerance, _hover.active_delay))
+	if (!_tooltip_dwell.ready(now_ms, screen_position, tolerance, _hover.active_delay,
+	                          bubble_delay::follows_pointer(_hover.active_delay)))
 	{
 		if (_bubble->is_visible()) _bubble->hide();
 		return;

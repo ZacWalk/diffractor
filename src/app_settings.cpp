@@ -52,6 +52,14 @@ static constexpr auto s_title = "title";
 static constexpr auto s_path = "path";
 static constexpr auto s_more = "more";
 static constexpr auto s_library_types = "library_types";
+static constexpr auto s_faces = "faces";
+static constexpr auto s_faces_enabled = "enabled";
+static constexpr auto s_faces_photos = "photos";
+static constexpr auto s_faces_videos = "videos";
+static constexpr auto s_faces_paused = "paused";
+static constexpr auto s_faces_groups_width = "groups_width";
+static constexpr auto s_faces_tile_size = "tile_size";
+static constexpr auto s_faces_next_after_naming = "next_after_naming";
 static constexpr auto s_convert = "convert";
 static constexpr auto s_available_version = "available_version";
 static constexpr auto s_available_test_version = "available_test_version";
@@ -353,6 +361,7 @@ static int view_splitter_index(const view_type view)
 	case view_type::sync: return 4;
 	case view_type::locate: return 5;
 	case view_type::tags: return 6;
+	case view_type::faces: return 7;
 	default: return -1;
 	}
 }
@@ -360,7 +369,7 @@ static int view_splitter_index(const view_type view)
 static constexpr std::string_view s_view_splitter_names[settings_t::view_splitter_count] = {"edit",  "rename",
                                                                                             "batch", "import",
                                                                                             "sync",  "locate",
-                                                                                            "tags"};
+                                                                                            "tags",  "faces"};
 
 int settings_t::view_splitter(const view_type view) const
 {
@@ -965,6 +974,12 @@ core::folder_path app_cache_folder()
 	return known_path(platform::known_folder::app_cache_data);
 }
 
+core::folder_path app_data_folder()
+{
+	if (!s_profile_folder.is_empty()) return s_profile_folder;
+	return known_path(platform::known_folder::app_data);
+}
+
 void settings_t::read()
 {
 	const setting_formatter store(app_settings_store());
@@ -1154,6 +1169,17 @@ void settings_t::read()
 	store.read(s_index, s_onedrive_music, collection.onedrive_music);
 	store.read(s_index, s_more, collection.more_folders);
 	store.read(s_index, s_library_types, collection.library_types);
+	// A setting from before videos were read for faces turns face search on for both.
+	auto faces_enabled = false;
+	store.read(s_faces, s_faces_enabled, faces_enabled);
+	faces.photos = faces.videos = faces_enabled;
+	store.read(s_faces, s_faces_photos, faces.photos);
+	store.read(s_faces, s_faces_videos, faces.videos);
+	store.read(s_faces, s_faces_paused, faces.paused);
+	store.read(s_faces, s_faces_groups_width, faces.groups_width);
+	store.read(s_faces, s_faces_tile_size, faces.tile_size);
+	faces.tile_size = std::clamp(faces.tile_size, faces_t::min_tile_size, faces_t::max_tile_size);
+	store.read(s_faces, s_faces_next_after_naming, faces.next_after_naming);
 
 	store.read(s_favorite_search, s_title, search.title, search.count);
 	store.read(s_favorite_search, s_path, search.path, search.count);
@@ -1354,6 +1380,14 @@ void settings_t::write() const
 	store.write(s_index, s_onedrive_music, collection.onedrive_music);
 	store.write(s_index, s_more, collection.more_folders);
 	store.write(s_index, s_library_types, collection.library_types);
+	// Kept for a build from before videos were read, which knows face search on or off alone.
+	store.write(s_faces, s_faces_enabled, faces.is_on());
+	store.write(s_faces, s_faces_photos, faces.photos);
+	store.write(s_faces, s_faces_videos, faces.videos);
+	store.write(s_faces, s_faces_paused, faces.paused);
+	store.write(s_faces, s_faces_groups_width, faces.groups_width);
+	store.write(s_faces, s_faces_tile_size, faces.tile_size);
+	store.write(s_faces, s_faces_next_after_naming, faces.next_after_naming);
 
 	store.write(s_favorite_search, s_title, search.title, search.count);
 	store.write(s_favorite_search, s_path, search.path, search.count);

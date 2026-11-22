@@ -1,4 +1,4 @@
-﻿// This file is part of the Diffractor photo and video organizer
+// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -12,10 +12,12 @@
 #include "pch.h"
 
 #include "metadata.h"
+#include "model_faces.h"
 #include "test_fixtures.h"
 #include "test_runner.h"
 #include "av_format.h"
 #include "av_player.h"
+#include "libfiles/properties.h"
 #include "libfiles/reader.h"
 #include "libfiles/xmp.h"
 
@@ -710,6 +712,141 @@ static void should_preserve_high_audio_sample_rates()
 	assert_equal(192000u, props->audio_sample_rate, "192 kHz stays exact in indexed metadata");
 	assert_equal(6, static_cast<int>(props->audio_channels), "channel count still converts beside it");
 	assert_equal("192kHz", prop::format_audio_sample_rate(props->audio_sample_rate), "high rate formats exactly");
+}
+
+// docs/faces.md#10-saving-names-to-files: a name is written into the face's mwg-rs region, or a new one, in the space of the
+// picture as stored; every region a name does not concern stays, and a rename or a removal reaches every place
+// the packet states the name.
+static constexpr std::string_view face_regions_packet =
+	R"(<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">)"
+	R"(<rdf:Description rdf:about="" xmlns:mwg-rs="http://www.metadataworkinggroup.com/schemas/regions/")"
+	R"( xmlns:stArea="http://ns.adobe.com/xmp/sType/Area#" xmlns:stDim="http://ns.adobe.com/xap/1.0/sType/Dimensions#")"
+	R"( xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/">)"
+	R"(<mwg-rs:Regions rdf:parseType="Resource">)"
+	R"(<mwg-rs:AppliedToDimensions stDim:w="4000" stDim:h="APPLIED_H" stDim:unit="pixel"/>)"
+	R"(<mwg-rs:RegionList><rdf:Bag>)"
+	R"(<rdf:li rdf:parseType="Resource"><mwg-rs:Type>Face</mwg-rs:Type><mwg-rs:Name>Ann</mwg-rs:Name>)"
+	R"(<mwg-rs:Area stArea:x="0.2" stArea:y="0.3" stArea:w="0.1" stArea:h="0.1" stArea:unit="normalized"/></rdf:li>)"
+	R"(<rdf:li rdf:parseType="Resource"><mwg-rs:Type>Pet</mwg-rs:Type><mwg-rs:Name>Rex</mwg-rs:Name>)"
+	R"(<mwg-rs:Area stArea:x="0.8" stArea:y="0.8" stArea:w="0.2" stArea:h="0.2" stArea:unit="normalized"/></rdf:li>)"
+	R"(<rdf:li rdf:parseType="Resource"><mwg-rs:Type>Face</mwg-rs:Type>)"
+	R"(<mwg-rs:Area stArea:x="0.6" stArea:y="0.3" stArea:w="0.1" stArea:h="0.1" stArea:unit="normalized"/></rdf:li>)"
+	R"(</rdf:Bag></mwg-rs:RegionList></mwg-rs:Regions>)"
+	R"(<Iptc4xmpExt:PersonInImage><rdf:Bag><rdf:li>Ann</rdf:li><rdf:li>Bob</rdf:li></rdf:Bag></Iptc4xmpExt:PersonInImage>)"
+	R"(</rdf:Description></rdf:RDF></x:xmpmeta>)";
+
+static void should_write_face_names_into_their_regions()
+{
+	constexpr sizei stored{4000, 3000};
+	constexpr auto turned = core::orientation::right_top;
+
+	const auto packet_with = [](const std::string_view applied_height)
+	{
+		auto packet = std::string(face_regions_packet);
+		packet.replace(packet.find("APPLIED_H"), 9, applied_height);
+		return packet;
+	};
+
+	const auto edited = [&](std::string packet, std::vector<face_name_edit> e)
+	{
+		metadata_edits edits;
+		edits.faces = face_name_edits{std::move(e), stored, turned};
+		metadata_xmp::update(packet, edits);
+		return packet;
+	};
+
+	const auto read = [](const std::string& packet)
+	{
+		return libfiles::properties_from_xmp(std::span(reinterpret_cast<const uint8_t*>(packet.data()), packet.size()));
+	};
+
+	const auto face_named = [](const libfiles::properties& p, const std::string_view name)
+	{
+		const auto found = std::ranges::find(p.faces, name, &libfiles::face_region::name);
+		return found != p.faces.end() ? &*found : nullptr;
+	};
+
+	const auto names = [](const libfiles::properties& p, const std::string_view name)
+	{
+		return std::ranges::find(p.people, name) != p.people.end();
+	};
+
+	// Faces are named as the picture is shown, a quarter turn from how it is stored.
+	const auto upright = [](const double left, const double top)
+	{
+		return faces::to_upright(rectd{left, top, 0.1, 0.1}, core::orientation::right_top);
+	};
+
+	auto packet = edited(packet_with("3000"), {{face_name_edit::kind::name, upright(0.55, 0.25), "Jane", {}},
+	                                           {face_name_edit::kind::name, upright(0.3, 0.6), "Carl", {}}});
+	auto p = read(packet);
+	assert_equal(3, static_cast<int>(p.faces.size()), "the unnamed face is named where it is, and Carl gets one"sv);
+	assert_equal(true, face_named(p, "Jane") && face_named(p, "Jane")->area, "Jane's region"sv);
+	assert_near(0.55, face_named(p, "Jane")->area->left, 1e-6, "keeps its place"sv);
+	assert_equal(true, face_named(p, "Carl") && face_named(p, "Carl")->area, "Carl's new region"sv);
+	assert_near(0.3, face_named(p, "Carl")->area->left, 1e-6, "is written as the picture is stored"sv, "left"sv);
+	assert_near(0.6, face_named(p, "Carl")->area->top, 1e-6, "is written as the picture is stored"sv, "top"sv);
+	assert_equal(4000, p.faces_width, "on the stored picture"sv);
+	assert_equal(true, packet.find("Rex") != std::string::npos, "the pet's region stays"sv);
+
+	packet = edited(packet, {{face_name_edit::kind::rename, {}, "ann", "Anne"}});
+	p = read(packet);
+	assert_equal(true, face_named(p, "Anne") != nullptr && face_named(p, "Ann") == nullptr, "a renamed region"sv);
+	assert_equal(true, names(p, "Anne") && !names(p, "Ann"), "and the name stated without one"sv);
+
+	packet = edited(packet, {{face_name_edit::kind::remove, {}, "Bob", {}},
+	                         {face_name_edit::kind::remove, upright(0.55, 0.25), "Jane", {}}});
+	p = read(packet);
+	assert_equal(false, names(p, "Bob"), "a name without a region is removed"sv);
+	assert_equal(true, face_named(p, "Jane") == nullptr && p.faces.size() == 2, "and a named face's region goes"sv);
+
+	// A picture cropped since its regions were written: naming in it would put the name on the wrong face.
+	auto threw = false;
+	try
+	{
+		edited(packet_with("2000"), {{face_name_edit::kind::name, upright(0.3, 0.6), "Carl", {}}});
+	}
+	catch (const app_exception&)
+	{
+		threw = true;
+	}
+	assert_equal(true, threw, "a packet whose areas no longer fit its picture is not written"sv);
+
+	// A rename, or a name taken out with no face to find it by, places no face, so it still reaches such a picture.
+	p = read(edited(packet_with("2000"), {{face_name_edit::kind::rename, {}, "Ann", "Anne"}}));
+	assert_equal(true, face_named(p, "Anne") != nullptr && names(p, "Anne"), "a rename reaches it"sv);
+	assert_equal(2000, p.faces_height, "and leaves its areas as they were written"sv);
+
+	auto twice = packet_with("2000");
+	constexpr auto unnamed = "<mwg-rs:Type>Face</mwg-rs:Type><mwg-rs:Area"sv;
+	twice.replace(twice.find(unnamed), unnamed.size(),
+	              "<mwg-rs:Type>Face</mwg-rs:Type><mwg-rs:Name>Ann</mwg-rs:Name><mwg-rs:Area");
+	p = read(edited(twice, {{face_name_edit::kind::remove, {}, "Ann", {}}}));
+	assert_equal(true, p.faces.empty(), "a removal takes every region stating the name"sv);
+	assert_equal(true, !names(p, "Ann") && names(p, "Bob"), "and only that name"sv);
+
+	// Names Windows Photo Gallery wrote in Microsoft's regions alone are copied into mwg-rs once a name is written
+	// there; a face taken out by the same save is written in neither.
+	constexpr std::string_view microsoft_only =
+		R"(<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">)"
+		R"(<rdf:Description rdf:about="" xmlns:MP="http://ns.microsoft.com/photo/1.2/")"
+		R"( xmlns:MPRI="http://ns.microsoft.com/photo/1.2/t/RegionInfo#")"
+		R"( xmlns:MPReg="http://ns.microsoft.com/photo/1.2/t/Region#">)"
+		R"(<MP:RegionInfo rdf:parseType="Resource"><MPRI:Regions><rdf:Bag>)"
+		R"(<rdf:li rdf:parseType="Resource"><MPReg:PersonDisplayName>Ann</MPReg:PersonDisplayName>)"
+		R"(<MPReg:Rectangle>0.15, 0.25, 0.1, 0.1</MPReg:Rectangle></rdf:li>)"
+		R"(<rdf:li rdf:parseType="Resource"><MPReg:PersonDisplayName>Bob</MPReg:PersonDisplayName>)"
+		R"(<MPReg:Rectangle>0.55, 0.25, 0.1, 0.1</MPReg:Rectangle></rdf:li>)"
+		R"(</rdf:Bag></MPRI:Regions></MP:RegionInfo>)"
+		R"(</rdf:Description></rdf:RDF></x:xmpmeta>)";
+
+	packet = edited(std::string(microsoft_only), {{face_name_edit::kind::name, upright(0.15, 0.25), "Carol", {}},
+	                                              {face_name_edit::kind::remove, upright(0.55, 0.25), "Bob", {}}});
+	p = read(packet);
+	assert_equal(true, face_named(p, "Carol") != nullptr && face_named(p, "Ann") == nullptr,
+	             "the face named is renamed in mwg-rs"sv);
+	assert_equal(true, face_named(p, "Bob") == nullptr && !names(p, "Bob"), "the face taken out is not"sv);
+	assert_equal(true, packet.find("Bob") == std::string::npos, "nor left in Microsoft's regions"sv);
 }
 
 // Issue #3 - Cannot remove MP4 tags added in an old version.
@@ -2769,7 +2906,7 @@ static void should_read_windows_xp_tags_as_written()
 	             md.description, "XPSubject -> description");
 }
 
-// locations.md 2.8: GPS altitude and speed live in a sub-IFD reached through tag 0x8825, and
+// docs/metadata.md#property-mapping: GPS altitude and speed live in a sub-IFD reached through tag 0x8825, and
 // the altitude reference that decides the sign may arrive either side of the value.
 struct test_gps_entry
 {
@@ -4382,6 +4519,7 @@ void register_metadata_tests(view_state& /*state*/, test_registry& tests)
 
 	// Issue #3 - container tags added by an old version cannot be removed
 	tests.add("Should not resurrect container tags"s, should_not_resurrect_container_tags);
+	tests.add("Should write face names into their regions"s, should_write_face_names_into_their_regions);
 	tests.add("Should apply property level Windows metadata precedence"s,
 	          should_apply_property_level_windows_metadata_precedence);
 	// Issue #238 - a Matroska tag in a non-default language was dropped

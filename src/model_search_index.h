@@ -53,8 +53,9 @@ namespace df
 		// The documents in both, counted without building the intersection.
 		uint64_t count_and(const doc_set& other) const;
 
-		template <typename Fn> void for_each(Fn&& fn) const
+		template <typename Fn> void for_each(Fn&& fn, uint32_t limit = UINT32_MAX) const
 		{
+			if (limit == 0) return;
 			for (size_t w = 0; w < _words.size(); ++w)
 			{
 				auto bits = _words[w];
@@ -62,6 +63,7 @@ namespace df
 				while (bits != 0)
 				{
 					fn(static_cast<uint32_t>(w * 64 + std::countr_zero(bits)));
+					if (--limit == 0) return;
 					bits &= bits - 1;
 				}
 			}
@@ -133,7 +135,7 @@ namespace df
 
 		// Reads every collection folder in `folders`. Answers null when `abandon` turns true part way, so a
 		// build that indexing has overtaken stops rather than competing with it.
-		static std::shared_ptr<const search_index> build(const folder_list& folders, uint64_t generation,
+		static std::shared_ptr<const search_index> build(const folder_list& folders, const location_cache& locations, uint64_t generation,
 		                                                 const std::function<bool()>& abandon);
 
 		// What free-text terms compare formatted numbers in - the decimal separator and the translated words
@@ -144,6 +146,7 @@ namespace df
 		uint32_t doc_count() const { return static_cast<uint32_t>(_files.size()); }
 
 		uint64_t generation() const { return _generation; }
+		uint64_t location_version() const { return _location_version; }
 
 		size_t byte_size() const { return _bytes; }
 
@@ -183,6 +186,8 @@ namespace df
 		uint32_t date_day() const { return _date_day; }
 
 	private:
+		void add_people(doc_set& result, const search_matcher& matcher, const search_term& term,
+		                const core::cancel_token& token) const;
 		doc_set evaluate_text(const search_matcher& matcher, const search_term& term,
 		                      const core::cancel_token& token) const;
 		doc_set evaluate_tag(const search_term& term) const;
@@ -213,6 +218,11 @@ namespace df
 		core::hash_map<std::string, uint32_t> _split_ids;
 		value_docs _split_docs;
 
+		// docs/faces.md#8-searching: the names of the people documents name, which a free-text term finds by the start
+		// of any of their words, so it asks each distinct name once.
+		std::vector<std::string> _person_names;
+		value_docs _person_docs;
+
 		// Tags as a tag: term compares them, trimmed, keyed by search_fold_key.
 		core::hash_map<std::string, uint32_t> _tag_ids;
 		value_docs _tag_docs;
@@ -242,6 +252,7 @@ namespace df
 		doc_set evaluate_dates(const search_matcher& matcher, const search_term& term) const;
 
 		uint64_t _generation = 0;
+		uint64_t _location_version = 0;
 		size_t _bytes = 0;
 	};
 
@@ -303,6 +314,7 @@ namespace df
 		};
 
 		std::vector<cached_leaf> _leaves;
+		std::shared_ptr<const faces::overview> _leaf_people;
 
 		// The documents through each presence prefilter asked of this evaluator. Most of the searches one
 		// evaluator is asked share a requirement - every tag row requires tags - and reading each

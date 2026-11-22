@@ -6,7 +6,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Common interfaces and abstract types. Defines shared interfaces
-// used across modules for decoupling and extensibility.
+// used across modules for decoupling and extensibility, and the few small helpers they share, such as where a
+// path is once its folder has moved.
 
 #pragma once
 
@@ -32,6 +33,27 @@ namespace df
 	inline loading_media_hold hold_loading_media()
 	{
 		return std::make_shared<core::scope_locked_inc>(loading_media);
+	}
+
+	// Where a path is once folders have moved: beneath one of them, by the platform's rule for when two paths name one
+	// place - case aside on Windows, not on Linux - it moves with the first that holds it; elsewhere it stays put.
+	inline std::optional<core::file_path> moved_with_folder(
+		const core::file_path path, const std::span<const std::pair<core::folder_path, core::folder_path>> folder_moves)
+	{
+		const auto text = path.str();
+
+		for (const auto& [from, to] : folder_moves)
+		{
+			const auto prefix = from.text().sv();
+			const auto consumed = core::path_prefix_length(text, prefix);
+			if (consumed == std::string_view::npos) continue;
+			// A root keeps its separator, so the boundary is tested on the text without it.
+			const auto boundary = prefix.empty() ? size_t{0} : consumed - (core::is_path_sep(prefix.back()) ? 1 : 0);
+			if (boundary >= text.size() || !core::is_path_sep(text[boundary])) continue;
+			return core::file_path(std::format("{}{}", to.text(), std::string_view(text).substr(boundary)));
+		}
+
+		return {};
 	}
 }
 
@@ -77,6 +99,10 @@ enum class view_type
 	sync,
 	locate,
 	tags,
+	// The collection on a globe beside its timeline; not a task, and opens its items in Items.
+	explore,
+	// The people the collection names and the faces nobody has named (docs/faces.md#9-the-faces-view); not a task.
+	faces,
 	// Every setting, on one page; not a task, and not reached from one.
 	options
 };
@@ -93,7 +119,7 @@ constexpr bool is_valid_repeat_mode(const uint32_t value) noexcept
 	return value <= static_cast<uint32_t>(repeat_mode::repeat_one);
 }
 
-// design.md "Play and Slideshow": what a tick does when the displayed item reaches its end.
+// docs/design.md#selection-and-viewing: what a tick does when the displayed item reaches its end.
 enum class playback_advance
 {
 	none,    // nothing has ended yet
@@ -181,6 +207,10 @@ enum class async_queue
 	// Decodes, scales and encodes the stills scan_displayed_items has read, on several threads, so the thread
 	// that reads the visible plan's sources moves on to the next file while the last one decodes.
 	thumbnail_decode,
+	// Decodes the thumbnails items hold into the surfaces they are drawn from, on several threads: a folder opening
+	// asks for hundreds at once, which one thread works through for the best part of a second, and nothing else
+	// waits behind them.
+	thumbnail_stage,
 	work,
 	auto_complete,
 	cloud,
@@ -204,6 +234,13 @@ enum class async_queue
 	// An agent's long work - a Movie render, the duplicate report, the documentation (app_mcp_tools.cpp): its own
 	// thread, started on first use, so the window's work queue never waits behind a render.
 	agent,
+	// Face search's scan (docs/faces.md#32-the-scan): one thread reading pictures in order, started on first use,
+	// and the few that decode, detect and embed what it read, and lend the overview a hand with its comparisons.
+	faces,
+	faces_work,
+	// The overview of people and suggestions (docs/faces.md#7-recognizing-people): its own thread, started on first
+	// use, so a pass never holds back a picture being read, and a long one never waits behind them.
+	faces_overview,
 };
 
 constexpr auto thumbnail_quality = 85;

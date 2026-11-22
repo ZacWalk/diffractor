@@ -116,6 +116,9 @@ public:
 	view_scroll_anchor _pending_items_anchor;
 	view_scroll_anchor _pending_media_anchor;
 	bool _reset_media_scroll = false;
+	// The selection as its scroll bar marks it, worked out again when the selection or the layout changes.
+	uint32_t _marked_selection = 0;
+	bool _selection_marks_stale = true;
 
 	sizei _client_extent;
 	display_state_ptr _display;
@@ -127,7 +130,7 @@ public:
 	int _sidebar_splitter_width = 0;
 	double _scale_factor = 1.0;
 
-	// locations.md 7.3: an optional control row that can shrink to a one-line header when the
+	// docs/locations.md#the-places-row: an optional control row that can shrink to a one-line header when the
 	// control area would otherwise bury the items the user came to see.
 	struct control_row
 	{
@@ -154,8 +157,8 @@ public:
 	// An explicit expansion outranks the budget's guess and lasts the session.
 	bool _breakdown_expanded = false;
 
-	// locations.md 6.3 / 7.2: the two derived control-bar rows. Both are rebuilt from published
-	// worker results, so neither ever reads the index or the gazetteer while building.
+	// docs/locations.md#visits and docs/locations.md#the-places-row: the two derived control-bar rows. Both are
+	// rebuilt from published worker results, so neither ever reads the index or the gazetteer while building.
 
 	view_element_ptr build_location_breakdown_row();
 	view_element_ptr build_related_header_row() const;
@@ -333,6 +336,7 @@ public:
 	void make_visible(const df::item_element_ptr& i);
 	bool is_visible(const df::item_element_ptr& i) const;
 	void update_item_scroller_sections();
+	void update_selection_marks();
 	void items_changed(bool path_changed) override;
 	void display_changed() override;
 	// The media column starts again from its top, as it does for a new item.
@@ -347,6 +351,8 @@ public:
 
 	void draw_splitter(render::draw_context& dc, recti bounds, bool active, bool tracking) const;
 
-	void line_up(bool toggle_selection, bool extend_selection) const;
-	void line_down(bool toggle_selection, bool extend_selection) const;
+	// Up and Down reach the item above or below the focus, as the other keys reach the next.
+	void line_up(bool control, bool shift) const;
+	void line_down(bool control, bool shift) const;
+	void key_to(const df::item_element_ptr& i, bool control, bool shift) const;
 };

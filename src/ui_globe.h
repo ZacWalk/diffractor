@@ -5,9 +5,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: The sidebar globe's geometry - the orthographic projection the globe is drawn and
-// targeted with, how a drag moves the view, and where a collection deserves to be framed.
-// The software rasteriser declared here is implemented in render_globe.cpp.
+// Purpose: The globe's geometry - the orthographic projection the sidebar's and Explore's globes are
+// drawn and targeted with, how a drag or a zoom moves the view, and where a collection deserves to be
+// framed - and the map tiles Explore drapes over it. The software rasteriser declared here is
+// implemented in render_globe.cpp.
 
 #pragma once
 
@@ -32,6 +33,9 @@ inline constexpr double globe_min_visible_z = 0.10;
 // Degrees the view turns per pixel of drag, at radius R: a drag across the full diameter turns
 // the globe half way round.
 inline constexpr double globe_degrees_per_radius = 90.0;
+
+// The deepest map tile level a globe reads: the tile store's own limit.
+inline constexpr int globe_max_tile_level = 18;
 
 // The view rotation, with its sines and cosines taken once. `project` answers where a coordinate
 // lands and whether it faces the viewer; `unproject` answers which coordinate a pixel shows.
@@ -96,6 +100,21 @@ public:
 		return pointi{_center.x + core::round(x * _radius), _center.y - core::round(y * _radius)};
 	}
 
+	// As project, for a point already turned into its world unit vector - x toward 90 degrees east, y
+	// north and z toward the meridian - so many points converted once are projected without trigonometry.
+	std::optional<pointi> project_world(const std::array<double, 3>& world, double* depth = nullptr) const
+	{
+		const auto rx = world[0] * _cos_lon - world[2] * _sin_lon;
+		const auto rz = world[0] * _sin_lon + world[2] * _cos_lon;
+		const auto y = world[1] * _cos_lat - rz * _sin_lat;
+		const auto z = world[1] * _sin_lat + rz * _cos_lat;
+
+		if (z <= globe_min_visible_z) return {};
+		if (depth) *depth = z;
+
+		return pointi{_center.x + core::round(rx * _radius), _center.y - core::round(y * _radius)};
+	}
+
 	// The rasteriser's inner call: pixel offset from the centre, in units of the radius, to
 	// lat/lon in radians. False outside the disc.
 	bool unproject_unit(const double x, const double y, double& latitude_rad, double& longitude_rad) const
@@ -142,6 +161,19 @@ inline double globe_safe_longitude(const double degrees)
 	return degrees;
 }
 
+// A coordinate as the world unit vector globe_projection::project_world takes.
+inline std::array<double, 3> globe_world_vector(const gps_coordinate coordinate)
+{
+	const auto latitude = gps_coordinate::deg2rad(coordinate.latitude());
+	const auto longitude = gps_coordinate::deg2rad(coordinate.longitude());
+	const auto cos_latitude = std::cos(latitude);
+	return {cos_latitude * std::sin(longitude), std::sin(latitude), cos_latitude * std::cos(longitude)};
+}
+
+// The bundled world map ships as flat-toned land over transparent water. Composited once over deep
+// water, with the source's alpha as coverage so coastlines stay smooth, it is the map both globes wrap.
+core::const_surface_ptr globe_composite_water(const core::const_surface_ptr& map);
+
 // Longitude folded back into (-180, 180) so a view that keeps turning never accumulates a jump.
 inline double globe_wrap_longitude(double degrees)
 {
@@ -160,6 +192,66 @@ inline gps_coordinate globe_view_from_drag(const gps_coordinate view, const poin
 	const auto latitude = std::clamp(view.latitude() + drag.y * degrees_per_pixel, -90.0, 90.0);
 	const auto longitude = globe_wrap_longitude(view.longitude() - drag.x * degrees_per_pixel);
 	return {latitude, longitude};
+}
+
+// The view that puts a coordinate at a point of the disc, given as its offset from the centre in units
+// of the radius, y up. It keeps a grabbed point under the pointer through a drag, and the point under
+// the pointer where it was through a zoom. Two views can, and the one nearer `current` is answered. A
+// view is upright - north is never past the top - so a point that no upright view can put there gets
+// the nearest one that comes closest, and an offset off the disc, or a coordinate whose parallel cannot
+// reach it, gets nothing.
+inline std::optional<gps_coordinate> globe_view_placing(const gps_coordinate coordinate, const double unit_x,
+                                                        const double unit_y, const gps_coordinate current)
+{
+	const auto r2 = unit_x * unit_x + unit_y * unit_y;
+	if (!coordinate.is_valid() || r2 > 1.0) return {};
+
+	const auto latitude = gps_coordinate::deg2rad(coordinate.latitude());
+	const auto longitude = gps_coordinate::deg2rad(coordinate.longitude());
+	const auto cos_latitude = std::cos(latitude);
+	const auto world_y = std::sin(latitude);
+	const auto unit_z = std::sqrt(std::max(0.0, 1.0 - r2));
+
+	// How far right a point sits is cos(latitude) sin(longitude - view longitude), so the parallel has
+	// to be wide enough to reach it.
+	if (std::abs(unit_x) > cos_latitude + 1e-12) return {};
+
+	const auto turn = std::asin(std::clamp(unit_x / std::max(cos_latitude, 1e-12), -1.0, 1.0));
+
+	std::optional<gps_coordinate> best;
+	auto best_reach = std::numeric_limits<double>::max();
+	auto best_distance = std::numeric_limits<double>::max();
+
+	for (const auto delta : {turn, M_PI - turn})
+	{
+		// Turning by the view latitude carries (world_y, depth) onto (unit_y, unit_z).
+		const auto depth = cos_latitude * std::cos(delta);
+		auto view_latitude = std::atan2(unit_z, unit_y) - std::atan2(depth, world_y);
+		while (view_latitude > M_PI) view_latitude -= 2.0 * M_PI;
+		while (view_latitude <= -M_PI) view_latitude += 2.0 * M_PI;
+
+		// How far past a pole the view would have to tip; zero for every upright answer.
+		const auto reach = std::max(0.0, std::abs(view_latitude) - M_PI / 2.0);
+		const gps_coordinate candidate(gps_coordinate::rad2deg(std::clamp(view_latitude, -M_PI / 2.0, M_PI / 2.0)),
+		                               globe_wrap_longitude(gps_coordinate::rad2deg(longitude - delta)));
+		const auto distance = current.is_valid() ? current.distance_in_kilometers(candidate) : 0.0;
+
+		if (reach < best_reach - 1e-12 || (std::abs(reach - best_reach) <= 1e-12 && distance < best_distance))
+		{
+			best = candidate;
+			best_reach = reach;
+			best_distance = distance;
+		}
+	}
+
+	return best;
+}
+
+// The pixels around the equator at a radius, and the map tile level that holds as many: the level a
+// view at that radius reads at its centre.
+inline double globe_tile_level(const double radius)
+{
+	return std::log2(std::max(1.0, 2.0 * M_PI * radius / 256.0));
 }
 
 // The view a collection deserves on first sight: the count-weighted mean of its places as unit
@@ -197,6 +289,25 @@ public:
 	}
 };
 
+// Map tiles a globe drapes over its sphere where they are loaded: Web Mercator tiles, addressed as the
+// tile store addresses them. The renderer asks for the tile each part of the sphere needs and records
+// that it wanted it, whether or not it was there, so its owner knows what to fetch for the next frame.
+// It draws bands of rows side by side, so `tile` is asked from several threads at once; `want` is told
+// afterwards, on the thread that called render, in the order the rows were drawn.
+class globe_tile_source
+{
+public:
+	virtual ~globe_tile_source() = default;
+
+	// The deepest level worth reading; below zero, none.
+	virtual int max_level() const = 0;
+
+	// The decoded tile, or null while it is not loaded.
+	virtual core::const_surface_ptr tile(int z, int x, int y) const = 0;
+
+	virtual void want(int z, int x, int y) = 0;
+};
+
 // Wraps an equirectangular world map around the sphere, in software, into a surface the caller
 // uploads as a texture - so both draw backends show the same pixels. The source is resampled every
 // time the view moves, with the exact inverse evaluated only at segment endpoints; reduced copies
@@ -208,5 +319,14 @@ class globe_renderer
 public:
 	void set_source(const core::const_surface_ptr& source);
 	bool is_ready() const { return !_levels.empty(); }
-	bool render(core::surface& destination, const globe_projection& projection) const;
+	bool render(core::surface& destination, const globe_projection& projection) const
+	{
+		return render(destination, projection, nullptr);
+	}
+
+	// With tiles, each part of the sphere shows the tile of the level its pixels need; while that one is on
+	// its way, the tiles a level finer still held from before a zoom out, each over its quarter, and the
+	// nearest loaded ancestor over the rest; and the world map where no tile has arrived or none exists -
+	// past the Web Mercator latitudes, round the poles.
+	bool render(core::surface& destination, const globe_projection& projection, globe_tile_source* tiles) const;
 };

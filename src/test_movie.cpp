@@ -475,6 +475,15 @@ static void should_select_and_move_movie_clips()
 	project.select(0, false, true);
 	assert_equal(3, static_cast<int>(project.selected().size()), "ctrl on a selected clip removes it");
 
+	// Ctrl with Shift adds the run from the anchor to what is selected, as it does in every list.
+	project.select(4, false, false);
+	project.select(1, false, true);
+	project.select(2, true, true);
+	assert_equal(3, static_cast<int>(project.selected().size()), "ctrl with shift adds the run from the anchor");
+	assert_equal(true, project.is_selected(4) && project.is_selected(1) && project.is_selected(2),
+	             "keeping what was selected");
+	assert_equal(4, static_cast<int>(project.selected().back()), "and the set stays sorted");
+
 	// The last selected clip cannot be toggled away, or a command that acts on the selection would
 	// have nothing to act on while the strip still shows a focused clip.
 	project.select(1, false, false);
@@ -1251,6 +1260,109 @@ static void should_take_audio_files_into_a_movie()
 	             "and keeps it, beside a clip that plays the file's own");
 }
 
+// An audio clip as the probe measures one: its pictures moving at `rate`, and for a SID tune that repeats, where.
+static movie_clip make_audio(const std::string_view name, const double heard, const double rate,
+                             const double loop_end = 0)
+{
+	movie_clip c;
+	c.path = movie_test_path(name);
+	c.is_audio = true;
+	c.is_missing = false;
+	c.is_probed = true;
+	c.source_duration = heard;
+	c.end = heard;
+	c.extent = movie_audio_extent;
+	c.frame_rate = rate;
+	c.loop_end = loop_end;
+	return c;
+}
+
+// docs/movie.md#youtube-shorts: a Short stands upright at 1080 x 1920 whatever its sources, moves as smoothly as they
+// were made to, ends by three minutes, and a Short of one tune that repeats ends where it starts again, unfaded, so
+// YouTube's loop of it is seamless. It is the project's to say, in a line of its own, and an edit like any other.
+static void should_make_a_youtube_short()
+{
+	constexpr auto pal = 985248.0 / (63.0 * 312.0);
+	constexpr auto ntsc = 1022727.0 / (65.0 * 263.0);
+	const auto is_short = movie_kind::youtube_short;
+	const auto tune = make_audio("tune.sid", 26, pal);
+
+	assert_equal(true, derive_movie_output({make_hd("wide.mp4", 10)}, is_short).extent == movie_short_extent,
+	             "a Short is upright whatever its sources' shape");
+	assert_equal(50, derive_movie_output({tune}, is_short).frame_rate, "a PAL tune's monitor moves at 50");
+	assert_equal(60, derive_movie_output({make_audio("ntsc.sid", 20, ntsc)}, is_short).frame_rate,
+	             "and an NTSC one's at 60");
+	assert_equal(60, derive_movie_output({make_video("fast.mp4", 10, {1920, 1080}, 59.94)}, is_short).frame_rate,
+	             "a video at its own rate, up to 60");
+	assert_equal(30, derive_movie_output({make_hd("a.mp4", 10)}, is_short).frame_rate,
+	             "30 fps footage at 30, not each frame twice");
+	assert_equal(30, derive_movie_output({make_photo("a.jpg", 4, {4000, 3000})}, is_short).frame_rate,
+	             "photos alone at a steady 30");
+	assert_equal(movie_audio_frame_rate, derive_movie_output({tune}).frame_rate,
+	             "while a movie counts every audio clip at its steady rate");
+
+	// Longer than three minutes, a Short fades out at the end of them.
+	const std::vector long_one{make_video("long.mp4", 240, {1080, 1920}, 30)};
+	const auto cut = calc_movie_timing(long_one, is_short);
+	assert_equal(true, cut.cut && cut.duration == movie_short_max_seconds && cut.whole == 240.0,
+	             "a Short longer than three minutes ends inside them");
+	assert_equal(true, calc_movie_frame(long_one, cut, movie_short_max_seconds - 0.1).fade_to_black > 0.5,
+	             "fading out as it does");
+	assert_equal(false, calc_movie_timing(long_one).cut, "a movie is as long as its items");
+
+	auto captioned = long_one;
+	captioned[0].text = "A caption that would run past the end of a Short";
+	captioned.insert(captioned.begin(), make_video("before.mp4", 176, {1080, 1920}, 30));
+	const auto captions = calc_movie_timing(captioned, is_short).captions;
+	assert_equal(true,
+	             captions.size() == 1 && captions[0].start < movie_short_max_seconds &&
+	                 captions[0].end == movie_short_max_seconds,
+	             "a caption ends with the Short");
+
+	// One tune that repeats, from its start, loops seamlessly: no fade at either end.
+	auto looping = tune;
+	looping.loop_end = 23;
+	const auto seamless = calc_movie_timing({looping}, is_short);
+	assert_equal(true, movie_loops_seamlessly({looping}, is_short), "a Short of a tune that repeats loops seamlessly");
+	assert_equal(true, seamless.duration == 23.0 && !seamless.fades, "ending where the tune starts again, unfaded");
+	assert_equal(0.0, calc_movie_frame({looping}, seamless, 0.0).fade_to_black, "from its first frame");
+	assert_equal(0.0, calc_movie_frame({looping}, seamless, 22.99).fade_to_black, "to its last");
+
+	auto trimmed = looping;
+	trimmed.start = 2;
+	auto long_loop = looping;
+	long_loop.loop_end = 200;
+	long_loop.end = long_loop.source_duration = 203;
+	assert_equal(false, movie_loops_seamlessly({make_movie_text("Title"), looping}, is_short),
+	             "but not after a screen, which the loop would show again");
+	assert_equal(false, movie_loops_seamlessly({trimmed}, is_short), "nor one that starts part way in");
+	assert_equal(false, movie_loops_seamlessly({long_loop}, is_short), "nor one longer than a Short");
+	assert_equal(false, movie_loops_seamlessly({looping}, movie_kind::movie), "nor in a movie");
+	assert_equal(true, calc_movie_timing({looping}).fades && calc_movie_timing({looping}).duration == 26.0,
+	             "which plays the tune through and fades as it starts again");
+
+	// A line of its own, which reads back in either case; a project without it is a movie.
+	const auto text = write_dfv({looping}, movie_test_folder(), is_short);
+	assert_equal(true, core::contains(text, "\nshort\n"), "a Short's project says so");
+	assert_equal(true, read_dfv(text, movie_test_folder()).kind == is_short, "and reads back as one");
+	assert_equal(true, read_dfv("SHORT\nc - a.mp4\n", movie_test_folder()).kind == is_short, "in either case");
+	assert_equal(true, read_dfv("c - a.mp4\n", movie_test_folder()).kind == movie_kind::movie, "a movie otherwise");
+	const auto wordy = read_dfv("short now\nc - a.mp4\n", movie_test_folder());
+	assert_equal(true, wordy.problems.size() == 1 && wordy.kind == movie_kind::movie,
+	             "and a line that says more is one it cannot read");
+
+	// Making a movie a Short is an edit, undone as any other.
+	movie_project project;
+	project.reset({make_hd("a.mp4", 10)}, {});
+	project.kind(is_short);
+	assert_equal(true, project.is_modified() && project.output().extent == movie_short_extent,
+	             "a Short is a change to the movie");
+	project.undo();
+	assert_equal(true, project.kind() == movie_kind::movie && !project.is_modified(), "that Undo takes back");
+	project.kind(movie_kind::movie);
+	assert_equal(false, project.can_undo(), "and choosing what it already is changes nothing");
+}
+
 // A clip may name a sound file, written after it with a !, which plays in place of its own sound. Quoted
 // after the ! when its path has a space, and either before or after the caption.
 static void should_read_and_write_a_clips_sound_file()
@@ -1436,6 +1548,7 @@ void register_movie_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should write a movie project that reads back whatever it holds"s,
 	          should_write_a_project_that_reads_back_whatever_it_holds);
 	tests.add("Should take audio files into a movie"s, should_take_audio_files_into_a_movie);
+	tests.add("Should make a YouTube Short"s, should_make_a_youtube_short);
 	tests.add("Should read and write a movie clip's sound file"s, should_read_and_write_a_clips_sound_file);
 	tests.add("Should play a movie clip's sound file in place of its own"s,
 	          should_play_a_clips_sound_file_in_place_of_its_own);

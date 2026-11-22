@@ -210,9 +210,6 @@ msgstr "Otevře vytvořené položky.\nCtrl+kliknutí otevře upravené položky
 msgid "{} items close to {} in the collection."
 msgstr "{} položek ve sbírce poblíž {}."
 
-msgid "{} items close to {}"
-msgstr "{} položek poblíž {}"
-
 msgid "filter"
 msgstr "filtr"
 
@@ -249,9 +246,6 @@ msgstr "Další informace o správě sbírky."
 msgid "More information about metadata templates."
 msgstr "Další informace o šablonách metadat."
 
-msgid "Videos"
-msgstr "Videa"
-
 msgid "Your collection"
 msgstr "Vaše sbírka"
 
@@ -260,9 +254,6 @@ msgstr "Barva"
 
 msgid "Adjust date and time"
 msgstr "Opravit datum a čas"
-
-msgid "Advanced Search"
-msgstr "Pokročilé vyhledávání"
 
 msgid "Exit"
 msgstr "Ukončit"
@@ -1842,6 +1833,9 @@ msgstr ""
 msgid "Indexing"
 msgstr "Indexování"
 
+msgid "Indexing faces"
+msgstr "Indexování obličejů"
+
 msgid "Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works."
 msgstr "Diffractor načítá vaši sbírku, aby vyhledávání, duplicity a součty zůstaly úplné. Mezitím můžete dál procházet."
 
@@ -1935,6 +1929,9 @@ msgstr "Esc"
 
 msgid "Gets you out of full screen, zoom or other modes."
 msgstr "Dostane vás z režimu celé obrazovky, zoomu nebo jiných režimů."
+
+msgid "Closes the current view. In the normal Items view, exits Diffractor."
+msgstr "Zavře aktuální zobrazení. V běžném zobrazení Položky ukončí Diffractor."
 
 msgid "F1"
 msgstr "F1"
@@ -2749,44 +2746,14 @@ msgstr "Ukládání {}..."
 msgid "Failed to Scan."
 msgstr "Skenování se nezdařilo."
 
-msgid "All these terms"
-msgstr "Všechny tyto termíny"
-
 msgid "Christmas"
 msgstr "Vánoce"
-
-msgid "Search in the collection"
-msgstr "Hledat ve sbírce"
-
-msgid "From"
-msgstr "Od"
-
-msgid "Until"
-msgstr "Do"
-
-msgid "Search in a folder"
-msgstr "Hledat ve složce"
 
 msgid "Last 7 days"
 msgstr "Posledních 7 dní"
 
-msgid "Located within"
-msgstr "Nachází se uvnitř"
-
-msgid "None of these terms"
-msgstr "Žádný z těchto termínů"
-
 msgid "Search criteria or folder"
 msgstr "Kritéria hledání nebo složka"
-
-msgid "Photos"
-msgstr "Fotografie"
-
-msgid "Select term"
-msgstr "Vyberte termín"
-
-msgid "Search in subfolders"
-msgstr "Vyhledávání v podsložkách"
 
 msgid "Searching..."
 msgstr "Hledání..."
@@ -3135,12 +3102,6 @@ msgstr "ICC"
 
 msgid "press ctrl+space"
 msgstr "stiskněte ctrl+mezera"
-
-msgid "Scope"
-msgstr "Rozsah"
-
-msgid "Value"
-msgstr "Hodnota"
 
 msgid "Volume 200%"
 msgstr "Hlasitost 200 %"
@@ -3780,9 +3741,6 @@ msgstr "Přiblíží nebo oddálí zobrazený obrázek. Stisknutím 0 jej přizp
 msgid "Add folders to your collection (F6)"
 msgstr "Přidat složky do sbírky (F6)"
 
-msgid "Select at least one search criterion."
-msgstr "Vyberte alespoň jedno kritérium hledání."
-
 msgid "Could not check for updates. Check your internet connection and try again."
 msgstr "Nepodařilo se zkontrolovat aktualizace. Zkontrolujte připojení k internetu a zkuste to znovu."
 
@@ -3936,6 +3894,24 @@ msgstr "Vykresleno: {}."
 msgid "Rendering was canceled. Nothing was written."
 msgstr "Vykreslování bylo zrušeno. Nic nebylo zapsáno."
 
+msgid "YouTube Short: upright, three minutes at most"
+msgstr "YouTube Short: na výšku, nejvýše tři minuty"
+
+msgid "Its items run {}, so it fades out at three minutes."
+msgstr "Jeho položky trvají {}, proto se po třech minutách vytratí."
+
+msgid "It ends where the tune starts again, so YouTube loops it seamlessly."
+msgstr "Končí tam, kde skladba začíná znovu, takže ho YouTube plynule opakuje ve smyčce."
+
+msgid "Render each item as its own Short"
+msgstr "Vykreslit každou položku jako samostatný Short"
+
+msgid "Rendering Short {} of {}"
+msgstr "Vykreslování Shortu {} z {}"
+
+msgid "{} could not be rendered. {}"
+msgstr "{} se nepodařilo vykreslit. {}"
+
 msgid "No missing clip was found in that folder."
 msgstr "V dané složce nebyl nalezen žádný chybějící klip."
 
@@ -3969,6 +3945,18 @@ msgstr[0] "1 klip nemůže najít svůj zdrojový soubor."
 msgstr[1] "{count} klipy nemohou najít své zdrojové soubory."
 msgstr[2] "{count} klipů nemůže najít své zdrojové soubory."
 
+
+msgid "Rendered 1 Short."
+msgid_plural "Rendered {count} Shorts."
+msgstr[0] "Vykreslen 1 Short."
+msgstr[1] "Vykresleny {count} Shorty."
+msgstr[2] "Vykresleno {count} Shortů."
+
+msgid "Rendering was canceled after 1 Short."
+msgid_plural "Rendering was canceled after {count} Shorts."
+msgstr[0] "Vykreslování bylo zrušeno po 1 Shortu."
+msgstr[1] "Vykreslování bylo zrušeno po {count} Shortech."
+msgstr[2] "Vykreslování bylo zrušeno po {count} Shortech."
 
 msgid "Pattern"
 msgstr "Vzor"
@@ -4266,3 +4254,561 @@ msgstr "Snímková frekvence"
 
 msgid "Contents"
 msgstr "Obsah"
+
+msgid "Explore"
+msgstr "Prozkoumat"
+
+msgid "Reading the collection..."
+msgstr "Načítání sbírky..."
+
+msgid "Nothing in the collection says when or where it was taken yet."
+msgstr "Nic ve sbírce zatím neuvádí, kdy nebo kde bylo pořízeno."
+
+msgid "Drag to turn the globe and scroll to zoom. Click a place or a time to show its items."
+msgstr "Tažením otočíte glóbus, posouváním jej přiblížíte. Kliknutím na místo nebo čas zobrazíte jeho položky."
+
+msgid "Nothing in {}"
+msgstr "{}: nic"
+
+msgid "Nothing yet in {}"
+msgstr "{}: zatím nic"
+
+msgid "Taken from {} to {}"
+msgstr "Pořízeno od {} do {}"
+
+msgid "Taken in {}"
+msgstr "Pořízeno v roce {}"
+
+msgid "Click to show the items taken there that year."
+msgstr "Kliknutím zobrazíte položky pořízené tam v daném roce."
+
+msgid "Click to show the year's items."
+msgstr "Kliknutím zobrazíte položky z tohoto roku."
+
+msgid "Click to show the month's items."
+msgstr "Kliknutím zobrazíte položky z tohoto měsíce."
+
+msgid "Click to show the week's items, or drag up or down to take in more weeks."
+msgstr "Kliknutím zobrazíte položky z týdne, tažením nahoru nebo dolů zahrnete více týdnů."
+
+msgid "Release to show these weeks' items."
+msgstr "Uvolněním zobrazíte položky z těchto týdnů."
+
+msgid "Click to show the items taken there on this trip."
+msgstr "Kliknutím zobrazíte položky pořízené tam na této cestě."
+
+msgid "Nothing was taken then."
+msgstr "V té době nebylo nic pořízeno."
+
+msgid "1 trip away"
+msgid_plural "{count} trips away"
+msgstr[0] "1 výlet"
+msgstr[1] "{count} výlety"
+msgstr[2] "{count} výletů"
+
+msgid "1 item taken in {first-name}"
+msgid_plural "{count} items taken in {first-name}"
+msgstr[0] "1 položka pořízená – {first-name}"
+msgstr[1] "{count} položky pořízené – {first-name}"
+msgstr[2] "{count} položek pořízených – {first-name}"
+
+msgid "Show in Explore"
+msgstr "Zobrazit v Prozkoumat"
+
+msgid "Expand the globe into Explore: where the collection was taken, beside when."
+msgstr "Rozbalit glóbus do Prozkoumat: kde a kdy byla sbírka pořízena."
+
+msgid "Recent changes"
+msgstr "Nedávné změny"
+
+msgid "What you have changed since Diffractor started. Pick a change to see its items again, selected, wherever they are now."
+msgstr "Co jste změnili od spuštění Diffractoru. Vyberte změnu a znovu uvidíte její položky, vybrané, ať jsou teď kdekoli."
+
+msgid "Faces"
+msgstr "Obličeje"
+
+msgid "Save names to files"
+msgstr "Uložit jména do souborů"
+
+msgid "Export face data"
+msgstr "Exportovat data obličejů"
+
+msgid "Import face data"
+msgstr "Importovat data obličejů"
+
+msgid "Confirm {}"
+msgstr "Potvrdit: {}"
+
+msgid "Not {}"
+msgstr "To není {}"
+
+msgid "Confirm all"
+msgstr "Potvrdit vše"
+
+msgid "Name all"
+msgstr "Pojmenovat vše"
+
+msgid "Hide all"
+msgstr "Skrýt vše"
+
+msgid "Confirm every suggested face here as this person. You are asked first."
+msgstr "Potvrdí všechny zde navržené obličeje jako tuto osobu. Nejprve budete dotázáni."
+
+msgid "Name every face in this group as one person: choose a name, or type a new one."
+msgstr "Pojmenuje všechny obličeje v této skupině jako jednu osobu: vyberte jméno nebo zadejte nové."
+
+msgid "Hide every face in this group from review. Hidden lists them, and Show again brings them back."
+msgstr "Skryje všechny obličeje této skupiny z kontroly. Najdete je ve Skrytých a příkaz Znovu zobrazit je vrátí."
+
+msgid "Move to {}"
+msgstr "Přesunout do {}"
+
+msgid "This name comes from picture files. Renaming it changes those files."
+msgstr "Toto jméno pochází ze souborů obrázků. Přejmenováním se tyto soubory změní."
+
+msgid "Last placement: {} in {}."
+msgstr "Poslední zařazení: {} ve skupině {}."
+
+msgid "No people match this filter."
+msgstr "Tomuto filtru neodpovídá žádná osoba."
+
+msgid "Names in your photos"
+msgstr "Jména ve vašich fotografiích"
+
+msgid "Comparing two files"
+msgstr "Porovnání dvou souborů"
+
+msgid "Selection summary"
+msgstr "Přehled výběru"
+
+msgid "Choose a date or trip to open its items."
+msgstr "Výběrem data nebo cesty otevřete příslušné položky."
+
+msgid "Hidden"
+msgstr "Skryté"
+
+msgid "Click to rename."
+msgstr "Kliknutím přejmenujete."
+
+msgid "No faces have been found yet."
+msgstr "Zatím nebyly nalezeny žádné obličeje."
+
+msgid "That name belongs to someone else. Choose a different name."
+msgstr "Toto jméno patří někomu jinému. Zvolte jiné jméno."
+
+msgid "Names will be written into {}: {} and {}. Everything else the files hold is kept."
+msgstr "Jména se zapíšou do souborů (celkem {}): {} a {}. Vše ostatní v souborech zůstane zachováno."
+
+msgid "Names will be written into {}: {}. Everything else the files hold is kept."
+msgstr "Jména se zapíšou do souborů (celkem {}): {}. Vše ostatní v souborech zůstane zachováno."
+
+msgid "Diffractor face data"
+msgstr "Data obličejů Diffractoru"
+
+msgid "{} and {} were saved to {}."
+msgstr "Uloženo: {} a {} do {}."
+
+msgid "{} could not be written."
+msgstr "{} nelze zapsat."
+
+msgid "{} and {} were read from {}."
+msgstr "Načteno: {} a {} z {}."
+
+msgid "{} could not be read: {}."
+msgstr "{} nelze načíst: {}."
+
+msgid "Click to show their pictures."
+msgstr "Kliknutím zobrazíte snímky této osoby."
+
+msgid "Show in face view"
+msgstr "Zobrazit v přehledu obličejů"
+
+msgid "Name face"
+msgstr "Pojmenovat obličej"
+
+msgid "Choose an existing name or enter a new one."
+msgstr "Vyberte stávající jméno nebo zadejte nové."
+
+msgid "Name as someone else"
+msgstr "Pojmenovat jako někoho jiného"
+
+msgid "Choose who this face is instead, or enter a new name."
+msgstr "Vyberte, komu tento obličej ve skutečnosti patří, nebo zadejte nové jméno."
+
+msgid "New person: {}"
+msgstr "Nová osoba: {}"
+
+msgid "Go to the next picture afterwards"
+msgstr "Poté přejít na další fotografii"
+
+msgid "Open or select one picture."
+msgstr "Otevřete nebo vyberte jednu fotografii."
+
+msgid "Turn on face search in the Faces view to name faces."
+msgstr "Chcete-li pojmenovávat obličeje, zapněte vyhledávání obličejů v zobrazení Obličeje."
+
+msgid "No face was found in this picture."
+msgstr "Na této fotografii nebyl nalezen žádný obličej."
+
+msgid "This picture has more than one face. Point at the one to name."
+msgstr "Na této fotografii je více obličejů. Najeďte myší na ten, který chcete pojmenovat."
+
+msgid "The faces found in {} will be removed and face search turned off. Names in your files are kept."
+msgstr "Obličeje nalezené ve snímcích (celkem {}) budou odstraněny a hledání obličejů bude vypnuto. Jména ve vašich souborech zůstanou zachována."
+
+msgid "The faces found in your pictures will be removed and face search turned off. Names in your files are kept."
+msgstr "Obličeje nalezené ve vašich snímcích budou odstraněny a hledání obličejů bude vypnuto. Jména ve vašich souborech zůstanou zachována."
+
+msgid "1 face"
+msgid_plural "{count} faces"
+msgstr[0] "1 obličej"
+msgstr[1] "{count} obličeje"
+msgstr[2] "{count} obličejů"
+
+msgid "1 person"
+msgid_plural "{count} people"
+msgstr[0] "1 osoba"
+msgstr[1] "{count} osoby"
+msgstr[2] "{count} osob"
+
+msgid "1 decision"
+msgid_plural "{count} decisions"
+msgstr[0] "1 rozhodnutí"
+msgstr[1] "{count} rozhodnutí"
+msgstr[2] "{count} rozhodnutí"
+
+msgid "1 suggested"
+msgid_plural "{count} suggested"
+msgstr[0] "1 navržený"
+msgstr[1] "{count} navržené"
+msgstr[2] "{count} navržených"
+
+msgid "1 face named"
+msgid_plural "{count} faces named"
+msgstr[0] "1 pojmenovaný obličej"
+msgstr[1] "{count} pojmenované obličeje"
+msgstr[2] "{count} pojmenovaných obličejů"
+
+msgid "1 name taken out"
+msgid_plural "{count} names taken out"
+msgstr[0] "1 odebrané jméno"
+msgstr[1] "{count} odebraná jména"
+msgstr[2] "{count} odebraných jmen"
+
+msgid "and 1 more picture"
+msgid_plural "and {count} more pictures"
+msgstr[0] "a ještě 1 snímek"
+msgstr[1] "a ještě {count} snímky"
+msgstr[2] "a ještě {count} snímků"
+
+msgid "Hide"
+msgstr "Skrýt"
+
+msgid "Show again"
+msgstr "Znovu zobrazit"
+
+msgid "Person search"
+msgstr "Hledání osob"
+
+msgid "Open in folder"
+msgstr "Otevřít ve složce"
+
+msgid "Open pictures with a strong match for this face in Items."
+msgstr "Otevře snímky s velmi podobným obličejem v zobrazení Položky."
+
+msgid "Find pictures of {} in Items."
+msgstr "Najde snímky osoby {} v zobrazení Položky."
+
+msgid "Select one face that can be compared."
+msgstr "Vyberte jeden obličej, který lze porovnat."
+
+msgid "Select one face to open its picture in Items."
+msgstr "Vyberte jeden obličej a otevřete jeho snímek v zobrazení Položky."
+
+msgid "Suggested"
+msgstr "Navrhované"
+
+msgid "Similar faces"
+msgstr "Podobné obličeje"
+
+msgid "Unique faces"
+msgstr "Jedinečné obličeje"
+
+msgid "Small or unclear faces"
+msgstr "Malé nebo nezřetelné obličeje"
+
+msgid "Finding faces..."
+msgstr "Hledání obličejů..."
+
+msgid "Filter people"
+msgstr "Filtrovat osoby"
+
+msgid "Clear filter"
+msgstr "Zrušit filtr"
+
+msgid "Find similar faces"
+msgstr "Najít podobné obličeje"
+
+msgid "Scan for faces"
+msgstr "Vyhledávat obličeje"
+
+msgid "Scan for faces in photos"
+msgstr "Vyhledávat obličeje ve snímcích"
+
+msgid "Scan for faces in videos"
+msgstr "Vyhledávat obličeje ve videích"
+
+msgid "Faces are found and compared on this computer. Nothing is uploaded."
+msgstr "Obličeje se hledají a porovnávají na tomto počítači. Nic se nenahrává."
+
+msgid "Every picture in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused."
+msgstr "Každý snímek ve sbírce se znovu přečte – celkem {}, což na tomto počítači potrvá asi {}. Prohledávání lze pozastavit."
+
+msgid "Every video in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused."
+msgstr "Každé video ve sbírce se znovu přečte – celkem {}, což na tomto počítači potrvá asi {}. Prohledávání lze pozastavit."
+
+msgid "Every picture and video in the collection is read once more - {} and {}, which takes about {} on this computer. The scan can be paused."
+msgstr "Každý snímek a každé video ve sbírce se znovu přečte – celkem {} a {}, což na tomto počítači potrvá asi {}. Prohledávání lze pozastavit."
+
+msgid "Face scanning is off."
+msgstr "Vyhledávání obličejů ve snímcích je vypnuté."
+
+msgid "Pause"
+msgstr "Pozastavit"
+
+msgid "Resume"
+msgstr "Pokračovat"
+
+msgid "Paused"
+msgstr "Pozastaveno"
+
+msgid "Paused after reading {} of {}."
+msgstr "Pozastaveno. Přečteno: {} (celkem {})."
+
+msgid "{} of {} read, {} found. About {} left."
+msgstr "Přečteno: {} (celkem {}), nalezeno: {}. Zbývá asi {}."
+
+msgid "All {} read, {} found."
+msgstr "Přečteno vše (celkem {}), nalezeno: {}."
+
+msgid "1 picture could not be read."
+msgid_plural "{count} pictures could not be read."
+msgstr[0] "1 snímek se nepodařilo přečíst."
+msgstr[1] "{count} snímky se nepodařilo přečíst."
+msgstr[2] "{count} snímků se nepodařilo přečíst."
+
+msgid "1 file could not be read."
+msgid_plural "{count} files could not be read."
+msgstr[0] "1 soubor se nepodařilo přečíst."
+msgstr[1] "{count} soubory se nepodařilo přečíst."
+msgstr[2] "{count} souborů se nepodařilo přečíst."
+
+msgid "1 picture is on a drive or folder that isn't available."
+msgid_plural "{count} pictures are on drives or folders that aren't available."
+msgstr[0] "1 snímek je na jednotce nebo ve složce, která není dostupná."
+msgstr[1] "{count} snímky jsou na jednotkách nebo ve složkách, které nejsou dostupné."
+msgstr[2] "{count} snímků je na jednotkách nebo ve složkách, které nejsou dostupné."
+
+msgid "1 file is on a drive or folder that isn't available."
+msgid_plural "{count} files are on drives or folders that aren't available."
+msgstr[0] "1 soubor je na jednotce nebo ve složce, která není dostupná."
+msgstr[1] "{count} soubory jsou na jednotkách nebo ve složkách, které nejsou dostupné."
+msgstr[2] "{count} souborů je na jednotkách nebo ve složkách, které nejsou dostupné."
+
+msgid "Delete face data"
+msgstr "Smazat data obličejů"
+
+msgid "{} will be renamed {} in {}."
+msgstr "Osoba {} bude přejmenována na {} (celkem {})."
+
+msgid "{0} is also named in {1}. Change the name there to {2} too?"
+msgstr "Jméno {0} je uvedeno také v souborech (celkem {1}). Změnit ho i tam na {2}?"
+
+msgid "Change in files"
+msgstr "Změnit v souborech"
+
+msgid "Only in Diffractor"
+msgstr "Jen v programu Diffractor"
+
+msgid "Phone or camera"
+msgstr "Telefon nebo fotoaparát"
+
+msgid "{} (phone or camera)"
+msgstr "{} (telefon nebo fotoaparát)"
+
+msgid "Reading {}..."
+msgstr "Čtení {}..."
+
+msgid "Copying from {}: {} of {}"
+msgstr "Kopírování z {}: {} z {}"
+
+msgid "No photos or videos were found on {}. If it is locked, unlock it, and if it asks, allow this computer to access its files."
+msgstr "Na zařízení {} nebyly nalezeny žádné fotografie ani videa. Pokud je zamčené, odemkněte ho, a pokud se zeptá, povolte tomuto počítači přístup k jeho souborům."
+
+msgid "There is not enough free space to copy from {}: {} more is needed."
+msgstr "Není dostatek volného místa pro kopírování z {}: je potřeba ještě {}."
+
+msgid "Photos and videos are copied from a phone or camera: it keeps its own."
+msgstr "Fotografie a videa se z telefonu nebo fotoaparátu kopírují: zařízení si je ponechá."
+
+msgid "Person"
+msgstr "Osoba"
+
+msgid "1 picture"
+msgid_plural "{count} pictures"
+msgstr[0] "1 snímek"
+msgstr[1] "{count} snímky"
+msgstr[2] "{count} snímků"
+
+msgid "1 video"
+msgid_plural "{count} videos"
+msgstr[0] "1 video"
+msgstr[1] "{count} videa"
+msgstr[2] "{count} videí"
+
+msgid "1 picture or video"
+msgid_plural "{count} pictures and videos"
+msgstr[0] "1 snímek nebo video"
+msgstr[1] "{count} snímky a videa"
+msgstr[2] "{count} snímků a videí"
+
+msgid "1 minute"
+msgid_plural "{count} minutes"
+msgstr[0] "1 minuta"
+msgstr[1] "{count} minuty"
+msgstr[2] "{count} minut"
+
+msgid "1 hour"
+msgid_plural "{count} hours"
+msgstr[0] "1 hodina"
+msgstr[1] "{count} hodiny"
+msgstr[2] "{count} hodin"
+
+msgid "1 face selected"
+msgid_plural "{count} faces selected"
+msgstr[0] "1 vybraný obličej"
+msgstr[1] "{count} vybrané obličeje"
+msgstr[2] "{count} vybraných obličejů"
+
+msgid "{first-name} could not be read from the device."
+msgid_plural "{first-name} and {other} other files could not be read from the device."
+msgstr[0] "{first-name} nelze ze zařízení přečíst."
+msgstr[1] "{first-name} a {other} další soubory nelze ze zařízení přečíst."
+msgstr[2] "{first-name} a {other} dalších souborů nelze ze zařízení přečíst."
+
+msgid "Confirm that the selected faces belong to the indicated person. This changes the face book, not the pictures."
+msgstr "Potvrďte, že vybrané tváře patří uvedené osobě. Změní se záznamy o tvářích, nikoli fotografie."
+
+msgid "Restore the face book to before this last change. The picture files are not changed."
+msgstr "Obnoví záznamy o tvářích do stavu před poslední změnou. Soubory fotografií se nezmění."
+
+msgid "People"
+msgstr "Lidé"
+
+msgid "Confirmed"
+msgstr "Potvrzené"
+
+msgid "Name faces"
+msgstr "Pojmenovat tváře"
+
+msgid "Person name"
+msgstr "Jméno osoby"
+
+msgid "Not this person"
+msgstr "Není to tato osoba"
+
+msgid "Confirm"
+msgstr "Potvrdit"
+
+msgid "Name a face in Unknown to start a person. Confirm suggestions, reject a wrong match, or hide faces you do not want to review."
+msgstr "Pojmenujte neznámou tvář a vytvořte osobu. Návrhy můžete potvrdit nebo odmítnout a tváře, které vás nezajímají, skrýt."
+
+msgid "As you confirm faces, Diffractor learns and gets better at making suggestions."
+msgstr "Jak potvrzujete obličeje, Diffractor se učí a jeho návrhy se zlepšují."
+
+msgid "Never suggest this person for these faces again. They can still be named as someone else."
+msgstr "Tato osoba už nebude pro vybrané tváře navrhována. Můžete je pojmenovat jinak."
+
+msgid "Show these faces again without changing their names or rejections."
+msgstr "Znovu zobrazí tyto tváře a zachová jejich jména i odmítnuté návrhy."
+
+msgid "Select one named person."
+msgstr "Vyberte jednu pojmenovanou osobu."
+
+msgid "Backup"
+msgstr "Záloha"
+
+msgid "Export face data saves the people you named and your decisions to a file. Import face data reads one back, on this PC or another."
+msgstr "Export dat obličejů uloží pojmenované osoby a vaše rozhodnutí do souboru. Import dat obličejů je načte zpět, na tomto počítači nebo na jiném."
+
+msgid "Names you confirm stay in Diffractor until you save them. Saving writes them into the photos, where other photo apps can read them."
+msgstr "Potvrzená jména zůstávají v programu Diffractor, dokud je neuložíte. Uložením se zapíšou do fotografií, kde je mohou číst i jiné fotografické aplikace."
+
+msgid "Scan for faces to name people and review suggested matches."
+msgstr "Vyhledejte tváře, pojmenujte osoby a zkontrolujte návrhy."
+
+msgid "Your face data is kept in {}."
+msgstr "Údaje o tvářích jsou uloženy v {}."
+
+msgid "Face data cannot be saved: the database could not be opened."
+msgstr "Údaje o tvářích nelze uložit: databázi se nepodařilo otevřít."
+
+msgid "Your latest face changes could not be saved yet. Diffractor keeps trying; Export face data keeps a copy now."
+msgstr "Poslední změny obličejů se zatím nepodařilo uložit. Diffractor to zkouší dál; Export dat obličejů uloží kopii hned."
+
+msgid "Another Diffractor window is changing faces, so this window only shows them. It can change them once that window closes."
+msgstr "Obličeje právě mění jiné okno programu Diffractor, takže toto okno je jen zobrazuje. Měnit je bude moci, až se tamto okno zavře."
+
+msgid "Read only: another Diffractor window is changing faces."
+msgstr "Jen pro čtení: obličeje mění jiné okno programu Diffractor."
+
+msgid "Face changes are not saved yet."
+msgstr "Změny obličejů zatím nejsou uložené."
+
+msgid "There are no face names to write."
+msgstr "Žádná jména k zápisu."
+
+msgid "Names and review decisions stay on this computer unless you export them."
+msgstr "Jména a vaše rozhodnutí zůstanou na tomto počítači, pokud je neexportujete."
+
+msgid "Also forget names and review decisions made in Diffractor"
+msgstr "Zapomenout také jména a rozhodnutí zadaná v programu Diffractor"
+
+msgid "Forget names and decisions?"
+msgstr "Zapomenout jména a rozhodnutí?"
+
+msgid "{} and {} made in Diffractor will be forgotten. This cannot be undone: export face data first if you might want them back. Names saved in your photos are kept."
+msgstr "Zapomenou se údaje z programu Diffractor: {} a {}. Tuto akci nelze vrátit zpět: pokud byste je mohli chtít zpět, nejprve exportujte data obličejů. Jména uložená ve vašich fotografiích zůstanou zachována."
+
+msgid "Forget"
+msgstr "Zapomenout"
+
+msgid "Enter a new name for {}."
+msgstr "Zadejte nové jméno pro {}."
+
+msgid "Updating suggestions..."
+msgstr "Aktualizují se návrhy…"
+
+msgid "Hide the selected faces from review. Similar faces stay visible. Choose Show again to bring them back."
+msgstr "Skryje vybrané tváře. Podobné tváře zůstanou viditelné. Volbou Znovu zobrazit je vrátíte."
+
+msgid "Combine people?"
+msgstr "Sloučit osoby?"
+
+msgid "A person named {1} already exists. Combine {0} with {1}? This changes only the face book, not your photos."
+msgstr "Osoba jménem {1} již existuje. Sloučit osobu {0} s osobou {1}? Změní se pouze záznamy o tvářích, ne fotografie."
+
+msgid "Combined {} with {}."
+msgstr "Osoby {} a {} byly sloučeny."
+
+msgid "These people have changed. Review their names and try again."
+msgstr "Tyto osoby se změnily. Zkontrolujte jejich jména a zkuste to znovu."
+
+msgid "Face CSVs contain names and biometric face signatures, not filenames. Share only with people you trust."
+msgstr "Soubor CSV obsahuje jména a biometrické podpisy tváří, nikoli názvy souborů. Sdílejte jej jen s lidmi, kterým důvěřujete."
+
+msgid "Face decisions without an unambiguous signature were not exported: {}."
+msgstr "Počet neexportovaných rozhodnutí bez jednoznačného podpisu: {}."
+
+msgid "The face book is updating. Wait for recognition to finish, then export again."
+msgstr "Záznamy o tvářích se aktualizují. Počkejte na dokončení rozpoznávání a export zopakujte."

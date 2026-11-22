@@ -194,9 +194,6 @@ msgstr "Oluşturulan öğeleri açar.\nCtrl+tıklama değiştirilen öğeleri a�
 msgid "{} items close to {} in the collection."
 msgstr "Koleksiyonda {} yakınında {} öğe."
 
-msgid "{} items close to {}"
-msgstr "{} öğe: {} yakınında"
-
 msgid "filter"
 msgstr "filtre"
 
@@ -227,9 +224,6 @@ msgstr "Koleksiyon yönetimi hakkında daha fazla bilgi."
 msgid "More information about metadata templates."
 msgstr "Meta veri şablonları hakkında daha fazla bilgi."
 
-msgid "Videos"
-msgstr "Videolar"
-
 msgid "Your collection"
 msgstr "Koleksiyonunuz"
 
@@ -238,9 +232,6 @@ msgstr "Renk"
 
 msgid "Adjust date and time"
 msgstr "Tarih ve saati ayarlayın"
-
-msgid "Advanced Search"
-msgstr "Gelişmiş Arama"
 
 msgid "Exit"
 msgstr "Çıkış"
@@ -1778,6 +1769,9 @@ msgstr "Şu anda dizin veritabanı {} boyutundadır ve {} öğeden meta veriler 
 msgid "Indexing"
 msgstr "İndeksleme"
 
+msgid "Indexing faces"
+msgstr "Yüzler dizine ekleniyor"
+
 msgid "Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works."
 msgstr "Arama, yinelenen kopyalar ve toplamlar eksiksiz kalsın diye Diffractor koleksiyonunuzu okuyor. Bu sırada göz atmaya devam edebilirsiniz."
 
@@ -1870,6 +1864,9 @@ msgstr "Esc"
 
 msgid "Gets you out of full screen, zoom or other modes."
 msgstr "Sizi tam ekran, yakınlaştırma veya diğer modlardan çıkarır."
+
+msgid "Closes the current view. In the normal Items view, exits Diffractor."
+msgstr "Geçerli görünümü kapatır. Normal Öğeler görünümünde Diffractor'dan çıkar."
 
 msgid "F1"
 msgstr "F1"
@@ -2663,44 +2660,14 @@ msgstr "{} kaydediliyor..."
 msgid "Failed to Scan."
 msgstr "Tarama Başarısız."
 
-msgid "All these terms"
-msgstr "Bütün bu terimler"
-
 msgid "Christmas"
 msgstr "Noel"
-
-msgid "Search in the collection"
-msgstr "Koleksiyonda ara"
-
-msgid "From"
-msgstr "Başlangıç"
-
-msgid "Until"
-msgstr "Bitiş"
-
-msgid "Search in a folder"
-msgstr "Bir klasörde ara"
 
 msgid "Last 7 days"
 msgstr "Son 7 gün"
 
-msgid "Located within"
-msgstr "İçinde yer alan"
-
-msgid "None of these terms"
-msgstr "Bu terimlerin hiçbiri"
-
 msgid "Search criteria or folder"
 msgstr "Arama ölçütleri veya klasör"
-
-msgid "Photos"
-msgstr "Fotoğraflar"
-
-msgid "Select term"
-msgstr "Terim seçin"
-
-msgid "Search in subfolders"
-msgstr "Alt klasörlerde ara"
 
 msgid "Searching..."
 msgstr "Aranıyor..."
@@ -3037,12 +3004,6 @@ msgstr "ICC"
 
 msgid "press ctrl+space"
 msgstr "ctrl+boşluk tuşuna basın"
-
-msgid "Scope"
-msgstr "Kapsam"
-
-msgid "Value"
-msgstr "Değer"
 
 msgid "Volume 200%"
 msgstr "Ses %200"
@@ -3632,9 +3593,6 @@ msgstr "Görüntülenen resmi yakınlaştırır veya uzaklaştırır. Pencereye 
 msgid "Add folders to your collection (F6)"
 msgstr "Koleksiyonunuza klasör ekleyin (F6)"
 
-msgid "Select at least one search criterion."
-msgstr "En az bir arama ölçütü seçin."
-
 msgid "Could not check for updates. Check your internet connection and try again."
 msgstr "Güncellemeler denetlenemedi. İnternet bağlantınızı kontrol edip yeniden deneyin."
 
@@ -3788,6 +3746,24 @@ msgstr "{} işlendi."
 msgid "Rendering was canceled. Nothing was written."
 msgstr "İşleme iptal edildi. Hiçbir şey yazılmadı."
 
+msgid "YouTube Short: upright, three minutes at most"
+msgstr "YouTube Short: dikey, en fazla üç dakika"
+
+msgid "Its items run {}, so it fades out at three minutes."
+msgstr "Öğeleri {} sürüyor, bu yüzden üç dakikada kararak biter."
+
+msgid "It ends where the tune starts again, so YouTube loops it seamlessly."
+msgstr "Ezginin yeniden başladığı yerde biter, böylece YouTube onu kesintisiz döngüye alır."
+
+msgid "Render each item as its own Short"
+msgstr "Her öğeyi ayrı bir Short olarak işle"
+
+msgid "Rendering Short {} of {}"
+msgstr "Short {} / {} işleniyor"
+
+msgid "{} could not be rendered. {}"
+msgstr "{} işlenemedi. {}"
+
 msgid "No missing clip was found in that folder."
 msgstr "Bu klasörde eksik klip bulunamadı."
 
@@ -3819,6 +3795,16 @@ msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "1 klip kaynak dosyasını bulamıyor."
 msgstr[1] "{count} klip kaynak dosyalarını bulamıyor."
 
+
+msgid "Rendered 1 Short."
+msgid_plural "Rendered {count} Shorts."
+msgstr[0] "1 Short işlendi."
+msgstr[1] "{count} Short işlendi."
+
+msgid "Rendering was canceled after 1 Short."
+msgid_plural "Rendering was canceled after {count} Shorts."
+msgstr[0] "İşleme 1 Short'tan sonra iptal edildi."
+msgstr[1] "İşleme {count} Short'tan sonra iptal edildi."
 
 msgid "Pattern"
 msgstr "Desen"
@@ -4115,3 +4101,541 @@ msgstr "Kare hızı"
 
 msgid "Contents"
 msgstr "İçerik"
+
+msgid "Explore"
+msgstr "Keşfet"
+
+msgid "Reading the collection..."
+msgstr "Koleksiyon okunuyor..."
+
+msgid "Nothing in the collection says when or where it was taken yet."
+msgstr "Koleksiyondaki hiçbir öğe henüz ne zaman veya nerede çekildiğini belirtmiyor."
+
+msgid "Drag to turn the globe and scroll to zoom. Click a place or a time to show its items."
+msgstr "Küreyi döndürmek için sürükleyin, yakınlaştırmak için kaydırın. Öğelerini göstermek için bir yere veya zamana tıklayın."
+
+msgid "Nothing in {}"
+msgstr "{}: hiçbir şey yok"
+
+msgid "Nothing yet in {}"
+msgstr "{}: henüz hiçbir şey yok"
+
+msgid "Taken from {} to {}"
+msgstr "{} ile {} arasında çekildi"
+
+msgid "Taken in {}"
+msgstr "{} yılında çekildi"
+
+msgid "Click to show the items taken there that year."
+msgstr "O yıl orada çekilen öğeleri göstermek için tıklayın."
+
+msgid "Click to show the year's items."
+msgstr "Yılın öğelerini göstermek için tıklayın."
+
+msgid "Click to show the month's items."
+msgstr "Ayın öğelerini göstermek için tıklayın."
+
+msgid "Click to show the week's items, or drag up or down to take in more weeks."
+msgstr "Haftanın öğelerini göstermek için tıklayın veya daha fazla hafta eklemek için yukarı ya da aşağı sürükleyin."
+
+msgid "Release to show these weeks' items."
+msgstr "Bu haftaların öğelerini göstermek için bırakın."
+
+msgid "Click to show the items taken there on this trip."
+msgstr "Bu gezide orada çekilen öğeleri göstermek için tıklayın."
+
+msgid "Nothing was taken then."
+msgstr "O zaman hiçbir şey çekilmedi."
+
+msgid "1 trip away"
+msgid_plural "{count} trips away"
+msgstr[0] "1 gezi"
+msgstr[1] "{count} gezi"
+
+msgid "1 item taken in {first-name}"
+msgid_plural "{count} items taken in {first-name}"
+msgstr[0] "{first-name} konumunda çekilen 1 öğe"
+msgstr[1] "{first-name} konumunda çekilen {count} öğe"
+
+msgid "Show in Explore"
+msgstr "Keşfet'te göster"
+
+msgid "Expand the globe into Explore: where the collection was taken, beside when."
+msgstr "Küreyi Keşfet'e genişlet: koleksiyonun nerede ve ne zaman çekildiği."
+
+msgid "Recent changes"
+msgstr "Son değişiklikler"
+
+msgid "What you have changed since Diffractor started. Pick a change to see its items again, selected, wherever they are now."
+msgstr "Diffractor başladığından beri değiştirdikleriniz. Öğelerini, şu an nerede olurlarsa olsunlar, seçili olarak yeniden görmek için bir değişiklik seçin."
+
+msgid "Faces"
+msgstr "Yüzler"
+
+msgid "Save names to files"
+msgstr "Adları dosyalara kaydet"
+
+msgid "Export face data"
+msgstr "Yüz verilerini dışa aktar"
+
+msgid "Import face data"
+msgstr "Yüz verilerini içe aktar"
+
+msgid "Confirm {}"
+msgstr "{} olarak doğrula"
+
+msgid "Not {}"
+msgstr "{} değil"
+
+msgid "Confirm all"
+msgstr "Tümünü doğrula"
+
+msgid "Name all"
+msgstr "Tümünü adlandır"
+
+msgid "Hide all"
+msgstr "Tümünü gizle"
+
+msgid "Confirm every suggested face here as this person. You are asked first."
+msgstr "Buradaki tüm önerilen yüzleri bu kişi olarak doğrular. Önce size sorulur."
+
+msgid "Name every face in this group as one person: choose a name, or type a new one."
+msgstr "Bu gruptaki tüm yüzleri tek bir kişi olarak adlandırır: bir ad seçin veya yeni bir ad yazın."
+
+msgid "Hide every face in this group from review. Hidden lists them, and Show again brings them back."
+msgstr "Bu gruptaki tüm yüzleri incelemeden gizler. Gizlenenler bölümünde listelenirler; Yeniden göster onları geri getirir."
+
+msgid "Move to {}"
+msgstr "{} grubuna taşı"
+
+msgid "This name comes from picture files. Renaming it changes those files."
+msgstr "Bu ad resim dosyalarından gelir. Adı değiştirmek bu dosyaları da değiştirir."
+
+msgid "Last placement: {} in {}."
+msgstr "Son yerleştirme: {} → {}."
+
+msgid "No people match this filter."
+msgstr "Bu filtreyle eşleşen kişi yok."
+
+msgid "Names in your photos"
+msgstr "Fotoğraflarınızdaki adlar"
+
+msgid "Comparing two files"
+msgstr "İki dosya karşılaştırılıyor"
+
+msgid "Selection summary"
+msgstr "Seçim özeti"
+
+msgid "Choose a date or trip to open its items."
+msgstr "İlgili öğeleri açmak için bir tarih veya gezi seçin."
+
+msgid "Hidden"
+msgstr "Gizlenenler"
+
+msgid "Click to rename."
+msgstr "Yeniden adlandırmak için tıklayın."
+
+msgid "No faces have been found yet."
+msgstr "Henüz hiç yüz bulunamadı."
+
+msgid "That name belongs to someone else. Choose a different name."
+msgstr "Bu ad başka bir kişiye ait. Farklı bir ad seçin."
+
+msgid "Names will be written into {}: {} and {}. Everything else the files hold is kept."
+msgstr "Yazılacak resimler: {}. Değişiklikler: {} ve {}. Dosyalardaki diğer her şey korunur."
+
+msgid "Names will be written into {}: {}. Everything else the files hold is kept."
+msgstr "Yazılacak resimler: {}. Değişiklik: {}. Dosyalardaki diğer her şey korunur."
+
+msgid "Diffractor face data"
+msgstr "Diffractor yüz verileri"
+
+msgid "{} and {} were saved to {}."
+msgstr "{} ve {} şuraya kaydedildi: {}."
+
+msgid "{} could not be written."
+msgstr "{} yazılamadı."
+
+msgid "{} and {} were read from {}."
+msgstr "{} ve {} şuradan okundu: {}."
+
+msgid "{} could not be read: {}."
+msgstr "{} okunamadı: {}."
+
+msgid "Click to show their pictures."
+msgstr "Bu kişinin resimlerini göstermek için tıklayın."
+
+msgid "Show in face view"
+msgstr "Yüzler görünümünde göster"
+
+msgid "Name face"
+msgstr "Yüze ad ver"
+
+msgid "Choose an existing name or enter a new one."
+msgstr "Mevcut bir adı seçin veya yeni bir ad girin."
+
+msgid "Name as someone else"
+msgstr "Başka biri olarak adlandır"
+
+msgid "Choose who this face is instead, or enter a new name."
+msgstr "Bunun yerine bu yüzün kime ait olduğunu seçin veya yeni bir ad girin."
+
+msgid "New person: {}"
+msgstr "Yeni kişi: {}"
+
+msgid "Go to the next picture afterwards"
+msgstr "Daha sonra sonraki fotoğrafa geç"
+
+msgid "Open or select one picture."
+msgstr "Bir fotoğraf açın veya seçin."
+
+msgid "Turn on face search in the Faces view to name faces."
+msgstr "Yüzlere ad vermek için Yüzler görünümünde yüz algılamayı açın."
+
+msgid "No face was found in this picture."
+msgstr "Bu fotoğrafta yüz bulunamadı."
+
+msgid "This picture has more than one face. Point at the one to name."
+msgstr "Bu fotoğrafta birden fazla yüz var. Ad vermek istediğiniz yüzün üzerine gelin."
+
+msgid "The faces found in {} will be removed and face search turned off. Names in your files are kept."
+msgstr "{} içinde bulunan yüzler kaldırılacak ve yüz arama kapatılacak. Dosyalarınızdaki adlar korunur."
+
+msgid "The faces found in your pictures will be removed and face search turned off. Names in your files are kept."
+msgstr "Resimlerinizde bulunan yüzler kaldırılacak ve yüz arama kapatılacak. Dosyalarınızdaki adlar korunur."
+
+msgid "1 face"
+msgid_plural "{count} faces"
+msgstr[0] "1 yüz"
+msgstr[1] "{count} yüz"
+
+msgid "1 person"
+msgid_plural "{count} people"
+msgstr[0] "1 kişi"
+msgstr[1] "{count} kişi"
+
+msgid "1 decision"
+msgid_plural "{count} decisions"
+msgstr[0] "1 karar"
+msgstr[1] "{count} karar"
+
+msgid "1 suggested"
+msgid_plural "{count} suggested"
+msgstr[0] "1 önerilen"
+msgstr[1] "{count} önerilen"
+
+msgid "1 face named"
+msgid_plural "{count} faces named"
+msgstr[0] "adlandırılan 1 yüz"
+msgstr[1] "adlandırılan {count} yüz"
+
+msgid "1 name taken out"
+msgid_plural "{count} names taken out"
+msgstr[0] "kaldırılan 1 ad"
+msgstr[1] "kaldırılan {count} ad"
+
+msgid "and 1 more picture"
+msgid_plural "and {count} more pictures"
+msgstr[0] "ve 1 resim daha"
+msgstr[1] "ve {count} resim daha"
+
+msgid "Hide"
+msgstr "Gizle"
+
+msgid "Show again"
+msgstr "Yeniden göster"
+
+msgid "Person search"
+msgstr "Kişi arama"
+
+msgid "Open in folder"
+msgstr "Klasörde aç"
+
+msgid "Open pictures with a strong match for this face in Items."
+msgstr "Bu yüze çok benzeyen bir yüz içeren resimleri Öğeler görünümünde aç."
+
+msgid "Find pictures of {} in Items."
+msgstr "Öğeler görünümünde {} adlı kişinin resimlerini bul."
+
+msgid "Select one face that can be compared."
+msgstr "Karşılaştırılabilecek bir yüz seçin."
+
+msgid "Select one face to open its picture in Items."
+msgstr "Resmini Öğeler görünümünde açmak için bir yüz seçin."
+
+msgid "Suggested"
+msgstr "Önerilen"
+
+msgid "Similar faces"
+msgstr "Benzer yüzler"
+
+msgid "Unique faces"
+msgstr "Benzersiz yüzler"
+
+msgid "Small or unclear faces"
+msgstr "Küçük veya belirsiz yüzler"
+
+msgid "Finding faces..."
+msgstr "Yüzler bulunuyor..."
+
+msgid "Filter people"
+msgstr "Kişileri filtrele"
+
+msgid "Clear filter"
+msgstr "Filtreyi temizle"
+
+msgid "Find similar faces"
+msgstr "Benzer yüzleri bul"
+
+msgid "Scan for faces"
+msgstr "Yüzleri algıla"
+
+msgid "Scan for faces in photos"
+msgstr "Fotoğraflardaki yüzleri algıla"
+
+msgid "Scan for faces in videos"
+msgstr "Videolardaki yüzleri algıla"
+
+msgid "Faces are found and compared on this computer. Nothing is uploaded."
+msgstr "Yüzler bu bilgisayarda bulunur ve karşılaştırılır. Hiçbir şey yüklenmez."
+
+msgid "Every picture in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused."
+msgstr "Koleksiyondaki her resim bir kez daha okunur ({}); bu, bu bilgisayarda yaklaşık {} sürer. Tarama duraklatılabilir."
+
+msgid "Every video in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused."
+msgstr "Koleksiyondaki her video bir kez daha okunur ({}); bu, bu bilgisayarda yaklaşık {} sürer. Tarama duraklatılabilir."
+
+msgid "Every picture and video in the collection is read once more - {} and {}, which takes about {} on this computer. The scan can be paused."
+msgstr "Koleksiyondaki her resim ve video bir kez daha okunur ({} ve {}); bu, bu bilgisayarda yaklaşık {} sürer. Tarama duraklatılabilir."
+
+msgid "Face scanning is off."
+msgstr "Yüz algılama kapalı."
+
+msgid "Pause"
+msgstr "Duraklat"
+
+msgid "Resume"
+msgstr "Sürdür"
+
+msgid "Paused"
+msgstr "Duraklatıldı"
+
+msgid "Paused after reading {} of {}."
+msgstr "{} / {} okunduktan sonra duraklatıldı."
+
+msgid "{} of {} read, {} found. About {} left."
+msgstr "{} / {} okundu, {} bulundu. Yaklaşık {} kaldı."
+
+msgid "All {} read, {} found."
+msgstr "Tümü okundu ({}), {} bulundu."
+
+msgid "1 picture could not be read."
+msgid_plural "{count} pictures could not be read."
+msgstr[0] "1 resim okunamadı."
+msgstr[1] "{count} resim okunamadı."
+
+msgid "1 file could not be read."
+msgid_plural "{count} files could not be read."
+msgstr[0] "1 dosya okunamadı."
+msgstr[1] "{count} dosya okunamadı."
+
+msgid "1 picture is on a drive or folder that isn't available."
+msgid_plural "{count} pictures are on drives or folders that aren't available."
+msgstr[0] "1 resim, kullanılamayan bir sürücüde veya klasörde."
+msgstr[1] "{count} resim, kullanılamayan sürücülerde veya klasörlerde."
+
+msgid "1 file is on a drive or folder that isn't available."
+msgid_plural "{count} files are on drives or folders that aren't available."
+msgstr[0] "1 dosya, kullanılamayan bir sürücüde veya klasörde."
+msgstr[1] "{count} dosya, kullanılamayan sürücülerde veya klasörlerde."
+
+msgid "Delete face data"
+msgstr "Yüz verilerini sil"
+
+msgid "{} will be renamed {} in {}."
+msgstr "{} adı {} olarak değiştirilecek ({})."
+
+msgid "{0} is also named in {1}. Change the name there to {2} too?"
+msgstr "{0} adı {1} içinde de geçiyor. Oradaki ad da {2} olarak değiştirilsin mi?"
+
+msgid "Change in files"
+msgstr "Dosyalarda değiştir"
+
+msgid "Only in Diffractor"
+msgstr "Yalnızca Diffractor'da"
+
+msgid "Phone or camera"
+msgstr "Telefon veya kamera"
+
+msgid "{} (phone or camera)"
+msgstr "{} (telefon veya kamera)"
+
+msgid "Reading {}..."
+msgstr "{} okunuyor..."
+
+msgid "Copying from {}: {} of {}"
+msgstr "{} cihazından kopyalanıyor: {} / {}"
+
+msgid "No photos or videos were found on {}. If it is locked, unlock it, and if it asks, allow this computer to access its files."
+msgstr "{} üzerinde fotoğraf veya video bulunamadı. Kilitliyse kilidini açın ve sorarsa bu bilgisayarın dosyalarına erişmesine izin verin."
+
+msgid "There is not enough free space to copy from {}: {} more is needed."
+msgstr "{} cihazından kopyalamak için yeterli boş alan yok: {} daha gerekiyor."
+
+msgid "Photos and videos are copied from a phone or camera: it keeps its own."
+msgstr "Fotoğraflar ve videolar telefondan veya kameradan kopyalanır: cihaz kendi dosyalarını korur."
+
+msgid "Person"
+msgstr "Kişi"
+
+msgid "1 picture"
+msgid_plural "{count} pictures"
+msgstr[0] "1 resim"
+msgstr[1] "{count} resim"
+
+msgid "1 video"
+msgid_plural "{count} videos"
+msgstr[0] "1 video"
+msgstr[1] "{count} video"
+
+msgid "1 picture or video"
+msgid_plural "{count} pictures and videos"
+msgstr[0] "1 resim veya video"
+msgstr[1] "{count} resim ve video"
+
+msgid "1 minute"
+msgid_plural "{count} minutes"
+msgstr[0] "1 dakika"
+msgstr[1] "{count} dakika"
+
+msgid "1 hour"
+msgid_plural "{count} hours"
+msgstr[0] "1 saat"
+msgstr[1] "{count} saat"
+
+msgid "1 face selected"
+msgid_plural "{count} faces selected"
+msgstr[0] "1 yüz seçildi"
+msgstr[1] "{count} yüz seçildi"
+
+msgid "{first-name} could not be read from the device."
+msgid_plural "{first-name} and {other} other files could not be read from the device."
+msgstr[0] "{first-name} cihazdan okunamadı."
+msgstr[1] "{first-name} ve {other} diğer dosya cihazdan okunamadı."
+
+msgid "Confirm that the selected faces belong to the indicated person. This changes the face book, not the pictures."
+msgstr "Seçili yüzlerin belirtilen kişiye ait olduğunu onaylar. Fotoğraflar değil, yüz kayıtları değişir."
+
+msgid "Restore the face book to before this last change. The picture files are not changed."
+msgstr "Yüz kayıtlarını son değişiklikten önceki durumuna döndürür. Fotoğraf dosyaları değişmez."
+
+msgid "People"
+msgstr "Kişiler"
+
+msgid "Confirmed"
+msgstr "Onaylananlar"
+
+msgid "Name faces"
+msgstr "Yüzleri adlandır"
+
+msgid "Person name"
+msgstr "Kişinin adı"
+
+msgid "Not this person"
+msgstr "Bu kişi değil"
+
+msgid "Confirm"
+msgstr "Onayla"
+
+msgid "Name a face in Unknown to start a person. Confirm suggestions, reject a wrong match, or hide faces you do not want to review."
+msgstr "Kişi oluşturmak için bilinmeyen bir yüze ad verin. Önerileri onaylayabilir veya reddedebilir, incelemek istemediğiniz yüzleri gizleyebilirsiniz."
+
+msgid "As you confirm faces, Diffractor learns and gets better at making suggestions."
+msgstr "Yüzleri doğruladıkça Diffractor öğrenir ve daha iyi öneriler sunar."
+
+msgid "Never suggest this person for these faces again. They can still be named as someone else."
+msgstr "Bu kişi bu yüzler için bir daha önerilmez. Yüzleri başka biri olarak adlandırabilirsiniz."
+
+msgid "Show these faces again without changing their names or rejections."
+msgstr "Adları veya reddedilen önerileri değiştirmeden bu yüzleri yeniden gösterir."
+
+msgid "Select one named person."
+msgstr "Adı olan bir kişi seçin."
+
+msgid "Backup"
+msgstr "Yedekleme"
+
+msgid "Export face data saves the people you named and your decisions to a file. Import face data reads one back, on this PC or another."
+msgstr "Yüz verilerini dışa aktar, adlandırdığınız kişileri ve kararlarınızı bir dosyaya kaydeder. Yüz verilerini içe aktar, bu dosyayı bu bilgisayarda veya başka birinde geri okur."
+
+msgid "Names you confirm stay in Diffractor until you save them. Saving writes them into the photos, where other photo apps can read them."
+msgstr "Onayladığınız adlar, siz kaydedene kadar Diffractor'da kalır. Kaydetmek adları fotoğraflara yazar; böylece diğer fotoğraf uygulamaları da onları okuyabilir."
+
+msgid "Scan for faces to name people and review suggested matches."
+msgstr "Kişilere ad vermek ve önerileri incelemek için yüzleri tarayın."
+
+msgid "Your face data is kept in {}."
+msgstr "Yüz verileriniz {} içinde saklanır."
+
+msgid "Face data cannot be saved: the database could not be opened."
+msgstr "Yüz verileri kaydedilemiyor: veritabanı açılamadı."
+
+msgid "Your latest face changes could not be saved yet. Diffractor keeps trying; Export face data keeps a copy now."
+msgstr "Son yüz değişiklikleriniz henüz kaydedilemedi. Diffractor denemeye devam ediyor; Yüz verilerini dışa aktar şimdi bir kopya saklar."
+
+msgid "Another Diffractor window is changing faces, so this window only shows them. It can change them once that window closes."
+msgstr "Başka bir Diffractor penceresi yüzleri değiştiriyor; bu nedenle bu pencere yalnızca onları gösterir. O pencere kapandığında bu pencere de değişiklik yapabilir."
+
+msgid "Read only: another Diffractor window is changing faces."
+msgstr "Salt okunur: başka bir Diffractor penceresi yüzleri değiştiriyor."
+
+msgid "Face changes are not saved yet."
+msgstr "Yüz değişiklikleri henüz kaydedilmedi."
+
+msgid "There are no face names to write."
+msgstr "Yazılacak yüz adı yok."
+
+msgid "Names and review decisions stay on this computer unless you export them."
+msgstr "Adlar ve inceleme kararları, dışa aktarmadığınız sürece bu bilgisayarda kalır."
+
+msgid "Also forget names and review decisions made in Diffractor"
+msgstr "Diffractor'da verilen adları ve inceleme kararlarını da unut"
+
+msgid "Forget names and decisions?"
+msgstr "Adlar ve kararlar unutulsun mu?"
+
+msgid "{} and {} made in Diffractor will be forgotten. This cannot be undone: export face data first if you might want them back. Names saved in your photos are kept."
+msgstr "Diffractor'da kaydedilen {} ve {} unutulacak. Bu işlem geri alınamaz: daha sonra gerekebilecekse önce yüz verilerini dışa aktarın. Fotoğraflarınıza kaydedilen adlar korunur."
+
+msgid "Forget"
+msgstr "Unut"
+
+msgid "Enter a new name for {}."
+msgstr "{} için yeni bir ad girin."
+
+msgid "Updating suggestions..."
+msgstr "Öneriler güncelleniyor…"
+
+msgid "Hide the selected faces from review. Similar faces stay visible. Choose Show again to bring them back."
+msgstr "Seçili yüzleri gizler. Benzer yüzler görünür kalır. Geri getirmek için Yeniden göster seçeneğini kullanın."
+
+msgid "Combine people?"
+msgstr "Kişiler birleştirilsin mi?"
+
+msgid "A person named {1} already exists. Combine {0} with {1}? This changes only the face book, not your photos."
+msgstr "{1} adlı bir kişi zaten var. {0} ile {1} birleştirilsin mi? Yalnızca yüz kayıtları değişir, fotoğraflar değişmez."
+
+msgid "Combined {} with {}."
+msgstr "{} ile {} birleştirildi."
+
+msgid "These people have changed. Review their names and try again."
+msgstr "Bu kişilerin bilgileri değişti. Adlarını kontrol edip yeniden deneyin."
+
+msgid "Face CSVs contain names and biometric face signatures, not filenames. Share only with people you trust."
+msgstr "CSV, kişilerin adlarını ve biyometrik yüz imzalarını içerir; dosya adlarını içermez. Yalnızca güvendiğiniz kişilerle paylaşın."
+
+msgid "Face decisions without an unambiguous signature were not exported: {}."
+msgstr "Belirsiz veya eksik imza nedeniyle dışa aktarılmayan karar sayısı: {}."
+
+msgid "The face book is updating. Wait for recognition to finish, then export again."
+msgstr "Yüz kayıtları güncelleniyor. Tanıma işleminin bitmesini bekleyip yeniden dışa aktarın."

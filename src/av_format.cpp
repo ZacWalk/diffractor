@@ -3264,6 +3264,219 @@ bool av_format_decoder::extract_frame_at(core::surface_ptr& dest_surface, const 
 	return true;
 }
 
+// docs/faces.md#33-videos: what decodes one stream's key frames, copied from the decoder that read them.
+struct av_key_frame_codec final : core::no_copy
+{
+	AVCodecParameters* parameters = avcodec_parameters_alloc();
+	const AVCodec* decoder = nullptr;
+	AVRational time_base{0, 1};
+	av_rational sar;
+	core::orientation orientation = core::orientation::top_left;
+	// Which stream a thread's decoder was made for, never reused: two copies at one address are not one stream.
+	uint64_t id = 0;
+
+	~av_key_frame_codec() override { avcodec_parameters_free(&parameters); }
+};
+
+size_t av_key_frame::bytes() const
+{
+	return av_queued_payload_bytes(packet) + (next ? av_queued_payload_bytes(next) : 0);
+}
+
+std::optional<av_key_frame> av_format_decoder::read_key_frame(const double wanted, const bool in_order)
+{
+	auto* const fc = _format_context;
+	if (!fc || !_video_context || _video_stream_index < 0) return {};
+	auto* const stream = fc->streams[_video_stream_index];
+	if ((stream->disposition & AV_DISPOSITION_ATTACHED_PIC) != 0) return {};
+
+	if (!in_order)
+	{
+		clear_sequential_frame_bracket();
+
+		// A window that starts at the target finds the first key frame at or after it, never one before.
+		const auto target = static_cast<int64_t>(wanted * AV_TIME_BASE) + _time_origin;
+		if (avformat_seek_file(fc, -1, target, target, std::numeric_limits<int64_t>::max(), 0) < 0) return {};
+		_eof = false;
+	}
+
+	// A demuxer that seeks by bytes can land short of the frame asked for, so packets are read on to it - within
+	// bounds, so a stream whose key frames are mislabelled is not read to its end.
+	constexpr auto max_packets = 4096;
+	constexpr int64_t max_bytes = 256ll * 1024 * 1024;
+	// Timestamps rescaled between time bases can land a hair either side of the time they were sought by.
+	constexpr auto rounding = 0.001;
+	int64_t read = 0;
+
+	const auto is_picture = [this](const AVPacket& pkt)
+	{
+		return pkt.stream_index == _video_stream_index && (pkt.flags & AV_PKT_FLAG_DISCARD) == 0;
+	};
+
+	for (auto i = 0; i < max_packets && read < max_bytes && !io_should_stop(); ++i)
+	{
+		auto packet = read_packet();
+		if (!packet || packet->eof) return {};
+
+		const auto* const pkt = packet->pkt;
+		read += pkt->size;
+		if (!is_picture(*pkt) || (pkt->flags & AV_PKT_FLAG_KEY) == 0) continue;
+
+		const auto ts = pkt->pts != AV_NOPTS_VALUE ? pkt->pts : pkt->dts;
+		if (ts == AV_NOPTS_VALUE) continue;
+
+		const auto time = to_video_seconds(ts);
+		if (time < wanted - rounding) continue;
+
+		av_key_frame result{std::move(packet), time};
+
+		// The parser has just read the key frame, so it still says how its picture is coded: a field is decoded with
+		// the next, its pair.
+		if (const auto* const parser = av_stream_get_parser(stream);
+		    parser && (parser->picture_structure == AV_PICTURE_STRUCTURE_TOP_FIELD ||
+		               parser->picture_structure == AV_PICTURE_STRUCTURE_BOTTOM_FIELD))
+		{
+			for (auto j = 0; j < max_packets && !io_should_stop(); ++j)
+			{
+				auto after = read_packet();
+				if (!after || after->eof) break;
+				if (!is_picture(*after->pkt)) continue;
+				result.next = std::move(after);
+				break;
+			}
+		}
+
+		return result;
+	}
+
+	return {};
+}
+
+av_key_frame_codec_ptr av_format_decoder::key_frame_codec() const
+{
+	if (!_format_context || !_video_context || _video_stream_index < 0) return {};
+
+	const auto* const stream = _format_context->streams[_video_stream_index];
+	auto result = std::make_shared<av_key_frame_codec>();
+	if (!result->parameters || avcodec_parameters_copy(result->parameters, stream->codecpar) < 0) return {};
+
+	static std::atomic<uint64_t> ids = 0;
+	result->decoder = _video_context->codec;
+	result->time_base = stream->time_base;
+	result->sar = _video_stream_aspect_ratio;
+	result->orientation = _orientation.load();
+	result->id = ++ids;
+	return result;
+}
+
+core::surface_ptr av_decode_key_frame(const av_key_frame_codec& codec, const av_key_frame& frame, const sizei max_dim)
+{
+	if (!frame.packet || !codec.decoder || !codec.parameters) return {};
+
+	struct decoding final : core::no_copy
+	{
+		uint64_t id = 0;
+		AVCodecContext* context = nullptr;
+		av_scaler scaler;
+
+		~decoding() override { avcodec_free_context(&context); }
+	};
+
+	thread_local decoding d;
+
+	if (d.id != codec.id || !d.context)
+	{
+		avcodec_free_context(&d.context);
+		d.id = 0;
+
+		auto* context = avcodec_alloc_context3(codec.decoder);
+		if (!context) return {};
+
+		avcodec_parameters_to_context(context, codec.parameters);
+		context->workaround_bugs = FF_BUG_AUTODETECT;
+		// One picture at a time: the scan's workers are its parallelism.
+		context->thread_count = 1;
+		// A key frame is decoded alone, so the I-frame opening an open group of pictures is shown although nothing
+		// before it was decoded.
+		context->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;
+		context->pkt_timebase = codec.time_base;
+		if (const auto max_pixels = codec_pixel_ceiling(codec.decoder->id); max_pixels > 0)
+			context->max_pixels = max_pixels;
+
+		if (avcodec_open2(context, codec.decoder, nullptr) != 0)
+		{
+			avcodec_free_context(&context);
+			return {};
+		}
+
+		d.context = context;
+		d.id = codec.id;
+	}
+	else
+	{
+		avcodec_flush_buffers(d.context);
+	}
+
+	auto* decoded = av_frame_alloc();
+	auto* candidate = av_frame_alloc();
+	const core::scope_exit free_frames([&decoded, &candidate]
+	{
+		av_frame_free(&decoded);
+		av_frame_free(&candidate);
+	});
+	if (!decoded || !candidate) return {};
+
+	// The picture shown at the key frame's time, never one a later packet made: an open group of pictures shows
+	// pictures decoded after its key frame before it.
+	const auto key_pts = frame.packet->pkt->pts;
+	auto found = false;
+	auto found_key = false;
+	const auto take = [&]
+	{
+		while (!found_key && avcodec_receive_frame(d.context, candidate) == 0)
+		{
+			const auto is_key = key_pts == AV_NOPTS_VALUE || candidate->pts == key_pts;
+			if (!found || is_key)
+			{
+				av_frame_unref(decoded);
+				av_frame_move_ref(decoded, candidate);
+				found = true;
+				found_key = is_key;
+			}
+			else
+			{
+				av_frame_unref(candidate);
+			}
+		}
+	};
+
+	if (try_avcodec_send_packet(d.context, frame.packet->pkt) < 0) return {};
+	if (frame.next)
+	{
+		take();
+		if (!found_key && try_avcodec_send_packet(d.context, frame.next->pkt) == AVERROR(EAGAIN))
+		{
+			take();
+			try_avcodec_send_packet(d.context, frame.next->pkt);
+		}
+	}
+	// Drained at once: a decoder that reorders holds its first picture back until it is told no more are coming.
+	avcodec_send_packet(d.context, nullptr);
+	take();
+	if (!found) return {};
+
+	auto orientation = codec.orientation;
+	if (const auto* const side = av_frame_get_side_data(decoded, AV_FRAME_DATA_DISPLAYMATRIX))
+		orientation = calc_orientation_impl(turn_from_display_matrix(side->data, side->size));
+
+	// Fitted within the bound, never enlarged past the frame's own size: a larger picture holds nothing more to find.
+	const auto edge = std::max(decoded->width, decoded->height);
+	const sizei bound{std::min(max_dim.cx, edge), std::min(max_dim.cy, edge)};
+	core::surface_ptr surface;
+	if (!d.scaler.scale_frame(*decoded, surface, bound, frame.time, orientation, codec.sar)) return {};
+	return surface;
+}
+
 // One sample as a signed value in -1..1. Only the formats FFmpeg's decoders actually emit are
 // handled; anything else answers silence rather than reading the buffer as the wrong type.
 static double read_audio_sample(const uint8_t* base, const AVSampleFormat packed, const int index)

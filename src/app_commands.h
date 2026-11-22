@@ -22,7 +22,6 @@ enum class commands
 {
 	none = 0,
 
-	advanced_search,
 	browse_back,
 	browse_forward,
 	browse_next_folder,
@@ -54,6 +53,27 @@ enum class commands
 	edit_paste,
 	english,
 	exit,
+	explore,
+	// Explore at the item the command targets: where it was taken on the globe, and when on the timeline.
+	explore_item,
+	// docs/faces.md#9-the-faces-view: the Faces view, and what it does with the groups and faces selected in it.
+	face_confirm,
+	face_follow_placement,
+	face_undo_placement,
+	face_export,
+	face_open_in_folder,
+	face_hide,
+	face_import,
+	face_name,
+	// docs/faces.md#93-faces-on-a-picture: Ctrl+F2, naming the one face on the picture shown or selected.
+	face_name_picture,
+	face_reject,
+	face_rename_person,
+	face_person_search,
+	face_save_names,
+	face_search,
+	face_show_again,
+	faces,
 	favorite,
 	favorite_tags,
 	filter_items,
@@ -107,6 +127,8 @@ enum class commands
 	menu_options,
 	menu_playback,
 	menu_rate_or_label,
+	// The session's recent changes, each reopening the items it changed: docs/design.md#recent-changes.
+	menu_recent_changes,
 	menu_select,
 	menu_tools,
 	menu_tools_toolbar,
@@ -249,6 +271,10 @@ struct command_accelerator
 // The shipped key bindings. A table rather than a run of assignments so the set can be inspected -
 // nothing else can tell whether two commands have quietly claimed the same key.
 std::vector<command_accelerator> default_keyboard_accelerators();
+inline platform::keyboard_accelerator_t close_view_shortcut()
+{
+	return {platform::keys::F4, platform::keyboard_accelerator_t::control};
+}
 
 // Configured external tools accept one {item-path}; the Open menu therefore offers them only for a
 // single selected file. Association handlers keep their separate whole-selection contract.
@@ -256,8 +282,19 @@ core::file_path selected_external_tool_target(const df::item_set& selected_items
 quadd rotate_command_crop_bounds(sizei dimensions, core::orientation stored_orientation, simple_transform transform,
                                  bool show_rotated);
 
+// docs/design.md#recent-changes: what a paste or a drop of files made, kept among the session's recent changes. Either
+// makes one path for each it was given, in order, folders among them. `given` holds what it was given, with which of
+// those are folders - read before it ran, as a move takes them away - so the change counts the items made, not the
+// sidecars that went with them, and where it moved them, a change made to one earlier in the session follows it.
+void record_dropped_files(view_state& s, icon_index icon, std::string_view title,
+                          const std::vector<core::file_path>& given, const std::vector<bool>& given_is_folder,
+                          const core::paths& made, bool is_move);
+// Which of the paths a paste or a drop is given are folders.
+std::vector<bool> folders_among(const std::vector<core::file_path>& paths);
+
 using destination_folder_enumerator = std::function<core::folder_paths(const core::folder_path&)>;
 
+// `dialog`, where given, is what a double-click on a folder answers.
 std::shared_ptr<ui::complete_strategy_t> make_destination_folder_auto_complete_for_test(
 	view_state& state, const std::shared_ptr<void>& picker_lifetime, std::shared_ptr<const core::folder_counts> folders,
-	destination_folder_enumerator enumerate_child_folders = {});
+	destination_folder_enumerator enumerate_child_folders = {}, ui::frame_ptr dialog = {});

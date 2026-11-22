@@ -536,6 +536,7 @@ struct app_text_t
 	text_t prop_name_streams = "Streams";
 	text_t prop_name_synopsis = "Synopsis";
 	text_t prop_name_tag = "Tag";
+	text_t prop_name_person = "Person";
 	text_t prop_name_title = "Title";
 	text_t prop_name_track = "Track";
 	text_t prop_name_videocodec = "Video codec";
@@ -556,6 +557,7 @@ struct app_text_t
 	text_t menu_move = "Move";
 	text_t error_analysis_cancelled = "The analysis was canceled.";
 	text_t indexing = "Indexing";
+	text_t indexing_faces = "Indexing faces";
 	text_t indexing_message =
 		"Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works.";
 	text_t empty = "Empty";
@@ -617,6 +619,8 @@ struct app_text_t
 	platform::messages platform_text;
 	text_t compare = "Compare";
 	text_t compare_tooltip = "Hold down left mouse button to compare items.";
+	text_t comparing_files = "Comparing two files";
+	text_t selection_summary_title = "Selection summary";
 	text_t zoom_kb = "press ctrl+space";
 	text_t query_or = "or";
 	text_t query_and = "and";
@@ -795,6 +799,7 @@ struct app_text_t
 	text_t keyboard_enter_desc = "Opens an image full screen.";
 	text_t keyboard_space_desc = "Plays or pauses video and audio. Stops a running slideshow.";
 	text_t keyboard_escape_desc = "Gets you out of full screen, zoom or other modes.";
+	text_t keyboard_close_desc = "Closes the current view. In the normal Items view, exits Diffractor.";
 	text_t keyboard_left_right_desc = "Move to the next or previous item.";
 	text_t keyboard_ctrl_left_right_desc = "Extend the current item selection and allow comparing of items.";
 	text_t keyboard_up_down_desc = "Move up or down a row of items. Pans a zoomed image.";
@@ -918,7 +923,7 @@ struct app_text_t
 	text_t save_new_photo = "Save new photo";
 	text_t open_title = "Open";
 	// Names the Add location command (`command_locate`) literally rather than by substitution.
-	// Renaming that command means editing this sentence too - see locations.md 5.6.
+	// Renaming that command means editing this sentence too - see docs/locations.md#areas-become-places-with-a-radius.
 	text_t map_instructions =
 		"The crosshair at the centre of the map marks the location that will be written. Drag the map, click a photo bubble to move it under the crosshair, or search for a place by name. Use the mouse wheel to zoom. Nothing is written until you press Add location.";
 	text_t command_filter_items = "Filter items";
@@ -932,7 +937,6 @@ struct app_text_t
 	text_t open_created_modified = "Opens created items.\nCtrl+click opens modified items.";
 	text_t history_navigator_action = "Shows the eight years ending here.";
 	text_t click_items_from_fmt = "{} items close to {} in the collection.";
-	text_t map_items_close_to_fmt = "{} items close to {}";
 	text_t filter = "filter";
 
 	text_t genre_a_capella = "A capella";
@@ -1314,6 +1318,14 @@ struct app_text_t
 	text_t movie_error_output_is_source = "That name belongs to a clip in this movie. Choose another name.";
 	text_t movie_rendered_fmt = "Rendered {}.";
 	text_t movie_render_cancelled = "Rendering was canceled. Nothing was written.";
+	// docs/movie.md#youtube-shorts: a Short stands upright and runs three minutes at most.
+	text_t movie_short = "YouTube Short: upright, three minutes at most";
+	text_t movie_short_cut_fmt = "Its items run {}, so it fades out at three minutes.";
+	text_t movie_short_loops = "It ends where the tune starts again, so YouTube loops it seamlessly.";
+	text_t movie_render_shorts = "Render each item as its own Short";
+	text_t movie_rendering_shorts_fmt = "Rendering Short {} of {}";
+	// The Short a run of them stopped on, and why.
+	text_t movie_short_failed_fmt = "{} could not be rendered. {}";
 	text_t movie_relink_none = "No missing clip was found in that folder.";
 	text_t movie_unsaved_prompt =
 		"This movie has changes that are not in a project file. It is kept while Diffractor is running, and closing Diffractor discards it.";
@@ -1371,7 +1383,181 @@ struct app_text_t
 	text_t preview_rendered = "Showing fully rendered RAW photo.";
 
 	text_t command_favorite = "Favorite";
-	text_t command_advanced_search = "Advanced Search";
+	text_t command_explore = "Explore";
+	text_t command_explore_item = "Show in Explore";
+	text_t explore_reading = "Reading the collection...";
+	text_t explore_empty = "Nothing in the collection says when or where it was taken yet.";
+	text_t explore_hint = "Drag to turn the globe and scroll to zoom. Click a place or a time to show its items.";
+	text_t explore_timeline_hint = "Choose a date or trip to open its items.";
+	text_t explore_range_fmt = "{} to {}";
+	text_t explore_nothing_in_fmt = "Nothing in {}";
+	text_t explore_nothing_yet_in_fmt = "Nothing yet in {}";
+	text_t explore_taken_fmt = "Taken from {} to {}";
+	text_t explore_taken_in_fmt = "Taken in {}";
+	text_t explore_click_place_year = "Click to show the items taken there that year.";
+	text_t explore_click_year = "Click to show the year's items.";
+	text_t explore_click_month = "Click to show the month's items.";
+	text_t explore_click_week = "Click to show the week's items, or drag up or down to take in more weeks.";
+	text_t explore_click_weeks = "Release to show these weeks' items.";
+	text_t explore_click_trip = "Click to show the items taken there on this trip.";
+	text_t explore_none_taken = "Nothing was taken then.";
+	text_t sidebar_expand_globe = "Expand the globe into Explore: where the collection was taken, beside when.";
+	// docs/design.md#recent-changes: the session's changes, kept in sight.
+	text_t command_recent_changes = "Recent changes";
+	text_t tooltip_recent_changes =
+		"What you have changed since Diffractor started. Pick a change to see its items again, selected, wherever they are now.";
+	// docs/faces.md: face search, the Faces view, the face book and naming.
+	text_t command_faces = "Faces";
+	text_t faces_people = "People";
+	text_t faces_confirmed = "Confirmed";
+	text_t faces_name_faces = "Name faces";
+	text_t faces_person_name = "Person name";
+	text_t faces_reject = "Not this person";
+	text_t button_confirm = "Confirm";
+	text_t faces_review_hint =
+		"Name a face in Unknown to start a person. Confirm suggestions, reject a wrong match, or hide faces you do not want to review.";
+	// docs/faces.md#9-the-faces-view: under the panel's first paragraph, so the user knows confirming teaches it.
+	text_t faces_learns = "As you confirm faces, Diffractor learns and gets better at making suggestions.";
+	text_t command_face_rename_person = "Rename";
+	text_t command_face_hide = "Hide";
+	text_t command_face_show_again = "Show again";
+	text_t faces_confirm_hint =
+		"Confirm that the selected faces belong to the indicated person. This changes the face book, not the pictures.";
+	text_t faces_reject_hint =
+		"Never suggest this person for these faces again. They can still be named as someone else.";
+	text_t faces_hide_hint =
+		"Hide the selected faces from review. Similar faces stay visible. Choose Show again to bring them back.";
+	text_t faces_show_hint = "Show these faces again without changing their names or rejections.";
+	text_t faces_undo_hint = "Restore the face book to before this last change. The picture files are not changed.";
+	text_t command_face_person_search = "Person search";
+	text_t command_face_open_in_folder = "Open in folder";
+	text_t faces_search_tooltip = "Open pictures with a strong match for this face in Items.";
+	text_t faces_person_search_tooltip_fmt = "Find pictures of {} in Items.";
+	text_t faces_search_disabled = "Select one face that can be compared.";
+	text_t faces_person_search_disabled = "Select one named person.";
+	text_t faces_open_in_folder_disabled = "Select one face to open its picture in Items.";
+	text_t command_face_save_names = "Save names to files";
+	text_t command_face_export = "Export face data";
+	text_t command_face_import = "Import face data";
+	// docs/faces.md#92-faces: how the Faces view lists the faces of the people selected.
+	text_t faces_updating = "Updating suggestions...";
+	text_t faces_confirm_person_fmt = "Confirm {}";
+	text_t faces_not_person_fmt = "Not {}";
+	text_t faces_move_to_fmt = "Move to {}";
+	// docs/faces.md#72-suggestions: what a person's suggestions learn from, shown with its hint.
+	text_t faces_file_person_hint = "This name comes from picture files. Renaming it changes those files.";
+	text_t faces_last_placement_fmt = "Last placement: {} in {}.";
+	text_t faces_no_matches = "No people match this filter.";
+	// docs/faces.md#9-the-faces-view: the panel's sections.
+	text_t faces_names_in_photos = "Names in your photos";
+	text_t faces_names_in_photos_info =
+		"Names you confirm stay in Diffractor until you save them. Saving writes them into the photos, where other photo apps can read them.";
+	text_t faces_backup = "Backup";
+	text_t faces_backup_info =
+		"Export face data saves the people you named and your decisions to a file. Import face data reads one back, on this PC or another.";
+	text_t faces_hidden_section = "Hidden";
+	text_t faces_suggested = "Suggested";
+	// docs/faces.md#91-people: the headings Unknown lists its faces under.
+	text_t faces_similar = "Similar faces";
+	text_t faces_other = "Unique faces";
+	text_t faces_unclear = "Small or unclear faces";
+	// docs/faces.md#9-the-faces-view: the buttons at the end of a heading, and what their bubbles say.
+	text_t faces_confirm_all = "Confirm all";
+	text_t faces_name_all = "Name all";
+	text_t faces_hide_all = "Hide all";
+	text_t faces_confirm_all_hint = "Confirm every suggested face here as this person. You are asked first.";
+	text_t faces_name_all_hint = "Name every face in this group as one person: choose a name, or type a new one.";
+	text_t faces_hide_all_hint =
+		"Hide every face in this group from review. Hidden lists them, and Show again brings them back.";
+	text_t faces_rename_hint = "Click to rename.";
+	text_t faces_reading = "Reading the collection...";
+	text_t faces_finding = "Finding faces...";
+	text_t faces_none = "No faces have been found yet.";
+	text_t faces_search_off = "Scan for faces to name people and review suggested matches.";
+	text_t faces_filter = "Filter people";
+	text_t faces_clear_filter = "Clear filter";
+	text_t faces_book_kept_fmt = "Your face data is kept in {}.";
+	text_t faces_book_not_kept = "Face data cannot be saved: the database could not be opened.";
+	// docs/faces.md#64-the-face-database: while another window writes the face book, or a change could not be written.
+	text_t faces_book_unsaved =
+		"Your latest face changes could not be saved yet. Diffractor keeps trying; Export face data keeps a copy now.";
+	text_t faces_book_shared =
+		"Another Diffractor window is changing faces, so this window only shows them. It can change them once that window closes.";
+	text_t faces_read_only = "Read only: another Diffractor window is changing faces.";
+	text_t faces_not_saved_yet = "Face changes are not saved yet.";
+	text_t faces_join_name_taken = "That name belongs to someone else. Choose a different name.";
+	// docs/faces.md#10-saving-names-to-files: what saving names will change, listed before it does.
+	text_t faces_save_names_plan_fmt =
+		"Names will be written into {}: {} and {}. Everything else the files hold is kept.";
+	text_t faces_save_names_plan_one_fmt = "Names will be written into {}: {}. Everything else the files hold is kept.";
+	text_t faces_save_names_none = "There are no face names to write.";
+	text_t faces_data_files = "Diffractor face data";
+	text_t faces_exported_fmt = "{} and {} were saved to {}.";
+	text_t faces_export_failed_fmt = "{} could not be written.";
+	text_t faces_export_privacy =
+		"Face CSVs contain names and biometric face signatures, not filenames. Share only with people you trust.";
+	text_t faces_export_skipped_fmt = "Face decisions without an unambiguous signature were not exported: {}.";
+	text_t faces_export_wait = "The face book is updating. Wait for recognition to finish, then export again.";
+	text_t faces_imported_fmt = "{} and {} were read from {}.";
+	text_t faces_import_failed_fmt = "{} could not be read: {}.";
+	text_t faces_click_to_search = "Click to show their pictures.";
+	text_t faces_show_in_view = "Show in face view";
+	text_t faces_name_face = "Name face";
+	text_t faces_name_face_hint = "Choose an existing name or enter a new one.";
+	// docs/faces.md#95-naming-a-face: a suggestion named as someone else, on a picture and in Faces.
+	text_t faces_name_someone_else = "Name as someone else";
+	text_t faces_name_someone_else_hint = "Choose who this face is instead, or enter a new name.";
+	// docs/faces.md#95-naming-a-face: the popup's row for a name nobody has yet, and its option on a picture.
+	text_t faces_new_person_fmt = "New person: {}";
+	text_t faces_name_next = "Go to the next picture afterwards";
+	// docs/faces.md#93-faces-on-a-picture: why Ctrl+F2 has no face to name.
+	text_t faces_name_picture_one = "Open or select one picture.";
+	text_t faces_name_picture_off = "Turn on face search in the Faces view to name faces.";
+	text_t faces_name_picture_none = "No face was found in this picture.";
+	text_t faces_name_picture_several = "This picture has more than one face. Point at the one to name.";
+	text_t face_search = "Find similar faces";
+	text_t face_scan = "Scan for faces";
+	// docs/faces.md#31-turning-it-on-and-off: which of photos and videos face search reads.
+	text_t face_scan_photos = "Scan for faces in photos";
+	text_t face_scan_videos = "Scan for faces in videos";
+	text_t face_search_local = "Faces are found and compared on this computer. Nothing is uploaded.";
+	text_t face_search_read_fmt =
+		"Every picture in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused.";
+	text_t face_search_read_videos_fmt =
+		"Every video in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused.";
+	text_t face_search_read_both_fmt =
+		"Every picture and video in the collection is read once more - {} and {}, which takes about {} on this computer. The scan can be paused.";
+	text_t face_search_kept = "Names and review decisions stay on this computer unless you export them.";
+	text_t face_search_off = "Face scanning is off.";
+	text_t face_search_pause = "Pause";
+	text_t face_search_resume = "Resume";
+	text_t face_search_paused_short = "Paused";
+	text_t face_search_paused_fmt = "Paused after reading {} of {}.";
+	text_t face_search_progress_fmt = "{} of {} read, {} found. About {} left.";
+	text_t face_search_done_fmt = "All {} read, {} found.";
+	text_t face_search_delete = "Delete face data";
+	text_t face_search_delete_fmt =
+		"The faces found in {} will be removed and face search turned off. Names in your files are kept.";
+	text_t face_search_delete_all =
+		"The faces found in your pictures will be removed and face search turned off. Names in your files are kept.";
+	text_t face_search_forget = "Also forget names and review decisions made in Diffractor";
+	// docs/faces.md#31-turning-it-on-and-off: asked again before the face book is forgotten.
+	text_t faces_forget_title = "Forget names and decisions?";
+	text_t faces_forget_fmt =
+		"{} and {} made in Diffractor will be forgotten. This cannot be undone: export face data first if you might want them back. Names saved in your photos are kept.";
+	text_t faces_forget = "Forget";
+	text_t face_name_label = "Name";
+	text_t face_rename_fmt = "Enter a new name for {}.";
+	text_t face_rename_confirm_fmt = "{} will be renamed {} in {}.";
+	// docs/faces.md#61-named-people: renaming someone pictures also name in their own metadata.
+	text_t face_rename_in_files_fmt = "{0} is also named in {1}. Change the name there to {2} too?";
+	text_t face_rename_files = "Change in files";
+	text_t face_rename_book_only = "Only in Diffractor";
+	text_t faces_combine_title = "Combine people?";
+	text_t faces_combine_fmt =
+		"A person named {1} already exists. Combine {0} with {1}? This changes only the face book, not your photos.";
+	text_t faces_combined_fmt = "Combined {} with {}.";
+	text_t faces_combine_changed = "These people have changed. Review their names and try again.";
 	text_t favorite_add_fmt = "Add '{}' to favorites.";
 	text_t favorite_remove_fmt = "Remove '{}' from favorite folders or searches.";
 	text_t collection_in = "These items are in your collection.";
@@ -1383,19 +1569,6 @@ struct app_text_t
 	text_t favorite_info = "Favorites are listed in the sidebar for quick access.";
 	text_t favorite_failed_to_add = "Failed to add. Maximum number of favorites reached.";
 
-	text_t search_collection = "Search in the collection";
-	text_t search_folder = "Search in a folder";
-	text_t search_sub_folders = "Search in subfolders";
-	text_t search_all_terms = "All these terms";
-	text_t search_none_terms = "None of these terms";
-	text_t search_photos = "Photos";
-	text_t search_videos = "Videos";
-	text_t search_audio = "Audio";
-	text_t search_located_within = "Located within";
-	text_t search_select_term = "Select term";
-	text_t search_no_criteria = "Select at least one search criterion.";
-	text_t search_date_from = "From";
-	text_t search_date_until = "Until";
 	text_t km_from = "km from";
 
 	text_t command_sync = "Synchronize";
@@ -1423,6 +1596,15 @@ struct app_text_t
 
 	text_t import_from = "Source of import:";
 	text_t import_other_folder = "Other folder";
+	// docs/design.md#guided-operations: a phone or camera connected as a device rather than a drive.
+	text_t import_device = "Phone or camera";
+	text_t import_device_fmt = "{} (phone or camera)";
+	text_t import_reading_device_fmt = "Reading {}...";
+	text_t import_copying_device_fmt = "Copying from {}: {} of {}";
+	text_t import_device_empty_fmt =
+		"No photos or videos were found on {}. If it is locked, unlock it, and if it asks, allow this computer to access its files.";
+	text_t import_device_no_space_fmt = "There is not enough free space to copy from {}: {} more is needed.";
+	text_t import_device_copies = "Photos and videos are copied from a phone or camera: it keeps its own.";
 	text_t button_analyze = "&Analyze";
 	text_t analyze = "Analyze";
 	text_t select_location = "Select a location";
@@ -1430,8 +1612,6 @@ struct app_text_t
 	text_t analyzing = "Analyzing...";
 	text_t processing = "Processing...";
 	text_t processing_files = "Processing files";
-	text_t scope = "Scope";
-	text_t value = "Value";
 	text_t some_items_filtered_fmt = "Show {} filtered out items";
 	text_t items_created_on_fmt = "The collection contains {} items created on {}.";
 
@@ -1498,6 +1678,8 @@ struct app_text_t
 	plural_text title_folder_count_fmt = {"1 folder", "{count} folders"};
 	plural_text title_item_count_fmt = {"{count} item", "{count} items"};
 	plural_text map_items_here_fmt = {"1 item here", "{count} items here"};
+	plural_text explore_trips_fmt = {"1 trip away", "{count} trips away"};
+	plural_text explore_items_there_fmt = {"1 item taken in {first-name}", "{count} items taken in {first-name}"};
 	plural_text rating_set_fmt = {"Set rating to 1 star", "Set rating to {count} stars"};
 	plural_text cannot_process_fmt = {"Cannot process {first-name}.",
 	                                  "Cannot process {first-name} and {other} other items."};
@@ -1552,8 +1734,40 @@ struct app_text_t
 	                                       "{count} lines of the project could not be read and were left out."};
 	plural_text movie_missing_fmt = {"1 clip cannot find its source file.",
 	                                 "{count} clips cannot find their source files."};
+	plural_text movie_rendered_shorts_fmt = {"Rendered 1 Short.", "Rendered {count} Shorts."};
+	plural_text movie_shorts_cancelled_fmt = {"Rendering was canceled after 1 Short.",
+	                                          "Rendering was canceled after {count} Shorts."};
 	// A sidebar row's tooltip: how many of the items the view shows the row's search would keep.
 	plural_text sidebar_kept_fmt = {"1 of the items shown", "{count} of the items shown"};
+	plural_text faces_pictures_fmt = {"1 picture", "{count} pictures"};
+	// docs/faces.md#31-turning-it-on-and-off: what face search reads where it reads videos.
+	plural_text faces_videos_fmt = {"1 video", "{count} videos"};
+	plural_text faces_items_fmt = {"1 picture or video", "{count} pictures and videos"};
+	plural_text faces_minutes_fmt = {"1 minute", "{count} minutes"};
+	plural_text faces_hours_fmt = {"1 hour", "{count} hours"};
+	plural_text faces_selected_fmt = {"1 face selected", "{count} faces selected"};
+	plural_text faces_count_fmt = {"1 face", "{count} faces"};
+	plural_text faces_people_fmt = {"1 person", "{count} people"};
+	// docs/faces.md#6-the-face-book: what the user decided about faces, counted.
+	plural_text faces_decisions_fmt = {"1 decision", "{count} decisions"};
+	// docs/faces.md#91-people: beside a person's pictures, the faces suggested for them.
+	plural_text faces_suggested_count_fmt = {"1 suggested", "{count} suggested"};
+	// docs/faces.md#10-saving-names-to-files: what saving names changes.
+	plural_text faces_named_fmt = {"1 face named", "{count} faces named"};
+	plural_text faces_taken_out_fmt = {"1 name taken out", "{count} names taken out"};
+	plural_text faces_more_pictures_fmt = {"and 1 more picture", "and {count} more pictures"};
+	// docs/faces.md#32-the-scan: pictures the scan could not read, and those waiting for their drive.
+	plural_text face_search_unreadable_fmt = {"1 picture could not be read.", "{count} pictures could not be read."};
+	plural_text face_search_waiting_fmt = {"1 picture is on a drive or folder that isn't available.",
+	                                       "{count} pictures are on drives or folders that aren't available."};
+	// The same where face search reads videos too.
+	plural_text face_search_unreadable_files_fmt = {"1 file could not be read.", "{count} files could not be read."};
+	plural_text face_search_waiting_files_fmt = {"1 file is on a drive or folder that isn't available.",
+	                                             "{count} files are on drives or folders that aren't available."};
+	// docs/design.md#guided-operations: what a phone or camera would not give up when Import staged its files.
+	plural_text import_device_unreadable_fmt =
+		{"{first-name} could not be read from the device.",
+	     "{first-name} and {other} other files could not be read from the device."};
 };
 
 extern app_text_t tt;

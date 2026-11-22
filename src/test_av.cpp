@@ -24,6 +24,7 @@
 #include "machine.h"
 #include "model.h"
 #include "model_display.h"
+#include "model_faces.h"
 #include "test_fixtures.h"
 #include "test_runner.h"
 #include "app_text.h"
@@ -3134,6 +3135,72 @@ static void should_allow_tolerance_for_hover_thumbnails()
 	dec.close();
 }
 
+// docs/faces.md#33-videos: face search reads a video's key frames on one thread and decodes each alone on another,
+// and a key frame so decoded is the frame playback shows at its time.
+static void should_read_and_decode_a_videos_key_frames_alone()
+{
+	// 14 key frames over 110 seconds: a long group of pictures, as a download has.
+	const auto path = test_files_folder().combine_file("indy.mp4");
+	av_format_decoder reader;
+	assert_equal(true, reader.open(path, media_intent::thumbnail), "indy.mp4 opens");
+	reader.init_streams(-1, -1, false, true, false);
+	const auto codec = reader.key_frame_codec();
+	assert_equal(true, codec != nullptr, "with a codec its key frames decode by");
+
+	std::vector<av_key_frame> frames;
+	const auto read = faces::read_video_slices(reader.end_time() - reader.start_time(),
+	                                           [&](const double from) -> std::optional<double>
+	{
+		auto frame = reader.read_key_frame(from);
+		if (!frame) return std::nullopt;
+		frames.push_back(*frame);
+		return frame->time;
+	});
+	assert_equal(14, read, "fewer key frames than parts: every one is read");
+	auto rising = frames.front().time < 0.5;
+	for (size_t i = 1; i < frames.size(); ++i) rising = rising && frames[i].time > frames[i - 1].time;
+	assert_equal(true, rising, "from its start, in order");
+	assert_equal(true, std::ranges::all_of(frames, [](const av_key_frame& f) { return f.bytes() > 0; }),
+	             "each read whole");
+
+	// Each decodes alone, on a thread of its own, in any order.
+	std::vector<core::surface_ptr> decoded(frames.size());
+	std::jthread([&]
+	{
+		for (auto i = frames.size(); i-- > 0;) decoded[i] = av_decode_key_frame(*codec, frames[i], {320, 320});
+	}).join();
+	auto fitted = true;
+	for (size_t i = 0; i < decoded.size(); ++i)
+	{
+		const auto& s = decoded[i];
+		fitted = fitted && core::is_valid(s) && std::max(s->dimensions().cx, s->dimensions().cy) == 320 &&
+		         core::equiv(s->time(), frames[i].time);
+	}
+	assert_equal(true, fitted, "every key frame decodes alone, fitted, at its time");
+
+	const auto& key = frames[frames.size() / 2];
+	const auto& alone = decoded[frames.size() / 2];
+	av_format_decoder player;
+	assert_equal(true, player.open(path, media_intent::thumbnail), "opened again to play");
+	player.init_streams(-1, -1, false, true, false);
+	core::surface_ptr shown;
+	assert_equal(true, player.extract_frame_at(shown, {320, 320}, key.time, 0.0), "playback shows the frame");
+	assert_near(key.time, shown->time(), 0.001, "at the key frame's time");
+	assert_equal(true, shown->dimensions() == alone->dimensions(), "at the same size");
+
+	double difference = 0.0;
+	const auto dims = alone->dimensions();
+	for (auto y = 0; y < dims.cy; ++y)
+	{
+		const auto* const a = alone->pixels() + alone->stride() * y;
+		const auto* const b = shown->pixels() + shown->stride() * y;
+		for (auto x = 0; x < dims.cx * 4; ++x)
+			if (x % 4 != 3) difference += std::abs(static_cast<int>(a[x]) - static_cast<int>(b[x]));
+	}
+	difference /= static_cast<double>(dims.cx) * dims.cy * 3;
+	assert_equal(true, difference < 1.0, std::format("the same picture, {:.2f} levels apart", difference));
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Session lifetime
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -4262,8 +4329,8 @@ static std::vector<uint8_t> make_test_sid_tune_playing(const std::initializer_li
 	return tune;
 }
 
-// Neither a .sid file nor its format says how long a tune lasts, so it is found by running the tune: to the moment it
-// falls silent, or to where it starts again - and the render ends there, the stream silent after it.
+// Neither a .sid file nor its format says how long a tune lasts, so it is found by running the tune: to the moment its
+// last note has died away, or to where it starts again - and the render ends there, the stream silent after it.
 static void should_find_where_a_sid_tune_ends()
 {
 	// Four notes of 25 frames each, round and round: the tune starts again every two seconds.
@@ -4274,10 +4341,11 @@ static void should_find_where_a_sid_tune_ends()
 		0xBD, 0x3A, 0x10, 0x8D, 0x01, 0xD4, 0x60,       // LDA $103A,X, STA $D401, RTS
 		0x10, 0x14, 0x18, 0x1C,                         // the notes' frequency high bytes
 	});
-	// One note, its gate let go after a hundred frames.
+	// One note, let go after a hundred frames with a release of three quarters of a second.
 	const auto ending = make_test_sid_tune_playing({
 		// clang-format off
-		0xE6, 0xFB, 0xA5, 0xFB, 0xC9, 0x64, 0xD0, 0x05, // INC $FB, LDA $FB, CMP #100, BNE +5
+		0xE6, 0xFB, 0xA5, 0xFB, 0xC9, 0x64, 0xD0, 0x0A, // INC $FB, LDA $FB, CMP #100, BNE +10
+		0xA9, 0xF9, 0x8D, 0x06, 0xD4, // LDA #$F9, STA $D406: sustain 15, release 9
 		0xA9, 0x20, 0x8D, 0x04, 0xD4, 0x60, // LDA #$20, STA $D404: sawtooth, gate off; RTS
 		// clang-format on
 	});
@@ -4289,8 +4357,8 @@ static void should_find_where_a_sid_tune_ends()
 	const auto silent = scan_sid_tune_length({ending.data(), ending.size()}, 0);
 	assert_equal(true, silent.how == sid_tune_length::ending::falls_silent,
 	             "a tune that stops is found to fall silent");
-	assert_equal(true, silent.seconds > 2.8 && silent.seconds < 3.2,
-	             "a moment after its last note, for it to ring out");
+	assert_equal(true, silent.seconds > 2.6 && silent.seconds < 2.9,
+	             std::format("once its last note has rung out ({:.2f}s)", silent.seconds));
 
 	const auto unscanned = scan_sid_tune_length({repeating.data(), repeating.size()}, 0, 3.0);
 	assert_equal(true, unscanned.how == sid_tune_length::ending::unknown, "a repeat not yet heard through is not one");
@@ -4335,6 +4403,67 @@ static void should_find_where_a_sid_tune_ends()
 	             peak_of(looped_wav, looped_end - 100, looped_end) * 20 <
 	                 peak_of(looped_wav, sid_sample_rate / 4, sid_sample_rate),
 	             "a tune that repeats fades out as it starts again");
+}
+
+// What a tune does on its way through is not its end: a pause it plays on from, a phrase it plays over and over before
+// it moves on, or a note its play routine starts again within a frame, which leaves its gate set in every frame.
+static void should_not_end_a_sid_tune_part_way()
+{
+	// A note, three seconds' pause, another note, then nothing: the counter stops at 255 so the notes come once.
+	const auto pausing = make_test_sid_tune_playing({
+		// clang-format off
+		0xA5, 0xFB, 0xC9, 0xFF, 0xF0, 0x1F, // LDA $FB, CMP #$FF, BEQ to the RTS
+		0xE6, 0xFB, 0xA5, 0xFB, // INC $FB, LDA $FB
+		0xC9, 0x32, 0xD0, 0x05, 0xA9, 0x20, 0x8D, 0x04, 0xD4, // at 50, gate off
+		0xC9, 0xC8, 0xD0, 0x05, 0xA9, 0x21, 0x8D, 0x04, 0xD4, // at 200, gate on
+		0xC9, 0xFA, 0xD0, 0x05, 0xA9, 0x20, 0x8D, 0x04, 0xD4, // at 250, gate off
+		0x60, // RTS
+		// clang-format on
+	});
+	// Twenty seconds of a two-second phrase, twenty of notes that each come once, round and round: steps of 25
+	// frames counted in $FC, the first 40 playing the phrase from the table and the next 40 the step itself.
+	const auto phrase = make_test_sid_tune_playing({
+		// clang-format off
+		0xE6, 0xFB, 0xA5, 0xFB, 0xC9, 0x19, 0xD0, 0x10, // INC $FB, LDA $FB, CMP #25, BNE to play
+		0xA9, 0x00, 0x85, 0xFB, 0xE6, 0xFC, // LDA #0, STA $FB, INC $FC
+		0xA5, 0xFC, 0xC9, 0x50, 0xD0, 0x04, // LDA $FC, CMP #80, BNE to play
+		0xA9, 0x00, 0x85, 0xFC, // LDA #0, STA $FC
+		0xA5, 0xFC, 0xC9, 0x28, 0xB0, 0x06, // play: LDA $FC, CMP #40, BCS to out
+		0x29, 0x03, 0xAA, 0xBD, 0x48, 0x10, // AND #3, TAX, LDA $1048,X
+		0x8D, 0x01, 0xD4, 0x60, // out: STA $D401, RTS
+		0x10, 0x14, 0x18, 0x1C, // the phrase's frequency high bytes
+		// clang-format on
+	});
+	// No sustain, so a note dies away in a third of a second unless it is started again, as it is every ten frames by
+	// letting go of the gate and taking it again in one call; sixteen notes go round.
+	const auto restarting = make_test_sid_tune_playing({
+		// clang-format off
+		0xA9, 0x08, 0x8D, 0x05, 0xD4, // LDA #$08, STA $D405: attack 0, decay 8
+		0xA9, 0x00, 0x8D, 0x06, 0xD4, // LDA #$00, STA $D406: sustain 0, release 0
+		0xE6, 0xFB, 0xA5, 0xFB, 0xC9, 0x0A, 0xD0, 0x19, // INC $FB, LDA $FB, CMP #10, BNE to the RTS
+		0xA9, 0x00, 0x85, 0xFB, // LDA #0, STA $FB
+		0xA9, 0x20, 0x8D, 0x04, 0xD4, 0xA9, 0x21, 0x8D, 0x04, 0xD4, // gate off, gate on
+		0xE6, 0xFC, 0xA5, 0xFC, 0x29, 0x0F, 0x09, 0x10, 0x8D, 0x01, 0xD4, // the next of sixteen notes
+		0x60, // RTS
+		// clang-format on
+	});
+
+	const auto paused = scan_sid_tune_length({pausing.data(), pausing.size()}, 0);
+	assert_equal(true,
+	             paused.how == sid_tune_length::ending::falls_silent && paused.seconds > 4.8 && paused.seconds < 5.2,
+	             std::format("a tune ends after the note that follows its pause ({:.2f}s)", paused.seconds));
+
+	const auto phrased = scan_sid_tune_length({phrase.data(), phrase.size()}, 0);
+	assert_equal(true,
+	             phrased.how == sid_tune_length::ending::repeats && phrased.seconds > 39.5 && phrased.seconds < 40.5,
+	             std::format("a phrase played over and over is not the tune starting again ({:.2f}s)",
+	                         phrased.seconds));
+
+	const auto restarted = scan_sid_tune_length({restarting.data(), restarting.size()}, 0);
+	assert_equal(true,
+	             restarted.how == sid_tune_length::ending::repeats && restarted.seconds > 3.0 &&
+	                 restarted.seconds < 3.6,
+	             std::format("a note started again within a frame still sounds ({:.2f}s)", restarted.seconds));
 }
 
 // A store's drawing of a track's waveform, which ID3 types as a bright coloured fish so that players do not take it
@@ -6528,6 +6657,7 @@ void register_av_tests(view_state& /*state*/, test_registry& tests)
 		tests.add("Should play the requested tracker fixture"s, should_play_the_requested_tracker_fixture);
 	tests.add("Should silence a muted SID voice"s, should_silence_a_muted_sid_voice);
 	tests.add("Should find where a SID tune ends"s, should_find_where_a_sid_tune_ends);
+	tests.add("Should not end a SID tune part way"s, should_not_end_a_sid_tune_part_way);
 	tests.add("Should decode a SID stream with FFmpeg"s, should_decode_a_sid_stream_with_ffmpeg);
 	tests.add("Should not take a waveform for cover art"s, should_not_take_a_waveform_for_cover_art);
 	tests.add("Should name SID notes and waveforms"s, should_name_sid_notes_and_waveforms);
@@ -6668,6 +6798,7 @@ void register_av_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should preview video frames at hover positions"s, should_preview_video_frames_at_hover_positions);
 	tests.add("Should reuse the preview decoder across hovers"s, should_reuse_the_preview_decoder_across_hovers);
 	tests.add("Should allow tolerance for hover thumbnails"s, should_allow_tolerance_for_hover_thumbnails);
+	tests.add("Should read and decode a video's key frames alone"s, should_read_and_decode_a_videos_key_frames_alone);
 	tests.add("Should walk video frames forward"s, should_walk_video_frames_forward);
 	// MEDIA-005 - sequential extraction retains the previous/next nearest-frame bracket.
 	tests.add("Should reuse the nearest frame from the sequential bracket"s,

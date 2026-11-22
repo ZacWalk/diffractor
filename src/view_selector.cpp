@@ -12,6 +12,7 @@
 #include "model.h"
 #include "model_index.h"
 #include "view_selector.h"
+#include "libdesktop/ui/list_selection.h"
 
 class selector_item_controller final : public view_controller
 {
@@ -46,8 +47,8 @@ public:
 	{
 		if (!_tracking) return;
 
-		const auto drag_distance = std::abs(loc.x - _start_loc.x);
-		if (_dragging || drag_distance > 4)
+		// The distance every press goes before it is a drag, measured along the strip, the only way it pans.
+		if (_dragging || ui::is_drag(_start_loc, {loc.x, _start_loc.y}))
 		{
 			_dragging = true;
 			_view.scroll_by(_last_loc.x - loc.x);
@@ -290,16 +291,14 @@ bool selector_view::key_down(const char32_t key, const platform::key_state keys)
 	}
 
 	const auto at = static_cast<int>(entry - _items.data());
-	const auto last = static_cast<int>(_items.size()) - 1;
-	int to;
+	// A page is the tiles the strip shows at once, less one, so the tile stepped from stays in sight.
+	const auto client = recti(_extent);
+	const auto shown = std::ranges::count_if(_items, [this, client](const selector_item& item)
+	{ return item.bounds.offset(-_scroll_x, 0).intersects(client); });
+	const auto to = ui::step_list_cursor(at, static_cast<int>(_items.size()), key, static_cast<int>(shown) - 1, true);
+	if (to < 0) return false;
 
-	if (key == platform::keys::LEFT) to = std::max(0, at - 1);
-	else if (key == platform::keys::RIGHT) to = std::min(last, at + 1);
-	else if (key == platform::keys::HOME) to = 0;
-	else if (key == platform::keys::END) to = last;
-	else return false;
-
-	_key_item = _items[to].item;
+	_key_item = _items[static_cast<size_t>(to)].item;
 	_key_from = _state.focus_item();
 	make_visible(_key_item);
 	_host->frame()->invalidate();
@@ -549,7 +548,10 @@ void selector_view::render(render::draw_context& dc, const view_controller_ptr c
 		const auto is_focus = entry.item == focus;
 		const auto is_selected = entry.item->is_selected();
 		const auto is_hover = controller && controller->bounds() == bounds;
-		const auto bg = view_handle_color(is_selected, is_hover ? 1 : 0, false, _view_has_focus, false);
+		// Selected and hovered as every list's entries are; the item the task is on, selected or not, is lit too.
+		const auto bg = is_selected ? ui::selection_fill(_view_has_focus, is_hover).aa(dc.colors.alpha)
+		                : is_hover  ? ui::hover_fill().aa(dc.colors.alpha)
+		                            : view_handle_color(false, false, false, _view_has_focus, false);
 		if (is_focus || is_selected || is_hover) dc.draw_rounded_rect(bounds, bg, dc.padding1);
 
 		auto image_bounds = bounds.inflate(-dc.padding1);
@@ -707,32 +709,22 @@ recti selector_view::scrollbar_thumb_bounds() const
 
 std::vector<recti> selector_view::scrollbar_marks() const
 {
-	std::vector<recti> marks;
-	if (!can_scroll()) return marks;
+	if (!can_scroll()) return {};
 
+	// Placed as every scroll bar's marks are: where the thumb's centre is while the item is in the middle of the strip,
+	// across the scroll bar's whole row so a mark under the thumb still shows.
 	const auto track = scrollbar_bounds();
-	const auto thumb = scrollbar_thumb_bounds();
-	const auto travel = track.width() - thumb.width();
-	const auto max_scroll = _content_width - _extent.cx;
-	const auto width = std::max(2, _scrollbar_height / 5);
 	const auto focus = _state.focus_item();
+	std::vector<int> centres;
 
 	for (const auto& entry : _items)
 	{
-		if (entry.item != focus && !entry.item->is_selected()) continue;
-
-		const auto centred_scroll = entry.bounds.center().x - _extent.cx / 2;
-		const auto x = std::clamp(track.left + thumb.width() / 2 + core::mul_div(centred_scroll, travel, max_scroll),
-		                          track.left + width / 2, track.right - width + width / 2);
-		// Over the track's whole height and past it, so a mark under the thumb still shows.
-		const recti mark(x - width / 2, _extent.cy - _scrollbar_height, x - width / 2 + width, _extent.cy);
-
-		if (!marks.empty() && mark.left <= marks.back().right)
-			marks.back().right = std::max(marks.back().right, mark.right);
-		else marks.push_back(mark);
+		if (entry.item == focus || entry.item->is_selected()) centres.push_back(entry.bounds.center().x);
 	}
 
-	return marks;
+	return ui::scroll_mark_bounds({track.left, _extent.cy - _scrollbar_height, track.right, _extent.cy},
+	                              scrollbar_thumb_bounds().width(), _extent.cx, _content_width, centres,
+	                              std::max(2, _scrollbar_height / 5), true);
 }
 
 void selector_view::scrollbar_to(const int x)

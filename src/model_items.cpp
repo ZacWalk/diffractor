@@ -24,6 +24,7 @@ namespace df
 }
 #include "ui_controllers.h"
 #include "ui_controls.h"
+#include "libdesktop/ui/table_headings.h"
 
 /////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////
@@ -110,7 +111,7 @@ static df::group_key location_key(const df::item_element_ptr& i, const location_
 
 		if (md->coordinate.is_valid() && (is_empty(country) || is_empty(state) || is_empty(place)))
 		{
-			// locations.md 2.5: bounded attribution. A place too far away to be a truthful
+			// docs/locations.md#item-locations: bounded attribution. A place too far away to be a truthful
 			// answer contributes nothing, so a remote item groups by country or not at all.
 			const attribution_cell cell(md->coordinate);
 			const auto found = resolved_places.find(cell);
@@ -789,14 +790,18 @@ void df::item_group::sort(const group_by group_mode, const sort_by sort_order, c
 		sort_items(_items, group_mode, sort_order, group_by_dups);
 	}
 
+	// Every other row of details is shaded, as every table's rows are; grouped by duplicates, each set of copies is
+	// shaded or not as a whole instead, as tiles or as rows.
 	auto last_dup_group = 0u;
 	auto alt_background = false;
+	const auto stripe_rows = !group_by_dups && _display == item_group_display::detail;
 
 	for (const auto& i : _items)
 	{
 		const auto dup_group = i->duplicates().group;
 		if (group_by_dups && last_dup_group != dup_group) alt_background = !alt_background;
 		i->alt_background = alt_background;
+		if (stripe_rows) alt_background = !alt_background;
 		last_dup_group = dup_group;
 	}
 
@@ -851,7 +856,7 @@ df::history_range df::history_auto_range(const date_histogram& dates, const int 
 
 	// The shortest run back from today that still holds nearly everything. A scanner that stamped
 	// 1900 on four negatives does not get to set the scale for twenty thousand photographs.
-	const auto keep = total * history_coverage_percent / 100;
+	const auto keep = (total * history_coverage_percent + 99) / 100;
 	uint64_t running = 0;
 	auto oldest = 0;
 
@@ -1142,7 +1147,7 @@ std::shared_ptr<group_title_control> df::build_group_title(view_state& s, const 
 		}
 		else if (order == group_by::location)
 		{
-			// locations.md 3.8, baseline defect 7: a header must reproduce its own group. The
+			// docs/locations.md#location-search: a header must reproduce its own group. The
 			// breadcrumb links carry their parents, so clicking `London` under `United Kingdom`
 			// returns that group and not the other London as well.
 			if (!is_empty(key.text1))
@@ -1680,7 +1685,7 @@ void view_state::update_item_groups()
 	}
 }
 
-// locations.md 6.2: the snapshot is taken here, on the UI thread, because item metadata is
+// docs/locations.md#visits: the snapshot is taken here, on the UI thread, because item metadata is
 // UI-owned. Everything handed to the worker is a detached value, and the answer is published back
 // whole rather than filled in field by field.
 void view_state::refresh_visits()
@@ -1714,7 +1719,7 @@ void view_state::refresh_visits()
 		request.samples.emplace_back(s);
 	}
 
-	// locations.md 6.2 step 6: an era is offered only when the query already names its place.
+	// docs/locations.md#visits: an era is offered only when the query already names its place.
 	if (const auto* const place_term = _search.single_place_term())
 	{
 		request.intent_place = place_term->text;
@@ -2286,44 +2291,46 @@ void df::item_group::render_headings(render::draw_context& dc, const pointi elem
 		x += width + tp;
 	}
 
-	// Opaque, for the rows scrolling under it, then shaded as the stack's tables shade theirs.
+	// Opaque, for the rows scrolling under it, then drawn as every headed table's band is: each heading sits over the
+	// values it names, where the rows place them.
 	dc.draw_rect(band, core::color(dc.colors.background, dc.colors.alpha));
-	dc.draw_rounded_rect(band, core::color(0x000000, dc.colors.alpha * 0.2f), dc.padding1);
 
 	const auto* const choice = _state.detail_choice(_key);
 	const auto group_order = _state.group_order();
+	std::vector<ui::table_heading> headings;
+	std::vector<ui::table_heading_cell> cells;
+	ui::table_sort sort;
+	auto pressed = -1;
 
 	for (const auto& cell : _heading_cells)
 	{
 		const auto heading = detail_heading(cell.column, group_order);
-		if (heading.title.empty()) continue;
-
 		const auto column = static_cast<int>(cell.column);
-		if (column == _pressed_heading)
-			dc.draw_rect(cell.bounds, core::color(dc.colors.foreground, dc.colors.alpha * 0.12f));
+		const auto at = static_cast<int>(headings.size());
+		if (column == _pressed_heading) pressed = at;
+		if (choice && choice->sort_column == column) sort = {at, choice->ascending};
 
-		const auto sorted = choice && choice->sort_column == column;
-		const auto color = core::color(dc.colors.foreground, dc.colors.alpha * (sorted ? 1.0f : 0.7f));
 		auto text_bounds = cell.bounds;
 		text_bounds.left += tp / 2;
 		text_bounds.right = cell.column == detail_column::title
 		                        ? cell.bounds.right - tp / 2
 		                        : std::min(cell.bounds.right, text_bounds.left + widths.column(cell.column).width);
-		dc.draw_text(heading.title, text_bounds, render::font_face::dialog, heading.style, color, {});
-		if (sorted) ui::table_layout::draw_sort_mark(dc, cell.bounds, choice->ascending, color);
+		headings.push_back({std::string(heading.title), heading.style == render::text_style::single_line_far,
+		                    !heading.title.empty(), heading.first_ascending,
+		                    heading.style == render::text_style::single_line_center});
+		cells.push_back({cell.bounds, text_bounds});
 	}
 
-	// Faint, so the columns read as resizable, and plain while one is dragged.
-	const auto line = std::max(1, core::round(dc.scale_factor));
+	std::vector<recti> dividers;
+	auto active = -1;
 
 	for (const auto& [c, divider] : heading_dividers())
 	{
-		const auto active = static_cast<int>(c) == _active_divider;
-		const auto width = active ? line * 2 : line;
-		const auto mid = divider.center().x - width / 2;
-		dc.draw_rect(recti(mid, divider.top + 2, mid + width, divider.bottom - 2),
-		             core::color(dc.colors.foreground, dc.colors.alpha * (active ? 0.9f : 0.3f)));
+		if (static_cast<int>(c) == _active_divider) active = static_cast<int>(dividers.size());
+		dividers.push_back(divider);
 	}
+
+	ui::draw_table_headings(dc, band, headings, cells, dividers, sort, pressed, active);
 }
 
 std::vector<std::pair<df::detail_column, recti>> df::item_group::heading_dividers() const
@@ -2352,137 +2359,65 @@ std::vector<std::pair<df::detail_column, recti>> df::item_group::heading_divider
 
 namespace
 {
-	// A click on a detail heading sorts its group by the column; a press taken back, or let go off it, does not.
-	class detail_heading_controller final : public view_controller
+	// What a drag on the divider by a detail heading does: it sizes the column on its far side from the name, which
+	// takes up or gives the room and is never squeezed out by it. Escape takes the drag back, and a double-click fits
+	// the column to what it holds again.
+	ui::table_divider_actions detail_divider_actions(const df::item_group_ptr& group, const df::detail_column column)
 	{
-		df::item_group_ptr _group;
-		df::detail_column _column;
-		bool _tracking = false;
-
-	public:
-		detail_heading_controller(const view_host_ptr& host, const recti bounds, df::item_group_ptr group,
-		                          const df::detail_column column) :
-			view_controller(host, bounds), _group(std::move(group)), _column(column)
+		struct drag_state
 		{
-		}
+			bool after_name = false;
+			int start_x = 0;
+			int start_width = 0;
+			int most = 0;
+			double start_choice = 0.0;
+		};
 
-		~detail_heading_controller() override { escape(); }
+		const auto drag = std::make_shared<drag_state>();
+		drag->after_name = group->_row_draw_info.title.width > 0 &&
+		                   std::ranges::find(group->_heading_cells, df::detail_column::title,
+		                                     &df::item_group::heading_cell::column) <
+		                       std::ranges::find(group->_heading_cells, column, &df::item_group::heading_cell::column);
 
-		platform::cursor cursor() const override { return platform::cursor::link; }
-
-		void on_mouse_left_button_down(const pointi /*loc*/, const platform::key_state /*keys*/) override
+		const auto size = [group, column](const double logical_width)
 		{
-			_tracking = true;
-			_group->_pressed_heading = static_cast<int>(_column);
-			_host->invalidate(ui::host_invalid::redraw);
-		}
+			group->_state.size_detail_column(group->_key, column, logical_width);
+		};
 
-		void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
+		ui::table_divider_actions actions;
+		actions.active = [group, column](const bool active)
 		{
-			const auto clicked = _tracking && _bounds.contains(loc);
-			escape();
-
-			if (clicked)
-			{
-				auto& state = _group->_state;
-				state.sort_detail_group(_group->_key, _column,
-				                        detail_heading(_column, state.group_order()).first_ascending);
-			}
-		}
-
-		bool escape() override
+			group->_active_divider = active ? static_cast<int>(column) : -1;
+		};
+		actions.begin = [group, column, drag](const int x)
 		{
-			if (!_tracking) return false;
-			_tracking = false;
-			_group->_pressed_heading = -1;
-			_host->invalidate(ui::host_invalid::redraw);
+			const auto scale = group->_heading_scale;
+			const auto* const choice = group->_state.detail_choice(group->_key);
+			drag->start_x = x;
+			drag->start_width = group->_row_draw_info.column(column).width;
+			drag->start_choice = choice ? choice->widths[static_cast<size_t>(column)] : 0.0;
+			drag->most = drag->start_width + std::max(0, group->_row_draw_info.title.width - core::round(60 * scale));
 			return true;
-		}
-	};
-
-	// Drags the divider by a detail heading, sizing the column on its far side from the name, which takes up or
-	// gives the room and is never squeezed out by it. Escape takes the drag back; a double-click fits the column
-	// to what it holds again.
-	class detail_divider_controller final : public view_controller
-	{
-		df::item_group_ptr _group;
-		df::detail_column _column;
-		bool _after_name = false;
-		bool _dragging = false;
-		int _start_x = 0;
-		int _start_width = 0;
-		int _most = 0;
-		double _start_choice = 0.0;
-
-		void size(const double logical_width) const
+		};
+		actions.move = [group, drag, size](const int x)
 		{
-			_group->_state.size_detail_column(_group->_key, _column, logical_width);
-		}
-
-	public:
-		detail_divider_controller(const view_host_ptr& host, const recti bounds, df::item_group_ptr group,
-		                          const df::detail_column column) :
-			view_controller(host, bounds), _group(std::move(group)), _column(column)
-		{
-			_after_name = _group->_row_draw_info.title.width > 0 &&
-			              std::ranges::find(_group->_heading_cells, df::detail_column::title,
-			                                &df::item_group::heading_cell::column) <
-			                  std::ranges::find(_group->_heading_cells, column, &df::item_group::heading_cell::column);
-			_group->_active_divider = static_cast<int>(_column);
-			_host->invalidate(ui::host_invalid::redraw);
-		}
-
-		~detail_divider_controller() override
-		{
-			escape();
-			_group->_active_divider = -1;
-			_host->invalidate(ui::host_invalid::redraw);
-		}
-
-		platform::cursor cursor() const override { return platform::cursor::left_right; }
-
-		void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
-		{
-			const auto scale = _group->_heading_scale;
-			const auto* const choice = _group->_state.detail_choice(_group->_key);
-			const auto least_name = core::round(60 * scale);
-			_dragging = true;
-			_start_x = loc.x;
-			_start_width = _group->_row_draw_info.column(_column).width;
-			_start_choice = choice ? choice->widths[static_cast<size_t>(_column)] : 0.0;
-			_most = _start_width + std::max(0, _group->_row_draw_info.title.width - least_name);
-		}
-
-		void on_mouse_move(const pointi loc) override
-		{
-			if (!_dragging) return;
-			const auto scale = _group->_heading_scale;
-			const auto moved = loc.x - _start_x;
-			const auto width = std::clamp(_start_width + (_after_name ? -moved : moved),
-			                              std::min(core::round(24 * scale), _most), _most);
+			const auto scale = group->_heading_scale;
+			const auto moved = x - drag->start_x;
+			const auto width = std::clamp(drag->start_width + (drag->after_name ? -moved : moved),
+			                              std::min(core::round(24 * scale), drag->most), drag->most);
 			size(width / scale);
-		}
-
-		void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
+		};
+		actions.cancel = [drag, size]
 		{
-			on_mouse_move(loc);
-			_dragging = false;
-		}
-
-		void on_mouse_left_button_double_click(const pointi /*loc*/, const platform::key_state /*keys*/) override
-		{
-			_dragging = false;
-			size(0.0);
-		}
-
-		bool escape() override
-		{
-			if (!_dragging) return false;
-			_dragging = false;
-			size(_start_choice);
+			size(drag->start_choice);
 			return true;
-		}
-	};
+		};
+		actions.fit = [size]
+		{
+			size(0.0);
+		};
+		return actions;
+	}
 }
 
 void df::item_group::scroll_tooltip(const item_element_ptr& item, const view_elements_ptr& elements,
@@ -2581,13 +2516,31 @@ view_controller_ptr df::item_group::controller_from_location(const view_host_ptr
 		for (const auto& [column, divider] : heading_dividers())
 		{
 			if (ctx.occluded(divider))
-				return std::make_shared<detail_divider_controller>(host, divider, shared_from_this(), column);
+			{
+				auto actions = detail_divider_actions(shared_from_this(), column);
+				return std::make_shared<ui::table_divider_controller>(host, divider, std::move(actions));
+			}
 		}
 
 		for (const auto& cell : _heading_cells)
 		{
-			if (!detail_heading(cell.column, _state.group_order()).title.empty() && ctx.occluded(cell.bounds))
-				return std::make_shared<detail_heading_controller>(host, cell.bounds, shared_from_this(), cell.column);
+			const auto heading = detail_heading(cell.column, _state.group_order());
+
+			if (!heading.title.empty() && ctx.occluded(cell.bounds))
+			{
+				const auto group = shared_from_this();
+				const auto column = cell.column;
+				const auto first_ascending = heading.first_ascending;
+				const auto pressed = [group, column](const bool down)
+				{
+					group->_pressed_heading = down ? static_cast<int>(column) : -1;
+				};
+				const auto click = [group, column, first_ascending]
+				{
+					group->_state.sort_detail_group(group->_key, column, first_ascending);
+				};
+				return std::make_shared<ui::table_heading_controller>(host, cell.bounds, pressed, click);
+			}
 		}
 
 		ctx.confine(_heading_drawn);
@@ -2681,7 +2634,17 @@ void df::index_file_item::calc_search_presence() const
 
 void df::item_element::render_bg(render::draw_context& dc, const item_group&, const pointi element_offset) const
 {
-	render_background(dc, element_offset);
+	// What is selected is drawn as every list's selection is: muted while the keyboard is outside the view - in
+	// another window, or on the title or status bar.
+	if (is_selected() && !is_style_bit_set(view_element_style::tracking))
+	{
+		const auto fill = ui::selection_fill(dc.frame_has_focus, is_style_bit_set(view_element_style::hover));
+		render_background(dc, element_offset, fill.aa(dc.colors.alpha));
+	}
+	else
+	{
+		render_background(dc, element_offset);
+	}
 }
 
 void df::item_element::render(render::draw_context& dc, const item_group& group, const pointi element_offset) const
@@ -2706,6 +2669,8 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 	// item is indistinguishable from the one just clicked, which is the hidden state the pin exists
 	// to avoid.
 	const auto is_pinned = s._pin_item.get() == this;
+	// design.md#recent-changes: what the user changed this session stays marked wherever it shows.
+	const auto is_changed = s.changed_this_session(_path);
 
 	_pin_badge_bounds = {};
 
@@ -2722,7 +2687,7 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 
 	if (alt_background)
 	{
-		dc.draw_rounded_rect(device_bounds.inflate(pad.cx, pad.cy), core::color(0, 0.1f), dc.padding1);
+		ui::table_layout::draw_row_stripe(dc, device_bounds.inflate(pad.cx, pad.cy));
 	}
 
 	if (display == item_group_display::detail)
@@ -2751,7 +2716,10 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 				}
 				else
 				{
-					xdraw_icon(dc, info.icon, image_rect, text_color, {});
+					const auto bg_changed = is_changed
+					                            ? core::color(ui::style::colors.success_background, alpha * 0.77f)
+					                            : core::color{};
+					xdraw_icon(dc, info.icon, image_rect, text_color, bg_changed);
 				}
 			}
 
@@ -2834,18 +2802,27 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 					title_rect.right -= cxy_flag;
 				}
 
+				// A name the column cannot hold whole - the name takes what the other columns leave - ends in an
+				// ellipsis, as any cell too narrow for its text does.
+				const auto fit = [&](const std::string_view text, const recti text_bounds)
+				{
+					return widths.title.width < widths.title.extent || info.online_status != item_online_status::disk
+					           ? ui::table_layout::fit_text(dc, text, text_bounds.width(), text_font)
+					           : std::string(text);
+				};
+
 				if (!info.title.is_empty() && title_rect.height() >= 2 * text_line_height)
 				{
 					auto name_bounds = title_rect;
 					auto title_bounds = title_rect;
 					name_bounds.top = title_bounds.bottom = (title_rect.top + title_rect.bottom) / 2;
 					name_bounds.left = title_bounds.left += text_padding / 2;
-					dc.draw_text(info.title, title_bounds, text_font, text_style, text_color, {});
-					dc.draw_text(info.name, name_bounds, text_font, text_style, group_text_color, {});
+					dc.draw_text(fit(info.title, title_bounds), title_bounds, text_font, text_style, text_color, {});
+					dc.draw_text(fit(info.name, name_bounds), name_bounds, text_font, text_style, group_text_color, {});
 				}
 				else
 				{
-					dc.draw_text(info.name, title_rect, text_font, text_style, group_text_color, {});
+					dc.draw_text(fit(info.name, title_rect), title_rect, text_font, text_style, group_text_color, {});
 				}
 
 				text_x += widths.title.width + text_padding;
@@ -3339,6 +3316,15 @@ void df::item_element::render(render::draw_context& dc, const item_group& group,
 			x_flag += bb.width();
 		}
 
+		if (is_changed)
+		{
+			// Full alpha, as the pin: the mark says what the user has worked on, so it must not fade with the row.
+			const recti bb(x_flag, y_flag, x_flag + cxy_flag, y_flag + cxy_flag);
+			xdraw_icon(dc, icon_index::edit, bb, core::color(dc.colors.foreground, dc.colors.alpha),
+			           core::color(ui::style::colors.success_background, dc.colors.alpha));
+			x_flag += bb.width();
+		}
+
 		if (can_show_flag(info))
 		{
 			const recti bb(x_flag, y_flag, x_flag + cxy_flag, y_flag + cxy_flag);
@@ -3432,7 +3418,8 @@ void df::item_element::stage_thumbnail_surface(async_strategy& async, const bool
 	// Read here rather than on the worker: the backend owns it and only changes it on this thread.
 	const auto can_use_yuv = render::yuv_textures_enabled;
 
-	async.queue_async(async_queue::render, [weak, generation, thumbnail, cover_art, can_use_yuv, &async]() mutable
+	async.queue_async(async_queue::thumbnail_stage,
+	                  [weak, generation, thumbnail, cover_art, can_use_yuv, &async]() mutable
 	{
 		files ff;
 		auto thumbnail_surface = core::is_valid(thumbnail) ? ff.image_to_surface(thumbnail, {}, can_use_yuv) : nullptr;
@@ -4065,6 +4052,7 @@ platform::file_op_result df::item_element::rename(index_state& index, const std:
 			                         core::file_path(path_dst.parent(), path_dst.name()));
 			_path.folder(path_dst);
 			_name = path_dst.name();
+			index.paths_moved(std::array{std::pair{path_src, path_dst}});
 		}
 
 		return result;
@@ -4123,6 +4111,7 @@ platform::file_op_result df::item_element::rename(index_state& index, const std:
 	if (result.success())
 	{
 		_path = file_path(_path.folder(), _name = path_dst.name());
+		index.paths_moved(std::array{std::pair{path_src, path_dst}});
 	}
 	else
 	{

@@ -11,6 +11,7 @@
 
 #include "pch.h"
 #include "model_search.h"
+#include "model_faces_search.h"
 #include "model_index.h"
 #include "model_items.h"
 #include "model_locations.h"
@@ -201,7 +202,7 @@ std::vector<search_part> df::coalesce_parts(std::vector<search_part> parts)
 
 	for (auto& part : parts)
 	{
-		if (!results.empty() && part.scope.empty() && part.modifier.is_defaults())
+		if (!results.empty() && part.scope.empty() && !part.confirmed_person && part.modifier.is_defaults())
 		{
 			auto& previous = results.back();
 
@@ -344,7 +345,7 @@ bool df::search_t::can_be_read_from(const std::string_view text) const
 
 // Wrapping a value so the tokenizer reads it back whole. The rule lives here alone because every
 // formatted term has to agree with the tokenizer's single un-quoting rule.
-static std::string quote_term_value(const std::string_view term_text)
+std::string df::quote_term_value(const std::string_view term_text)
 {
 	const char quote_char = term_text.find('\"') == std::string::npos ? '\"' : '\'';
 	std::string result;
@@ -361,13 +362,17 @@ static std::string quote_term_value(const std::string_view term_text)
 	return result;
 }
 
+// A character the tokenizer reads as more than a letter of a value - a space, a quote, an operator, a delimiter - so
+// a value holding one is written quoted. The colon is the caller's to decide.
+static bool is_special_term_char(const char c)
+{
+	return c == ' ' || c == '\t' || c == '\'' || c == '"' || c == '!' || c == '-' || c == '<' || c == '>' || c == '=' ||
+	       c == '&' || c == '@' || (c != ':' && search_tokenizer::is_delimiter_char(c));
+}
+
 static std::string term_quote(const std::string_view term_text)
 {
-	auto has_special_char = std::ranges::any_of(term_text, [](const char c)
-	{
-		return c == ' ' || c == '\t' || c == '\'' || c == '"' || c == '!' || c == '-' || c == '<' || c == '>' ||
-		       c == '=' || c == '&' || c == '@' || (c != ':' && search_tokenizer::is_delimiter_char(c));
-	});
+	auto has_special_char = std::ranges::any_of(term_text, is_special_term_char);
 
 	// The tokenizer reads a bare "and" or "or" as the operator, so a term that is one of those words
 	// has to be written quoted to read back as the text it is.
@@ -401,7 +406,7 @@ static std::string term_quote(const std::string_view term_text)
 		}
 	}
 
-	return has_special_char ? quote_term_value(term_text) : std::string(term_text);
+	return has_special_char ? df::quote_term_value(term_text) : std::string(term_text);
 }
 
 // A search term has to read back as itself, so numbers are trimmed rather than rounded away.
@@ -426,7 +431,7 @@ static std::string format_search_number(const float v)
 	return trim_trailing_zeros(std::format("{:.9g}", v));
 }
 
-// locations.md 4.2: a radius reads in the same metres and kilometres a user would type.
+// docs/locations.md#location-search: a radius reads in the same metres and kilometres a user would type.
 static std::string format_search_distance(const double km)
 {
 	const auto m = km * 1000.0;
@@ -434,7 +439,7 @@ static std::string format_search_distance(const double km)
 	return trim_trailing_zeros(std::format("{:.4f}", km)) + "km";
 }
 
-// locations.md 3.1: quotes are a fallback, not the default spelling. The parser itself decides
+// docs/locations.md#location-search: quotes are a fallback, not the default spelling. The parser itself decides
 // whether the bare form is unambiguous, so this rule can never drift from the grammar.
 static std::string quote_location_value(const std::string_view prefix, const std::string_view value,
                                         const df::search_term& term)
@@ -559,6 +564,17 @@ std::string df::format_term(const search_term& term)
 				result << ':';
 				result << ' ';
 				result << format_term_value(term);
+			}
+			else if (prop::person == term.key)
+			{
+				// docs/faces.md#8-searching: a whole name is written quoted, so it reads back whole, and a name typed
+				// unquoted is written as it was typed, so it reads back by the start of its words. Typed unquoted, it
+				// holds nothing the tokenizer would read otherwise.
+				result << term.key->name.sv();
+				result << ':';
+				result << ' ';
+				result << (term.by_word_start ? term.text : quote_term_value(term.text));
+				if (term.confirmed_person) result << '!';
 			}
 			else
 			{
@@ -710,6 +726,18 @@ std::string df::format_term(const search_term& term)
 			result << "@";
 			result << feature_name(term.feature());
 		}
+		else if (term.type == search_term_type::face_found)
+		{
+			result << "@face";
+		}
+		else if (term.type == search_term_type::face)
+		{
+			// The file's name and the position after it read back whole unquoted, colon and all, so it is quoted only
+			// where it holds a character the tokenizer reads otherwise: IMG_1234(1).jpg:2, a comma, a quote.
+			result << "face:";
+			if (std::ranges::any_of(term.text, is_special_term_char)) result << quote_term_value(term.text);
+			else result << term.text;
+		}
 	}
 
 	return result.str();
@@ -728,6 +756,12 @@ static void term_join(std::string& result, const df::search_term& term)
 	result += format_term(term);
 
 	for (auto i = 0; i < term.modifiers.end_group; i++) result += ')';
+}
+
+df::search_t df::search_for_face(const std::string_view file, const int position)
+{
+	return search_t().with(
+		search_term(search_term_type::face, faces::format_face_term(file, position), search_term_modifier(true)));
 }
 
 static void term_join(std::string& result, const std::string_view term)
@@ -1029,7 +1063,7 @@ namespace
 		double km = 0.0;
 	};
 
-	// locations.md 3.1: a trailing <number><unit> component is a radius, with or without a comma.
+	// docs/locations.md#location-search: a trailing <number><unit> component is a radius, with or without a comma.
 	// Recognised only when it parses completely, so a place named like a distance still resolves.
 	place_query split_place_query(const std::string_view text)
 	{
@@ -1077,7 +1111,7 @@ namespace
 		return result;
 	}
 
-	// locations.md 3.1: "lat, lon" is a coordinate, not a place name. Both parts must be
+	// docs/locations.md#location-search: "lat, lon" is a coordinate, not a place name. Both parts must be
 	// numbers in range, so a place whose name contains digits still resolves by name.
 	bool split_coordinate(const std::string_view text, gps_coordinate& coord)
 	{
@@ -1119,6 +1153,25 @@ namespace
 void df::search_t::parse_part(const search_part& part)
 {
 	const auto* type = prop::from_prefix(part.scope);
+
+	if (part.confirmed_person)
+	{
+		auto& person = _terms.emplace_back(prop::person, part.term, part.modifier);
+		person.by_word_start = !part.literal;
+		person.confirmed_person = true;
+		return;
+	}
+
+	// docs/faces.md#8-searching: a face spelled as its file and position, `face:` or `@face:` alike.
+	if (core::icmp(part.scope, "face") == 0 || core::icmp(part.scope, "@face") == 0)
+	{
+		if (const auto face = faces::parse_face_term(part.term))
+		{
+			_terms.emplace_back(search_term_type::face, faces::format_face_term(face->file, face->position),
+			                    part.modifier);
+			return;
+		}
+	}
 
 	if (part.scope == "@" && !part.literal)
 	{
@@ -1177,6 +1230,17 @@ void df::search_t::parse_part(const search_part& part)
 
 	if (part.scope == "@")
 	{
+		// docs/faces.md#8-searching: `@face:IMG_1234.jpg:2` is read as `face:IMG_1234.jpg:2`.
+		if (part.term.size() > 5 && core::icmp(part.term.substr(0, 5), "face:") == 0)
+		{
+			if (const auto face = faces::parse_face_term(part.term.substr(5)))
+			{
+				_terms.emplace_back(search_term_type::face, faces::format_face_term(face->file, face->position),
+				                    part.modifier);
+				return;
+			}
+		}
+
 		// Rebuilt per call rather than held in a function static: the tt.* entries are views into
 		// the loaded catalog, and switching language in-session rewrites the buffers behind them.
 		const hash_map<std::string_view, search_term_type, ihash, ieq> pre_title_stop_words{
@@ -1198,6 +1262,8 @@ void df::search_t::parse_part(const search_part& part)
 			{"tv", search_term_type::episode},
 			{sv_in_progress, search_term_type::in_progress},
 			{"watching", search_term_type::in_progress},
+			{"face", search_term_type::face_found},
+			{"faces", search_term_type::face_found},
 		};
 
 		const auto found_flag = pre_title_stop_words.find(part.term);
@@ -1219,7 +1285,7 @@ void df::search_t::parse_part(const search_part& part)
 	}
 	else if (const auto* const location = find_location_scope(part.scope); location && location->takes_centre)
 	{
-		// locations.md 3.5: the guessable spelling of a built-in class is accepted and
+		// docs/locations.md#location-search: the guessable spelling of a built-in class is accepted and
 		// canonicalizes to the `@` form, so there is only ever one vocabulary to learn.
 		if (core::icmp(part.term, sv_remote) == 0)
 		{
@@ -1584,6 +1650,10 @@ void df::search_t::parse_part(const search_part& part)
 
 	if (!result.is_empty())
 	{
+		// docs/faces.md#8-searching: typed unquoted, a person: term finds a name by the start of any of its words.
+		if (result.type == search_term_type::value && result.key == prop::person && !part.literal)
+			result.by_word_start = true;
+
 		_terms.emplace_back(result);
 	}
 }
@@ -1623,6 +1693,16 @@ void df::related_info::load(const item_element_ptr& i)
 	is_loaded = true;
 }
 
+bool df::search_t::reads_faces() const
+{
+	return std::ranges::any_of(_terms, [](const search_term& t)
+	{
+		return t.type == search_term_type::face || t.type == search_term_type::face_found ||
+		       t.type == search_term_type::text ||
+		       ((t.type == search_term_type::value || t.type == search_term_type::has_type) && t.key == prop::person);
+	});
+}
+
 bool df::search_t::needs_metadata() const
 {
 	// Every relation but the duplicate rules is read from indexed metadata, so a related search over
@@ -1643,7 +1723,7 @@ bool df::search_t::needs_metadata() const
 	return false;
 }
 
-// locations.md 3.3: name resolution happens once per search, on the search worker,
+// docs/locations.md#location-search: name resolution happens once per search, on the search worker,
 // never once per item.
 void df::search_matcher::resolve_location_centres()
 {
@@ -1660,17 +1740,12 @@ void df::search_matcher::resolve_location_centres()
 
 		if (resolved.position.is_valid())
 		{
-			// A region or country name has extent rather than a centre, so it is resolved for the
-			// radius rule but never granted a reach of its own.
-			const auto reach = core::is_empty(resolved.place) || resolved.is_extent()
-			                       ? 0.0
-			                       : location_attribution_radius_km(resolved.population);
-			_resolved_centres[t.text] = {resolved.position, reach};
+			_resolved_centres[t.text] = {resolved.position, resolved.id};
 		}
 	}
 }
 
-// locations.md 2.5: bounded attribution, memoized per ~1 km cell so a folder shot on one trip
+// docs/locations.md#item-locations: bounded attribution, memoized per ~1 km cell so a folder shot on one trip
 // costs a single gazetteer read rather than one per photo.
 df::search_matcher::attributed_location df::search_matcher::attributed(const gps_coordinate coord) const
 {
@@ -1690,10 +1765,7 @@ df::search_matcher::attributed_location df::search_matcher::attributed(const gps
 	result.state = resolved.place.state;
 	result.country = core::is_empty(country.name) ? resolved.place.country : country.name;
 	result.attribution = resolved.attribution;
-	result.reach_km = resolved.attribution == location_attribution::at ||
-	                          resolved.attribution == location_attribution::near
-	                      ? location_attribution_radius_km(resolved.place.population)
-	                      : 0.0;
+	if (resolved.attribution == location_attribution::at) result.enclosing_city = resolved.place.enclosing_city();
 
 	if (_locations->is_index_loaded())
 	{
@@ -1963,6 +2035,37 @@ inline bool same_term(const std::string_view text, const df::search_term& term)
 	return core::same(t, q);
 }
 
+// A character between the words of a name: a space, a hyphen, an apostrophe, a full stop. Every byte of a character
+// beyond ASCII is part of a word.
+static bool is_name_word_gap(const char c)
+{
+	const auto u = static_cast<unsigned char>(c);
+	return u < 0x80 && !std::isalnum(u);
+}
+
+size_t df::find_name_word(const std::string_view name, const std::string_view query)
+{
+	if (query.empty()) return std::string_view::npos;
+
+	for (size_t i = 0; i < name.size(); ++i)
+	{
+		if ((i == 0 || is_name_word_gap(name[i - 1])) && core::starts(name.substr(i), query)) return i;
+	}
+
+	return std::string_view::npos;
+}
+
+// docs/faces.md#8-searching: whether a term finds a person by this name. A wildcard is matched against the whole name;
+// otherwise the name is found by the start of any of its words, or only whole.
+static bool names_person(const df::search_term& term, const std::string_view name, const bool by_word_start)
+{
+	std::string nb;
+	const auto q = nfc_query(term);
+	const auto n = nfc_view(core::trim(name), nb);
+	if (term._is_wildcard) return core::wildcard_icmp(n, q);
+	return by_word_start ? df::find_name_word(n, q) != std::string_view::npos : core::icmp(q, n) == 0;
+}
+
 static uint64_t pack_dimensions(const prop::item_metadata& md)
 {
 	return static_cast<uint64_t>(md.width) << 16 | md.height;
@@ -2107,7 +2210,8 @@ static bool split_on_artist_separator(const char c)
 	return core::is_artist_separator(c);
 }
 
-// The lists a free-text term matches one entry of exactly, in the order compare_text reports them.
+// The lists a free-text term matches one entry of exactly, in the order compare_text reports them. The people a
+// picture names follow them, found by the start of a word of their name rather than whole.
 static const df::text_split_field text_split_table[] = {
 	{&prop::item_metadata::tags, &prop::tag, split_on_separator},
 	{&prop::item_metadata::artist, &prop::artist, split_on_artist_separator},
@@ -2142,6 +2246,77 @@ bool df::text_term_same(const search_term& term, const std::string_view value)
 bool df::text_term_equals_part(const search_term& term, const std::string_view part)
 {
 	return compare_term(term, part).match;
+}
+
+bool df::term_names_person(const search_term& term, const std::string_view name)
+{
+	return names_person(term, name, term.type == search_term_type::text || term.by_word_start);
+}
+
+std::vector<faces::time_span> df::face_spans_found(const search_t& search, const core::file_path path)
+{
+	const auto o = faces::active_overview();
+	const auto store = o ? o->store : nullptr;
+	const auto r = store ? store->find(path) : std::nullopt;
+	if (!r) return {};
+
+	const auto& run = store->run(*r);
+	if (!run.video || run.seen.size() != run.count) return {};
+
+	// The faces the search finds the video by, as match_term finds it by them.
+	std::vector<bool> found(run.count, false);
+	for (const auto& term : search.terms())
+	{
+		if (!term.modifiers.positive) continue;
+
+		if (term.type == search_term_type::face_found)
+		{
+			found.assign(run.count, true);
+		}
+		else if (term.type == search_term_type::face)
+		{
+			if (const auto named = faces::parse_face_term(term.text))
+			{
+				for (const auto like : faces::faces_named(*store, *named))
+				{
+					for (uint32_t i = 0; i < run.count; ++i)
+						if (store->entry(run.first + i).has_hash &&
+						    faces::similarity(*store, like, run.first + i) >= faces::defaults().similar)
+							found[i] = true;
+				}
+			}
+		}
+		else if (term.type == search_term_type::text || term.key == prop::person)
+		{
+			const auto any = term.type == search_term_type::has_type;
+			if (term.type != search_term_type::text && term.type != search_term_type::value && !any) continue;
+
+			for (uint32_t i = 0; i < run.count; ++i)
+			{
+				const auto face = run.first + i;
+				const auto* const person = o->person_of_face(face);
+				const auto* const member = o->member_of_face(face);
+				if (!person || !member || person->name.empty()) continue;
+				const auto held = faces::is_held(member->kind);
+				if ((any || term.confirmed_person) && !held) continue;
+				if (any || term_names_person(term, person->name)) found[i] = true;
+			}
+		}
+	}
+
+	// In order along the timeline, and those that touch or overlap made one.
+	std::vector<faces::time_span> spans;
+	for (uint32_t i = 0; i < run.count; ++i)
+		if (found[i]) spans.insert(spans.end(), run.seen[i].begin(), run.seen[i].end());
+	std::ranges::sort(spans, [](const faces::time_span& a, const faces::time_span& b) { return a.start < b.start; });
+
+	std::vector<faces::time_span> result;
+	for (const auto& s : spans)
+	{
+		if (!result.empty() && s.start <= result.back().end) result.back().end = std::max(result.back().end, s.end);
+		else result.push_back(s);
+	}
+	return result;
 }
 
 std::string df::search_fold_key(const std::string_view text)
@@ -2204,6 +2379,7 @@ df::search_result compare_text(const df::search_term& term, const df::index_file
 				return {df::search_result_type::match_prop, field.key, comp_result.val_matched};
 			}
 		}
+
 	}
 
 	return {df::search_result_type::no_match};
@@ -2389,6 +2565,7 @@ static bool has_type(const prop::key_ref t, const df::index_file_item& file, con
 		if (t == prop::game) return !prop::is_null(md->game);
 		if (t == prop::system) return !prop::is_null(md->system);
 		if (t == prop::tag) return !prop::is_null(md->tags);
+		if (t == prop::person) return !prop::is_null(md->people);
 		if (t == prop::label) return !prop::is_null(md->label);
 		if (t == prop::color_profile) return !prop::is_null(md->color_profile);
 		if (t == prop::contents) return !prop::is_null(md->contents);
@@ -2613,7 +2790,7 @@ bool df::has_feature(const item_feature feature, const file_type_ref ft, const p
 	}
 }
 
-// locations.md 2.3/3.5: a completion commits the gazetteer's qualified name, which drops the region
+// docs/locations.md#location-search: a completion commits the gazetteer's qualified name, which drops the region
 // for a place qualified to its country, so "London, United Kingdom" has to match an item the index
 // knows as London / England / United Kingdom. Every part must name one of the three fields, which
 // is what still keeps "London, Ontario" off a London, England item.
@@ -2665,6 +2842,74 @@ df::search_result df::search_matcher::match_term(const core::cached folder_name,
 {
 	const auto md = file.metadata.load();
 	return match_term(folder_name, file, md.get(), term);
+}
+
+std::span<const faces::picture_person> df::search_matcher::face_people_of(const core::cached folder_name,
+                                                                         const core::cached name) const
+{
+	// Most searches run with face search off or nobody named, and pay nothing for a path they would not find.
+	if (!_face_people || _face_people->picture_people.empty()) return {};
+	const auto found = _face_people->picture_people.find(core::file_path(core::folder_path(folder_name), name));
+	if (found == _face_people->picture_people.end()) return {};
+	return found->second;
+}
+
+std::string_view df::search_matcher::canonical_person(const std::string_view name) const
+{
+	if (_face_roster) return _face_roster->canonical_name(name);
+	return _face_people && _face_people->roster ? _face_people->roster->canonical_name(name) : name;
+}
+
+bool df::search_matcher::file_name_allowed(const core::cached folder, const core::cached file,
+                                          const std::string_view person) const
+{
+	return !_face_people || _face_people->contradicted.empty() ||
+	       !_face_people->file_name_contradicted(core::file_path(core::folder_path(folder), file), person);
+}
+
+core::cached df::search_matcher::matching_person(const core::cached folder, const core::cached file,
+                                                const prop::item_metadata* const md, const search_term& term) const
+{
+	const auto any = term.type == search_term_type::has_type;
+	if (md && !is_empty(md->people))
+	{
+		core::cached found;
+		split2(md->people, true, [&](const std::string_view part)
+		{
+			const auto raw = core::trim(part);
+			const auto name = canonical_person(raw);
+			if (found.is_empty() && !name.empty() && (any || term_names_person(term, name)) &&
+			    file_name_allowed(folder, file, raw)) found = core::cache(name);
+		});
+		if (!found.is_empty()) return found;
+	}
+	for (const auto& p : face_people_of(folder, file))
+	{
+		if ((any || term.confirmed_person) && !p.confirmed) continue;
+		const auto& name = _face_people->people[p.person].name;
+		if (any || term_names_person(term, name)) return core::cache(name);
+	}
+	return {};
+}
+
+void df::search_matcher::for_each_face_named(const search_term& term, const core::cancel_token& token,
+                                             const std::function<void(core::file_path)>& found) const
+{
+	if (!_face_people || _face_people->picture_people.empty()) return;
+
+	// The people first: most terms name nobody, and then no picture is read.
+	std::vector<bool> wanted;
+	wanted.reserve(_face_people->people.size());
+	for (const auto& p : _face_people->people) wanted.push_back(!p.name.empty() && term_names_person(term, p.name));
+	if (std::ranges::find(wanted, true) == wanted.end()) return;
+
+	for (const auto& [path, names] : _face_people->picture_people)
+	{
+		if (token.is_cancelled()) return;
+		if (std::ranges::any_of(names, [&](const faces::picture_person& p)
+		{ return wanted[p.person] && (!term.confirmed_person || p.confirmed); }))
+			found(path);
+	}
 }
 
 bool df::search_matcher::text_term_matches_folder(const search_term& term, const core::cached folder_name) const
@@ -2720,7 +2965,7 @@ df::search_result df::search_matcher::match_term(const core::cached folder_name,
 	}
 	else if (term.type == search_term_type::has_location)
 	{
-		// locations.md 3.6: no location can be determined at all, which is distinct
+		// docs/locations.md#location-search: no location can be determined at all, which is distinct
 		// from `without:place` asking whether the stored field is populated.
 		const bool has_location = md && (md->coordinate.is_valid() || !core::is_empty(md->location_place) ||
 		                                 !core::is_empty(md->location_state) || !core::is_empty(md->location_country));
@@ -2743,7 +2988,7 @@ df::search_result df::search_matcher::match_term(const core::cached folder_name,
 		else if (term.float_val > 0.0)
 		{
 			// Radius match: an item without coordinates can never satisfy one, even when its
-			// stored text names the place (locations.md 3.2).
+			// stored text names the place (docs/locations.md#location-search).
 			const auto centre = resolved_centre(term.text);
 			match_location = centre.is_valid() && md && md->has_gps() &&
 			                 centre.distance_in_kilometers(md->coordinate) <= term.float_val;
@@ -2755,7 +3000,7 @@ df::search_result df::search_matcher::match_term(const core::cached folder_name,
 			auto state = md->location_state;
 			auto country_name = md->location_country;
 
-			// locations.md 2.5: bounded attribution, so a mid-ocean item is never matched
+			// docs/locations.md#item-locations: bounded attribution, so a mid-ocean item is never matched
 			// by the name of a city it is nowhere near. Remote still yields its country.
 			if (_locations && md->coordinate.is_valid() &&
 			    (core::is_empty(place) || core::is_empty(state) || core::is_empty(country_name)))
@@ -2780,19 +3025,14 @@ df::search_result df::search_matcher::match_term(const core::cached folder_name,
 			default: match_location = matches_qualified_name(term.text, place, state, country_name); break;
 			}
 
-			// locations.md 2.5/3.2: inside a city the nearest record is often an unpopulated street, so
-			// the derived name alone would never answer `loc:London`. A more significant place also
-			// answers for anything its lesser namer stands within -- and no further, so a town 30 km
-			// away keeps its own identity.
-			if (!match_location && _locations && md->has_gps() && term.level != location_level::state &&
+			if (!match_location && _locations && term.level != location_level::state &&
 			    term.level != location_level::country)
 			{
-				const auto reach = resolved_reach_km(term.text);
-				const auto centre = resolved_centre(term.text);
-				const auto named_by = attributed(md->coordinate);
-
-				match_location = reach > named_by.reach_km && named_by.reach_km > 0.0 && centre.is_valid() &&
-				                 centre.distance_in_kilometers(md->coordinate) <= named_by.reach_km;
+				const auto wanted = resolved_place_id(term.text);
+				if (wanted)
+					match_location = (md->has_gps() && attributed(md->coordinate).enclosing_city == wanted) ||
+					                 _gps_names.parent_of(*_locations, md->location_place, md->location_state,
+					                                      md->location_country) == wanted;
 			}
 		}
 
@@ -2811,7 +3051,7 @@ df::search_result df::search_matcher::match_term(const core::cached folder_name,
 	}
 	else if (term.type == search_term_type::remote)
 	{
-		// locations.md 2.5 step 5: nothing significant enough is close enough to name. A stored
+		// docs/locations.md#item-locations: nothing significant enough is close enough to name. A stored
 		// place name is the user's own answer, so an item that carries one is never remote.
 		const bool is_remote = _locations && md && md->coordinate.is_valid() && core::is_empty(md->location_place) &&
 		                       core::is_empty(md->location_state) &&
@@ -2862,6 +3102,27 @@ df::search_result df::search_matcher::match_term(const core::cached folder_name,
 			result.type = search_result_type::match_flag;
 		}
 	}
+	else if (term.type == search_term_type::face_found || term.type == search_term_type::face)
+	{
+		// docs/faces.md#8-searching: answered from face search's store, which holds the indexed collection's
+		// pictures alone, so anything else finds nothing.
+		const auto path = core::file_path(core::folder_path(folder_name), file.name);
+		auto found = false;
+
+		if (term.type == search_term_type::face_found)
+		{
+			found = faces::has_found_faces(path);
+		}
+		else if (const auto pictures = faces::pictures_like(term.text))
+		{
+			found = pictures->contains(path);
+		}
+
+		if (found == term.modifiers.positive)
+		{
+			result.type = search_result_type::match_flag;
+		}
+	}
 	else if (term.type == search_term_type::text)
 	{
 		const auto match_folder = text_term_matches_folder(term, folder_name);
@@ -2879,7 +3140,37 @@ df::search_result df::search_matcher::match_term(const core::cached folder_name,
 		}
 		else
 		{
-			const auto match_text = compare_text(term, file, md);
+			auto match_text = compare_text(term, file, md);
+
+			// docs/faces.md#8-searching: free text finds a person the face book names in the picture as it finds one
+			// its metadata names.
+			if (!match_text.is_match())
+			{
+				const auto name = matching_person(folder_name, file.name, md, term);
+				if (!name.is_empty()) match_text = {search_result_type::match_prop, prop::person, name};
+			}
+
+			if (!match_text.is_match() && _locations && md && md->has_gps())
+			{
+				for (const auto name : _gps_names.at(*_locations, md->coordinate))
+				{
+					if (!name.is_empty() && contains_term(name, term))
+					{
+						match_text = {search_result_type::match_location, prop::null, name};
+						break;
+					}
+				}
+			}
+
+			if (!match_text.is_match() && _locations && md)
+			{
+				if (const auto id = _gps_names.parent_of(*_locations, md->location_place, md->location_state,
+				                                         md->location_country))
+				{
+					const auto city = _locations->find_by_id(id).place;
+					if (contains_term(city, term)) match_text = {search_result_type::match_location, prop::null, city};
+				}
+			}
 
 			if (match_text.is_match() && term.modifiers.positive)
 			{
@@ -2906,7 +3197,10 @@ df::search_result df::search_matcher::match_term(const core::cached folder_name,
 	{
 		if (file.ft != file_type::folder)
 		{
-			const bool match_has_type = has_type(term.key, file, md);
+			// docs/faces.md#8-searching: a name the face book gives a picture's faces is a name it holds.
+			const bool match_has_type = term.key == prop::person
+			                                ? !matching_person(folder_name, file.name, md, term).is_empty()
+			                                : has_type(term.key, file, md);
 
 			if (match_has_type == term.modifiers.positive)
 			{
@@ -2916,7 +3210,14 @@ df::search_result df::search_matcher::match_term(const core::cached folder_name,
 	}
 	else if (term.type == search_term_type::value)
 	{
-		const auto cmp = compare_val(term, file, md);
+		compare_result cmp;
+		if (term.key == prop::person)
+		{
+			const auto name = matching_person(folder_name, file.name, md, term);
+			if (!name.is_empty()) cmp = {true, 0, name};
+		}
+		else cmp = compare_val(term, file, md);
+
 		const bool match_value = modifier_match(cmp, term.modifiers);
 
 		if (match_value == term.modifiers.positive)

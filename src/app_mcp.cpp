@@ -186,6 +186,8 @@ namespace
 		case view_type::sync: return "sync";
 		case view_type::locate: return "locate";
 		case view_type::tags: return "tags";
+		case view_type::explore: return "explore";
+		case view_type::faces: return "faces";
 		case view_type::options: return "options";
 		case view_type::none: break;
 		}
@@ -216,7 +218,8 @@ bool agent_window_settled(const app_frame& app)
 	const auto& index = app._item_index;
 	return index.is_init_complete() && index.scanning_items == 0 && index.searching == 0 && index.indexing == 0 &&
 	       index.thumbnailing_items == 0 && df::loading_media == 0 && app._invalids.load() == view_invalid::none &&
-	       !app._tutorial && !task_running(app) && !task_reviewing(app) && dialogs_showing_work().empty();
+	       !app._tutorial && !task_running(app) && !task_reviewing(app) && dialogs_showing_work().empty() &&
+	       !platform::system_prompt_shown();
 }
 
 std::vector<std::string> agent_window_busy(const app_frame& app)
@@ -241,6 +244,8 @@ std::vector<std::string> agent_window_busy(const app_frame& app)
 
 	if (task_reviewing(app)) busy.emplace_back("working out the review");
 	for (auto& work : dialogs_showing_work()) busy.push_back(std::move(work));
+	// Something Windows asks while a call into it waits, which ui_state shows and dialog_respond answers.
+	if (platform::system_prompt_shown()) busy.emplace_back("waiting on a dialog Windows shows");
 
 	return busy;
 }
@@ -914,8 +919,10 @@ namespace
 			"Waits until the index has loaded and nothing is scanning, searching, indexing, making "
 			"thumbnails, loading media, acting out steps, running a task - a Sync or Import analyzing "
 			"or running, say - or showing work under way, an edit being saved, and the window has caught "
-			"up - quiet for quiet_ms - or until timeout_s. Says what is still busy if it gives up. Before a "
-			"screenshot, or after starting work whose effects you want to read.";
+			"up - quiet for quiet_ms - or until timeout_s. Says what is still busy if it gives up. A dialog "
+			"Windows shows ends the wait at once, since nothing settles until it is answered: ui_state shows "
+			"it and dialog_respond answers it. Before a screenshot, or after starting work whose effects you "
+			"want to read.";
 		t.input_schema =
 			R"({"type":"object","properties":{"timeout_s":{"type":"number","minimum":0,"maximum":600},"quiet_ms":{"type":"integer","minimum":0,"maximum":10000}},"additionalProperties":false})";
 		t.annotations.read_only = true;
@@ -926,18 +933,27 @@ namespace
 			const auto quiet = call->number("quiet_ms").value_or(500.0) / 1000.0;
 			const auto started = core::now();
 
-			host.wait_until(call, "wait_until_idle", [&app] { return agent_window_settled(app); }, quiet, timeout,
-			                [&app, started](const bool settled)
+			host.wait_until(call, "wait_until_idle",
+			                [&app] { return agent_window_settled(app) || platform::system_prompt_shown(); }, quiet,
+			                timeout, [&app, started](const bool met)
 			{
+				const auto asking = platform::system_prompt_shown();
+				const auto settled = met && !asking;
 				json_writer json;
 				json.object().boolean("idle", settled).number("waited_s", core::now() - started);
 				json.key("busy").array();
 				const auto busy = agent_window_busy(app);
 				for (const auto& b : busy) json.text(b);
-				json.end_array().end_object();
+				json.end_array();
+				if (asking) json.key("dialogs").raw(describe_dialogs_json(app));
+				json.end_object();
 				const auto text = settled ? std::format("Idle after {:.1f} s", core::now() - started)
-				                          : std::format("Still busy after {:.1f} s: {}", core::now() - started,
-				                                        join_text(busy, ", "));
+				                  : asking
+				                      ? std::format("Waiting on a dialog Windows shows, after {:.1f} s: dialog_respond "
+				                                    "answers it.{}",
+				                                    core::now() - started, describe_dialogs_text(app))
+				                      : std::format("Still busy after {:.1f} s: {}", core::now() - started,
+				                                    join_text(busy, ", "));
 				return structured_result(text, json.str());
 			});
 		};

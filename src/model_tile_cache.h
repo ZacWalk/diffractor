@@ -32,6 +32,11 @@ constexpr int64_t map_tile_db_key(const int z, const int x, const int y) noexcep
 	return (static_cast<int64_t>(z) << 40) | (static_cast<int64_t>(x) << 20) | static_cast<int64_t>(y);
 }
 
+// The most tiles downloaded at once, and the map workers: twice as many, so a tile read from the store is
+// decoded while every download waits on the network.
+constexpr int map_tile_downloads = 2;
+constexpr int map_tile_workers = map_tile_downloads * 2;
+
 // Where the tile database lives: the app cache-data folder, the same place the index database
 // (diffractor-cache.db) is opened from, so both rebuildable caches sit together.
 core::file_path resolve_tile_cache_db_path();

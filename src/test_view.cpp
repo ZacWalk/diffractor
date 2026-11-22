@@ -37,6 +37,8 @@
 #include "ui_sid.h"
 #include "ui_tracker.h"
 #include "ui_c64.h"
+#include "view_explore.h"
+#include "view_faces.h"
 #include "libdesktop/ui/table_element.h"
 #include "app_commands.h"
 #include "app_command_status.h"
@@ -1193,7 +1195,7 @@ static void should_step_the_panorama_field_of_view_ladder()
 	assert_equal(true, view.step_fov(-1), "stepping out is a step");
 	assert_equal(85, core::round(view.fov_degrees()), "and returns to the one it came from");
 
-	// n steps in and n steps out returns exactly, which is L4 in the ladder this replaces.
+	// n steps in and n steps out returns exactly, as the zoom ladder's steps do (docs/zoom.md#scale-and-pan).
 	for (auto i = 0; i < 4; ++i) view.step_fov(1);
 	for (auto i = 0; i < 4; ++i) view.step_fov(-1);
 	assert_equal(85, core::round(view.fov_degrees()), "four in and four out is where it started");
@@ -3127,7 +3129,9 @@ struct edit_photo_fixture
 		view->controls(nullptr);
 		view->activate({800, 600});
 
-		while (as.run_next(async_queue::load) || as.run_next(async_queue::render)) as.drain_ui();
+		while (as.run_next(async_queue::load) || as.run_next(async_queue::render) ||
+		       as.run_next(async_queue::thumbnail_stage))
+			as.drain_ui();
 		as.drain_ui();
 	}
 
@@ -3259,13 +3263,14 @@ static void should_move_a_tone_slider_by_its_histogram_handle()
 
 static void should_compare_an_edit_with_the_original_by_its_handle()
 {
-	// Keeps each picture Edit draws: whether in the edit's colour, and the clip it is drawn in.
+	// Keeps each picture Edit draws: whether in the edit's colour, where it is drawn and the clip it is drawn in.
 	class picture_draw_context final : public ui::test::recording_draw_context
 	{
 	public:
 		struct picture
 		{
 			bool graded = false;
+			rectd at;
 			recti clip;
 		};
 
@@ -3274,17 +3279,17 @@ static void should_compare_an_edit_with_the_original_by_its_handle()
 		using recording_draw_context::recording_draw_context;
 		using recording_draw_context::draw_texture;
 
-		void draw_texture(const render::texture_ptr& /*t*/, const quadd& /*dst*/, const recti /*src*/,
+		void draw_texture(const render::texture_ptr& /*t*/, const quadd& dst, const recti /*src*/,
 		                  const float /*alpha*/, const render::texture_sampler /*sampler*/) override
 		{
-			pictures.push_back({false, clip_bounds()});
+			pictures.push_back({false, dst.bounding_rect(), clip_bounds()});
 		}
 
-		void draw_texture(const render::texture_ptr& /*t*/, const quadd& /*dst*/, const recti /*src*/,
+		void draw_texture(const render::texture_ptr& /*t*/, const quadd& dst, const recti /*src*/,
 		                  const float /*alpha*/, const render::texture_sampler /*sampler*/,
 		                  const render::texture_transform& transform) override
 		{
-			pictures.push_back({transform.has_color_changes, clip_bounds()});
+			pictures.push_back({transform.has_color_changes, dst.bounding_rect(), clip_bounds()});
 		}
 
 		void redraw(edit_view& view)
@@ -3295,8 +3300,10 @@ static void should_compare_an_edit_with_the_original_by_its_handle()
 		}
 	};
 
+	// Turned a quarter, the landscape photo stands upright and leaves the view room beside it.
 	edit_photo_fixture edit(test_files_folder().combine_file("Test.jpg"));
 	edit.draft._brightness = 0.6;
+	edit.view->rotate_clockwise();
 	edit.view->changed();
 
 	const recti view_bounds(0, 0, 800, 600);
@@ -3305,14 +3312,21 @@ static void should_compare_an_edit_with_the_original_by_its_handle()
 	dc.redraw(*edit.view);
 	assert_equal(1_z, dc.pictures.size(), "at rest the photo is drawn once");
 	assert_equal(true, dc.pictures.front().graded, "as edited");
+	const auto shown = dc.pictures.front().at;
+	assert_equal(true, shown.Height > shown.Width, "turned as the edit turns it");
 
 	const auto knob = std::ranges::find_if(dc.ellipses, [](const auto& e) { return e.filled; });
-	assert_equal(true, knob != dc.ellipses.end(), "with the before-and-after handle on it");
+	assert_equal(true, knob != dc.ellipses.end(), "with the before-and-after handle beside it");
+	if (knob == dc.ellipses.end()) return;
+	assert_equal(true, knob->bounds.right <= core::round(shown.left()),
+	             "resting clear of the picture where the view has room, so it covers none of it");
+
 	const auto at = knob->bounds.center();
 	hit_test_context ctx(at, view_bounds);
 	const auto controller = edit.view->controller_from_location(edit.host, at, ctx);
 	assert_equal(true, controller && controller->cursor() == platform::cursor::left_right,
 	             "which the pointer finds, to drag sideways");
+	if (!controller) return;
 
 	const pointi middle(view_bounds.width() / 2, at.y);
 	controller->on_mouse_left_button_down(at, {});
@@ -3322,15 +3336,20 @@ static void should_compare_an_edit_with_the_original_by_its_handle()
 
 	dc.redraw(*edit.view);
 	assert_equal(2_z, dc.pictures.size(), "the photo is drawn either side of the line");
-	assert_equal(false, dc.pictures[0].graded, "left of it as it was");
-	assert_equal(true, dc.pictures[1].graded, "right of it as edited");
-	assert_equal(dc.pictures[0].clip.right, dc.pictures[1].clip.left, "the two meeting");
-	assert_equal(true, std::abs(dc.pictures[0].clip.right - middle.x) <= 1, "under the pointer");
+	if (dc.pictures.size() != 2) return;
+	const auto& before = dc.pictures[0];
+	const auto& after = dc.pictures[1];
+	assert_equal(false, before.graded, "left of it as it was");
+	assert_equal(true, before.at.Width > before.at.Height, "before its turn, as the file shows it");
+	assert_equal(true, after.graded, "right of it as edited");
+	assert_equal(true, after.at.Height > after.at.Width, "and turned, as the edit will save it");
+	assert_equal(before.clip.right, after.clip.left, "the two meeting");
+	assert_equal(true, std::abs(before.clip.right - middle.x) <= 1, "under the pointer");
 	assert_equal(true, dc.drawn_text().find(tt.edit_original.sv()) != std::string::npos, "each side named");
 
 	controller->on_mouse_left_button_up(middle, {});
 	settle_animations();
-	assert_equal(0.0f, edit.view->compare_position(), "let go, it slides back to the edge");
+	assert_equal(0.0f, edit.view->compare_position(), "let go, it slides back to where it rests");
 	dc.redraw(*edit.view);
 	assert_equal(1_z, dc.pictures.size(), "and the edit shows whole again");
 
@@ -3339,6 +3358,10 @@ static void should_compare_an_edit_with_the_original_by_its_handle()
 	assert_equal(true, controller->escape(), "Escape lets go of it too");
 	settle_animations();
 	assert_equal(0.0f, edit.view->compare_position(), "and it slides back");
+
+	// With no room beside the picture, it rests as far left as the whole handle shows.
+	assert_equal(true, edit_view::compare_rest_x(4, 36, 8, 4) == 22, "an edge picture leaves the handle at the edge");
+	assert_equal(true, edit_view::compare_rest_x(200, 36, 8, 4) == 174, "a narrow one has it beside the picture");
 }
 
 // Issue #268 - what a lossless copy of a video can do is read on a worker, and its draft is shown on the player
@@ -3654,9 +3677,9 @@ static void should_refresh_tooltip_when_staged_thumbnail_lands()
 
 	item->stage_thumbnail_surface(as, false, true);
 	item->stage_thumbnail_surface(as, false, true);
-	assert_equal(1_z, as.pending_worker_count(async_queue::render), "tooltip staging queues one decode");
+	assert_equal(1_z, as.pending_worker_count(async_queue::thumbnail_stage), "tooltip staging queues one decode");
 
-	assert_equal(true, as.run_next(async_queue::render), "decode runs");
+	assert_equal(true, as.run_next(async_queue::thumbnail_stage), "decode runs");
 	as.drain_ui();
 
 	assert_equal(true, item->has_cached_surface(), "staging produced a surface");
@@ -3671,7 +3694,7 @@ static void should_not_refresh_tooltip_for_fresh_request_when_only_cover_art_is_
 	item->thumbnail(make_corrupt_test_image(), make_valid_test_image(), {});
 
 	item->stage_thumbnail_surface(stage);
-	assert_equal(true, stage.run_next(async_queue::render), "cover-art decode runs");
+	assert_equal(true, stage.run_next(async_queue::thumbnail_stage), "cover-art decode runs");
 	stage.drain_ui();
 	assert_equal(true, item->has_cached_surface(), "cover art can cache even when the thumbnail failed");
 	assert_equal(false, core::is_valid(item->thumbnail_surface()), "thumbnail surface is still absent");
@@ -3698,11 +3721,11 @@ static void should_retry_scroll_tooltip_after_failed_stage()
 	const auto elements = std::make_shared<view_elements>();
 
 	group.scroll_tooltip(failed, elements, as);
-	assert_equal(true, as.run_next(async_queue::render), "failed decode runs");
+	assert_equal(true, as.run_next(async_queue::thumbnail_stage), "failed decode runs");
 	as.drain_ui();
 
 	group.scroll_tooltip(next, elements, as);
-	assert_equal(1_z, as.pending_worker_count(async_queue::render),
+	assert_equal(1_z, as.pending_worker_count(async_queue::thumbnail_stage),
 	             "a failed previous stage does not block the new hover item");
 }
 
@@ -3727,7 +3750,7 @@ static void should_stage_one_scroll_tooltip_thumbnail()
 	group.scroll_tooltip(nullptr, elements, as);
 	group.scroll_tooltip(nullptr, elements, as);
 
-	assert_equal(1_z, as.pending_worker_count(async_queue::render),
+	assert_equal(1_z, as.pending_worker_count(async_queue::thumbnail_stage),
 	             "one hover queues at most one fallback thumbnail stage");
 }
 
@@ -3904,6 +3927,75 @@ static void should_follow_the_view_s_item_along_the_strip()
 	s.select(f.view, items[3], false, false, false);
 	selector->key_down(platform::keys::RETURN, {});
 	assert_equal(true, chosen == items[3], "and once the view moves to another item, the strip is on that one");
+
+	selector->key_down(platform::keys::END, {});
+	selector->key_down(platform::keys::RETURN, {});
+	assert_equal(true, chosen == items.back(), "End goes to the last item, as in any list");
+	selector->key_down(platform::keys::HOME, {});
+	selector->key_down(platform::keys::RETURN, {});
+	assert_equal(true, chosen == items.front(), "and Home to the first");
+}
+
+// Items' scroll bar marks the selection as the strip's does, so an item scrolled out of sight can still be found: each
+// selected item where its middle lies in the listing, worked out again when the selection changes.
+static void should_mark_the_selection_on_the_items_scroll_bar()
+{
+	browsing_fixture f;
+	auto& s = f.state;
+
+	df::item_elements items;
+	for (const auto& group : s.groups())
+	{
+		for (const auto& i : group->items()) items.emplace_back(i);
+	}
+
+	assert_equal(true, items.size() > 2, "test folder has items to select");
+
+	const auto host = std::make_shared<detached_test_host>();
+	items_view view(s, host);
+	view._items_scroller.layout({800, 4000}, {0, 100, 800, 700}, {760, 100, 800, 700});
+	auto top = 100;
+	for (const auto& i : items)
+	{
+		i->bounds = recti(0, top, 100, top + 20);
+		top += 40;
+	}
+
+	s.select(f.view, items[1], false, false, false);
+	s.update_selection();
+	view.update_selection_marks();
+	assert_equal(true, view._items_scroller._mark_centres == std::vector<int>{items[1]->bounds.center().y - 100},
+	             "the selected item is marked where its middle lies in the listing");
+
+	s.select(f.view, items[2], true, false, false);
+	s.update_selection();
+	view.update_selection_marks();
+	assert_equal(2_z, view._items_scroller._mark_centres.size(), "and marked again when the selection changes");
+}
+
+// A press between items dragged out of the distance a shaky click covers is a rubber band until it is let go, as
+// every list's is: back over the press it is still a band, rather than a click again.
+static void should_keep_an_items_band_until_it_is_let_go()
+{
+	browsing_fixture f;
+	const auto host = std::make_shared<detached_test_host>();
+	items_view view(f.state, host);
+	view._items_scroller.layout({800, 4000}, {0, 100, 800, 700}, {760, 100, 800, 700});
+
+	const pointi press{400, 300};
+	hit_test_context ctx(press, recti(0, 0, 800, 800));
+	const auto band = view.items_controller_from_location(host, press, ctx);
+	assert_equal(true, band != nullptr, "a press between items is taken");
+
+	band->on_mouse_left_button_down(press, {});
+	band->on_mouse_move({402, 302});
+	assert_equal(true, band->cursor() == platform::cursor::normal, "a shaky press is still a click");
+	band->on_mouse_move({480, 380});
+	assert_equal(true, band->cursor() == platform::cursor::select, "dragged out, it is a band");
+	band->on_mouse_move({401, 301});
+	assert_equal(true, band->cursor() == platform::cursor::select, "and back over the press, still a band");
+	assert_equal(true, band->escape(), "until Escape lets it go");
+	assert_equal(true, band->cursor() == platform::cursor::normal, "and it is no band");
 }
 
 // A selected item scrolled out of the strip is still marked on its scroll bar, where the thumb's centre sits while the
@@ -4274,7 +4366,7 @@ static void should_keep_video_thumbnails_clear_of_playback_progress_overlays()
 	const auto item = std::make_shared<df::item_element>(core::file_path("c:\\resume.mp4"), indexed);
 	item->thumbnail(make_valid_test_image(), {}, {});
 	item->stage_thumbnail_surface(as, false, true);
-	assert_equal(true, as.run_next(async_queue::render), "the video thumbnail is decoded before drawing");
+	assert_equal(true, as.run_next(async_queue::thumbnail_stage), "the video thumbnail is decoded before drawing");
 	as.drain_ui();
 	assert_equal(true, item->has_cached_surface(), "the test draws actual thumbnail pixels rather than a placeholder");
 	df::item_group group(state, {item}, df::item_group_display::icons, {});
@@ -5174,6 +5266,183 @@ static void should_use_shared_tables_for_file_listings()
 	assert_equal(3, cells_in(*summary_table), "refreshing a summary never duplicates its rows");
 }
 
+static void should_offer_the_face_actions_the_face_book_allows_on_a_picture()
+{
+	null_state_strategy ss;
+	deferred_async_strategy as;
+	location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+	common_display_state_t common;
+	const auto display = std::make_shared<display_state_t>(as, common);
+	display->_is_one = true;
+	display->_item1 = make_thumbnail_test_item("two-faces.jpg", {});
+	display->_selected_texture1 = std::make_shared<texture_state>(as, display->_item1);
+	const auto path = display->_item1->path();
+	const auto store = std::make_shared<faces::face_store>();
+	faces::face_record record;
+	record.model = faces::model_id();
+	record.faces.resize(2);
+	record.faces[0].box = {0.08, 0.2, 0.04, 0.18};
+	record.faces[1].box = {0.85, 0.80, 0.1, 0.19};
+	store->add(path, record);
+	store->publish();
+	auto& book = index.faces().book();
+	const auto overview = std::make_shared<faces::overview>();
+	overview->store = store;
+	overview->generation = store->generation();
+	overview->book_generation = book.generation();
+	overview->people.push_back({0, "Mina", {}, {{1, 0.9f, faces::member_kind::suggested}}, {}, 1});
+	overview->members[1] = {0, 0, false};
+	const auto old_store = faces::active_store();
+	const auto old_overview = faces::active_overview();
+	const core::scope_exit restore([&]
+	{
+		faces::set_active_store(old_store);
+		faces::set_active_overview(old_overview);
+	});
+	faces::set_active_store(store);
+	faces::set_active_overview(overview);
+
+	const auto host = std::make_shared<detached_test_host>();
+	const auto photo = std::make_shared<photo_control>(state, display, host);
+	ui::test::fake_draw_context dc;
+	dc.scale_metrics(1.0);
+	host->_extent = {600, 360};
+	photo->bounds = recti(host->_extent);
+	display->_selected_texture1->layout(dc, photo->bounds, display->_item1);
+	host->hit_test = [&](const view_host_ptr& h, const pointi loc, hit_test_context& ctx)
+	{
+		return photo->controller_from_location(h, loc, {}, ctx);
+	};
+	const core::scope_exit detach([&] { host->on_window_destroy(); });
+	const auto hover = [&](const size_t face)
+	{
+		host->on_mouse_move(photo->face_bounds(face, {}).center(), false);
+		dc.reset();
+		photo->render_faces(dc, {});
+	};
+	const auto text_bounds = [&](const std::string_view text)
+	{
+		const auto it = std::ranges::find_if(dc.texts, [&](const auto& t) { return t.text == text; });
+		return it == dc.texts.end() ? recti{} : it->clip;
+	};
+	const auto popup_at = [&](const pointi point)
+	{
+		host->on_mouse_move(point, false);
+		view_hover_element bubble;
+		bubble.clear();
+		if (host->_active_controller) host->_active_controller->popup_from_location(bubble);
+		std::string title;
+		bubble.elements->visit_children([&](const view_element_ptr& child)
+		{
+			if (const auto action = std::dynamic_pointer_cast<action_element>(child)) title = action->text();
+		});
+		return title;
+	};
+
+	assert_equal(2_z, photo->faces_on_picture().size(), "both faces are visible");
+	hover(0);
+	const auto show = text_bounds(icon_to_utf8(icon_index::album_artist));
+	const auto name = text_bounds(icon_to_utf8(icon_index::rename));
+	const auto unnamed_box = photo->face_bounds(0, {});
+	assert_equal(true,
+	             dc.texts.size() == 2 && !show.is_empty() && !name.is_empty() && show.top >= unnamed_box.bottom &&
+	                 name.left >= show.right,
+	             "an unnamed face shows only the two icons below its outline");
+	for (const auto button : photo->_face_buttons)
+		assert_equal(button.height(), button.width(), "an icon without a name has a square hit target");
+	const auto strip = photo->face_strip();
+	assert_equal(true, std::abs(strip.center().x - unnamed_box.center().x) <= 1,
+	             "the icons are centred under the face's outline");
+	host->on_mouse_move(unnamed_box.center(), false);
+	view_hover_element face_bubble;
+	face_bubble.clear();
+	if (host->_active_controller) host->_active_controller->popup_from_location(face_bubble);
+	assert_equal(true,
+	             face_bubble.window_bounds == unnamed_box.make_union(strip) && face_bubble.active_bounds == unnamed_box,
+	             "the face's bubble stands beside the face and its icons, never over them, and goes as the pointer "
+	             "leaves the face");
+	host->on_mouse_move({name.center().x, unnamed_box.bottom - 2}, false);
+	dc.reset();
+	photo->render_faces(dc, {});
+	assert_equal(false, text_bounds(icon_to_utf8(icon_index::rename)).is_empty(),
+	             "the naming icon stays reachable diagonally from a small face");
+	// From high on the face, out past its side on the way down to a button beyond it - drawn between moves, as the
+	// window is - the strip stays: it spans the face's whole height, not just its lower half.
+	hover(0);
+	assert_equal(true, strip.right > unnamed_box.right + 2, "the icons reach past the small face");
+	host->on_mouse_move({unnamed_box.right - 1, unnamed_box.top + 1}, false);
+	host->on_mouse_move({unnamed_box.right + 2, unnamed_box.top + 2}, false);
+	dc.reset();
+	photo->render_faces(dc, {});
+	assert_equal(tt.faces_name_face.sv(), popup_at(name.center()),
+	             "a button beyond the face is reached from high on the face too");
+	assert_equal(tt.faces_show_in_view.sv(), popup_at(show.center()), "the Faces icon explains its action on hover");
+	assert_equal(tt.faces_name_face.sv(), popup_at(name.center()), "the naming icon explains its action on hover");
+
+	// A scan publishes other pictures' faces, and an overview arrives, while the pointer rests on this one: the faces
+	// are read again on the way to its buttons, and the buttons must still be there.
+	hover(0);
+	store->publish();
+	assert_equal(tt.faces_name_face.sv(), popup_at(name.center()),
+	             "the buttons stay reachable when the faces are read again while the pointer is on the face");
+	dc.reset();
+	photo->render_faces(dc, {});
+	assert_equal(false, text_bounds(icon_to_utf8(icon_index::rename)).is_empty(), "and stay drawn under the pointer");
+
+	hover(1);
+	const auto label = text_bounds("Mina?");
+	const auto confirm = text_bounds(icon_to_utf8(icon_index::check));
+	const auto reject = text_bounds(icon_to_utf8(icon_index::remove2));
+	const auto someone_else = text_bounds(icon_to_utf8(icon_index::rename));
+	assert_equal(true,
+	             dc.texts.size() == 5 && !text_bounds(icon_to_utf8(icon_index::album_artist)).is_empty() &&
+	                 !label.is_empty() && !confirm.is_empty() && !reject.is_empty() && !someone_else.is_empty(),
+	             "a suggestion shows its name, with its mark, and the icons that confirm it, rule it out or name it as "
+	             "someone else");
+	assert_equal(true,
+	             label == label.intersection(photo->bounds) && confirm == confirm.intersection(photo->bounds) &&
+	                 reject == reject.intersection(photo->bounds) &&
+	                 someone_else == someone_else.intersection(photo->bounds),
+	             "a face at the bottom right keeps its actions in reach");
+	const pointi on_name(label.right - 2, label.center().y);
+	assert_equal(std::format("{} \u00b7 Mina?", tt.faces_show_in_view), popup_at(on_name),
+	             "hovering the name explains the same navigation action");
+	assert_equal(str_format(tt.faces_confirm_person_fmt, "Mina"), popup_at(confirm.center()),
+	             "the confirming icon names the person");
+	assert_equal(str_format(tt.faces_not_person_fmt, "Mina"), popup_at(reject.center()),
+	             "and so does the one ruling them out");
+	assert_equal(tt.faces_name_someone_else.sv(), popup_at(someone_else.center()),
+	             "and the one naming the face as someone else says so");
+	host->on_mouse_left_button_down(on_name, {});
+	host->on_mouse_left_button_up(on_name, {});
+	assert_equal(true, state._pending_face == 1u, "clicking the name opens Faces on that face");
+	hover(1);
+	host->on_mouse_left_button_down(confirm.center(), {});
+	host->on_mouse_left_button_up(confirm.center(), {});
+	const auto confirmed = book.marks(path);
+	assert_equal(true,
+	             confirmed.size() == 1 && confirmed.front().person && book.people()->person(confirmed.front().person) &&
+	                 book.people()->person(confirmed.front().person)->name == "Mina",
+	             "confirming on the picture confirms the suggestion in the face book");
+
+	hover(0);
+	const std::array batch{faces::placement_batch{0, "Ann", {{path, record.faces.front().box, 0}}}};
+	book.place(batch, faces::face_action::assign, book.generation());
+	dc.reset();
+	photo->render_faces(dc, {});
+	assert_equal(true, !text_bounds("Ann").is_empty() && !text_bounds(icon_to_utf8(icon_index::rename)).is_empty(),
+	             "a named face shows its new name before a new overview arrives, and can be renamed");
+
+	index.faces().book_opened(core::file_path{}, faces::book_keeping::shared);
+	hover(0);
+	dc.reset();
+	photo->render_faces(dc, {});
+	assert_equal(true, dc.texts.size() == 2 && photo->_face_buttons[1].is_empty(),
+	             "while another window changes the face book, the face only opens Faces");
+}
+
 static void should_draw_image_errors_without_source_dimensions()
 {
 	for (const auto comparison : {false, true})
@@ -5229,12 +5498,12 @@ static void should_draw_image_errors_without_source_dimensions()
 	}
 }
 
-class processing_test_view final : public list_view
+class processing_test_view final : public review_list
 {
 public:
 	std::string _text;
 
-	processing_test_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host)) {}
+	processing_test_view(view_state& state, view_host_ptr host) : review_list(state, std::move(host)) {}
 
 	std::string_view status() override { return _text; }
 
@@ -5245,7 +5514,6 @@ public:
 		for (auto i = 0; i < count; ++i)
 		{
 			auto row = std::make_shared<row_element>(*this);
-			row->_order = i;
 			row->_work_index = i;
 			_rows.emplace_back(std::move(row));
 		}
@@ -5257,12 +5525,14 @@ public:
 
 // A four-column review list, as Import and Sync show: a narrow first column, a long name, an arrow,
 // and another long name.
-class columns_test_view final : public list_view
+class columns_test_view final : public review_list
 {
 public:
-	columns_test_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host)) {}
+	columns_test_view(view_state& state, view_host_ptr host) : review_list(state, std::move(host)) {}
 
 	void refresh() override {}
+
+	std::array<text_t, max_col_count> col_titles() override { return {tt.action, tt.source, {}, tt.destination}; }
 
 	void add_row(const std::string_view old_name, const std::string_view new_name)
 	{
@@ -5270,7 +5540,7 @@ public:
 		row->_text[1] = old_name;
 		row->_icons[2] = icon_index::next;
 		row->_text[3] = new_name;
-		row->_order = static_cast<int>(_rows.size());
+		row->_result_index = static_cast<int>(_rows.size());
 		_rows.emplace_back(std::move(row));
 	}
 
@@ -5280,6 +5550,7 @@ public:
 	int table_left() const { return coll_offset; }
 	recti divider(const int col) const { return _col_divider_bounds[col]; }
 	int scroll_y() const { return _scroller.scroll_offset().y; }
+	recti heading_cell(const int col) const { return _heading_cells[static_cast<size_t>(col)].bounds; }
 
 	// Where the last column ends: the table's left, every column's width and the gap between each two.
 	int table_right(const int gap) const
@@ -5317,7 +5588,7 @@ static void should_resize_list_columns_by_their_dividers()
 	const auto grab = view->divider(1).center();
 	hit_test_context ctx{grab, recti(extent)};
 	const auto controller = view->controller_from_location(host, grab, ctx);
-	assert_equal(true, std::dynamic_pointer_cast<column_divider_controller>(controller) != nullptr,
+	assert_equal(true, std::dynamic_pointer_cast<ui::table_divider_controller>(controller) != nullptr,
 	             "the divider after the old names can be grabbed");
 
 	const auto status_width = view->width(0);
@@ -5370,20 +5641,19 @@ static void should_show_a_run_on_the_rows_it_ran()
 
 	const auto host = std::make_shared<detached_test_host>();
 	const auto view = std::make_shared<columns_test_view>(s, host);
-	std::vector<list_view::row_element_ptr> rows;
+	std::vector<review_list::row_element_ptr> rows;
 
 	for (const auto* const name : {"b-first", "a-second", "c-third"})
 	{
-		auto row = std::make_shared<list_view::row_element>(*view);
+		auto row = std::make_shared<review_list::row_element>(*view);
 		row->_text[0] = "Copy";
 		row->_text[1] = name;
 		row->_text[3] = std::format("{}-destination", name);
-		row->_order = static_cast<int>(rows.size());
 		rows.emplace_back(std::move(row));
 	}
 
 	view->review_rows(std::move(rows));
-	view->sort(1);
+	view->sort({1, true});
 	assert_equal("a-second"sv, view->_rows.front()->_text[1], "a heading sorts the rows by its column");
 	assert_equal(4, view->column_count(), "the review shows its own columns");
 
@@ -5404,9 +5674,12 @@ static void should_show_a_run_on_the_rows_it_ran()
 	assert_equal(true, row_named("b-first")->_text_color[1] == 0, "and one that did something is not");
 }
 
-// The review scrolls by the keyboard while the view has it: the arrows by a row, Page Down by more, and Home and End
-// to either end. Any other key is left to the window.
-static void should_scroll_a_review_by_its_keys()
+// The review is a list the keyboard selects from while the view has it, as any list is: Down puts the cursor on the
+// first row and then a row on, Page Down a page on, End on the last and Home on the first, picking out the row it
+// reaches and scrolling to keep it in sight. Shift extends what is picked out and Ctrl moves the cursor alone; Ctrl+A
+// picks out every row and its text is a line a row, the arrows' column left out. Escape lets go of what is picked out
+// before it closes the task, and a letter is left to the window.
+static void should_select_a_review_by_its_keys()
 {
 	null_state_strategy ss;
 	null_async_strategy as;
@@ -5418,21 +5691,131 @@ static void should_scroll_a_review_by_its_keys()
 	const auto view = std::make_shared<columns_test_view>(s, host);
 	for (auto i = 0; i < 200; ++i) view->add_row(std::format("old-{}", i), std::format("new-{}", i));
 
+	constexpr sizei extent{800, 300};
 	list_test_measure_context mc;
-	view->layout(mc, {800, 300});
+	view->layout(mc, extent);
+	const auto in_sight = [&view, extent]
+	{
+		const auto ring = view->keyboard_bounds();
+		return ring.top >= 0 && ring.bottom <= extent.cy;
+	};
 
-	assert_equal(true, view->key_down(platform::keys::DOWN, {}), "Down scrolls the review");
-	const auto row = view->scroll_y();
-	assert_equal(true, row > 0, "by a row");
-	view->key_down(platform::keys::NEXT, {});
-	assert_equal(true, view->scroll_y() > row * 2, "Page Down by more than a row");
-	view->key_down(platform::keys::END, {});
-	const auto end = view->scroll_y();
+	assert_equal(true, view->key_down(platform::keys::DOWN, {}), "Down moves the cursor");
+	assert_equal(0, view->cursor_index(), "onto the first row");
+	assert_equal(0, view->scroll_y(), "which is in sight already");
 	view->key_down(platform::keys::DOWN, {});
-	assert_equal(end, view->scroll_y(), "End goes to the end, and Down no further");
+	assert_equal(1, view->cursor_index(), "and then a row on");
+	assert_equal(true, view->_rows[1]->_selected && !view->_rows[0]->_selected, "picking out the row it reaches");
+
+	view->key_down(platform::keys::NEXT, {});
+	assert_equal(true, view->cursor_index() > 2 && in_sight(), "Page Down goes a page on, kept in sight");
+	view->key_down(platform::keys::END, {});
+	assert_equal(199, view->cursor_index(), "End goes to the last row");
+	assert_equal(true, view->scroll_y() > 0 && in_sight(), "scrolled to show it");
+	view->key_down(platform::keys::DOWN, {});
+	assert_equal(199, view->cursor_index(), "and Down no further");
+
+	platform::key_state shift;
+	shift.shift = true;
+	view->key_down(platform::keys::UP, shift);
+	view->key_down(platform::keys::UP, shift);
+	assert_equal(3_z, view->_selection.size(), "Shift extends what is picked out");
+	platform::key_state control;
+	control.control = true;
+	view->key_down(platform::keys::UP, control);
+	assert_equal(196, view->cursor_index(), "Ctrl moves the cursor");
+	assert_equal(3_z, view->_selection.size(), "and leaves what is picked out");
+
 	view->key_down(platform::keys::HOME, {});
-	assert_equal(0, view->scroll_y(), "Home goes back to the start");
+	assert_equal(0, view->cursor_index(), "Home goes back to the first row");
+	assert_equal(0, view->scroll_y(), "and the top of the list");
+
+	assert_equal(true, view->key_down(U'A', control), "Ctrl+A picks out every row");
+	assert_equal(200_z, view->_selection.size(), "all of them");
+	const auto text = view->selected_rows_text();
+	assert_equal(true, text.starts_with("\told-0\tnew-0\r\n\told-1\tnew-1"),
+	             "a line a row, each column parted by a tab and the arrows left out");
+
+	assert_equal(true, view->escape(), "Escape lets go of what is picked out");
+	assert_equal(true, view->_selection.empty() && !view->_rows[0]->_selected, "all of it");
+	assert_equal(false, view->escape(), "and then leaves Escape to close the task");
 	assert_equal(false, view->key_down(U'A', {}), "a letter is left to the window");
+}
+
+// A review's headings sort its rows as every headed table's do: a first click the column's own way - the first
+// column's too - a second the other way and a third back to the review's own order. Text sorts as it reads, numbers
+// in it by value, and a column the review gives keys sorts by them. A heading over arrows alone is no button, and a
+// press on a row picks it out as a click does in any list.
+static void should_sort_a_review_from_its_headings()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+
+	const auto host = std::make_shared<detached_test_host>();
+	const auto view = std::make_shared<columns_test_view>(s, host);
+	std::vector<review_list::row_element_ptr> rows;
+
+	for (const auto& [action, rank, name] :
+	     {std::tuple{"Skip", 3, "IMG_10"}, std::tuple{"Copy", 1, "IMG_9"}, std::tuple{"Exists", 2, "IMG_100"}})
+	{
+		auto row = std::make_shared<review_list::row_element>(*view);
+		row->_text[0] = action;
+		row->_keys[0] = rank;
+		row->_text[1] = name;
+		row->_icons[2] = icon_index::next;
+		row->_text[3] = std::format("{}-new", name);
+		rows.emplace_back(std::move(row));
+	}
+
+	view->review_rows(std::move(rows));
+	constexpr sizei extent{800, 300};
+	list_test_measure_context mc;
+	view->layout(mc, extent);
+
+	const auto names = [&view]
+	{
+		std::string result;
+		for (const auto& row : view->_rows) result += row->_text[1] + ",";
+		return result;
+	};
+	const auto click = [&](const int column)
+	{
+		const auto at = view->heading_cell(column).center();
+		hit_test_context ctx{at, recti(extent)};
+		const auto controller = view->controller_from_location(host, at, ctx);
+		if (!controller) return false;
+		controller->on_mouse_left_button_down(at, {});
+		controller->on_mouse_left_button_up(at, {});
+		return true;
+	};
+
+	assert_equal("IMG_10,IMG_9,IMG_100,"s, names(), "rows start in the review's own order");
+	assert_equal(true, click(1), "the names' heading answers a click");
+	assert_equal("IMG_9,IMG_10,IMG_100,"s, names(), "text sorts as it reads, its numbers by value");
+	click(1);
+	assert_equal("IMG_100,IMG_10,IMG_9,"s, names(), "a second click sorts the other way");
+	assert_equal(true, view->current_sort() == ui::table_sort{1, false}, "which the heading shows");
+	click(1);
+	assert_equal("IMG_10,IMG_9,IMG_100,"s, names(), "and a third puts the review's own order back");
+	assert_equal(-1, view->current_sort().column, "unsorted");
+
+	click(0);
+	assert_equal("IMG_9,IMG_100,IMG_10,"s, names(), "the first column sorts too, by the keys the review gives it");
+	assert_equal(false, click(2), "a heading over arrows alone is no button");
+
+	view->review_rows({view->_rows.rbegin(), view->_rows.rend()});
+	view->layout(mc, extent);
+	assert_equal("IMG_9,IMG_100,IMG_10,"s, names(), "rows a new analysis gives arrive in the order the user chose");
+
+	const auto row_at = view->_rows[1]->bounds.center() - pointi{0, view->scroll_y()};
+	hit_test_context row_ctx{row_at, recti(extent)};
+	const auto row_press = view->controller_from_location(host, row_at, row_ctx);
+	assert_equal(true, row_press != nullptr && view->_rows[1]->_hovered, "a row is lit under the pointer");
+	row_press->on_mouse_left_button_down(row_at, {});
+	assert_equal(true, view->_rows[1]->_selected && view->cursor_index() == 1, "and picked out by a press");
 }
 
 // The keyboard reaches what acts among drawn elements, in the order they are drawn: each link, each part of an
@@ -5569,7 +5952,7 @@ static void should_run_a_table_from_edge_to_edge()
 	const auto grab = view->divider(1).center();
 	hit_test_context ctx{grab, recti(extent)};
 	const auto controller = view->controller_from_location(host, grab, ctx);
-	assert_equal(true, std::dynamic_pointer_cast<column_divider_controller>(controller) != nullptr,
+	assert_equal(true, std::dynamic_pointer_cast<ui::table_divider_controller>(controller) != nullptr,
 	             "the divider after the first name column can be grabbed");
 
 	const auto first_width = view->width(0);
@@ -6087,22 +6470,6 @@ static void should_list_a_batch_s_results_once_they_wait_on_close()
 	assert_equal(before, open_dialogs().size(), "a batch that succeeds closes without waiting on anyone");
 }
 
-// Advanced Search's term pickers add a term from the collection with a button beside their box, which is in
-// the picker's tree with the box, so its frame draws it and gives it the pointer.
-static void should_reach_a_term_picker_s_add_button(view_state& state)
-{
-	std::string terms;
-	const auto picker = std::make_shared<ui::term_picker_control>(state, ui::no_frame(), "Terms", terms);
-	const auto controls = tree_controls(picker);
-	assert_equal(2_z, controls.size(), "the box and the button that adds a term");
-
-	list_test_measure_context mc;
-	const auto extent = picker->measure(mc, 400);
-	picker->layout(mc, recti(0, 0, 400, extent.cy));
-	assert_equal(true, !controls[1]->bounds.is_empty() && controls[0]->bounds.right <= controls[1]->bounds.left,
-	             "the button is placed after the box");
-}
-
 static void should_preserve_thumbnail_texture_slots_after_upload_failure()
 {
 	const std::vector<core::const_surface_ptr> surfaces{make_test_surface({80, 40}, core::orientation::top_left),
@@ -6422,18 +6789,44 @@ static void should_wrap_a_panel_row_of_buttons_that_do_not_fit()
 	assert_equal(bounds.left + bounds.right, buttons[2]->bounds.left + buttons[2]->bounds.right, "centred on it");
 }
 
+static void should_keep_the_unsaved_decision_outside_the_scrolling_body()
+{
+	const auto d = make_dlg(ui::no_frame());
+	const auto actions = ui::save_discard_cancel([] {}, [] {}, [] {});
+	d->_controls = {std::make_shared<text_element>("Unsaved changes"), std::make_shared<divider_element>(), actions};
+	assert_equal(1_z, d->body_end(), "the divider and decision stay outside the scrolling body");
+	const auto controls = tree_controls(actions);
+	assert_equal(3_z, controls.size(), "three choices");
+	assert_equal(tt.button_save.sv(), std::static_pointer_cast<ui::button>(controls[0])->window_text(), "save first");
+	assert_equal(tt.button_dont_save.sv(), std::static_pointer_cast<ui::button>(controls[1])->window_text(),
+	             "discard second");
+	assert_equal(tt.button_cancel.sv(), std::static_pointer_cast<ui::button>(controls[2])->window_text(),
+	             "cancel last");
+	assert_equal(true, controls[2]->traits.default_button, "asking to leave a project defaults to staying");
+}
+
 // A review cell's text too wide for its column ends in an ellipsis inside the column, cut between characters; text
-// that fits is as it is. The test context measures 8 to a byte, and the ellipsis is three bytes.
+// that fits is as it is, and a row redrawn at the same width fits nothing again. The test context measures 8 to a
+// byte, and the ellipsis is three bytes.
 static void should_fit_a_cell_text_to_its_column_with_an_ellipsis()
 {
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+	const auto view = std::make_shared<columns_test_view>(s, std::make_shared<detached_test_host>());
+	view->add_row("IMG_0001.jpg", "\xC3\x89t\xC3\xA9 \xC3\xA0 Paris.jpg");
+	const auto& row = view->_rows.front();
 	slot_test_draw_context mc({});
 
-	assert_equal("IMG_0001.jpg"s, fit_cell_text(mc, "IMG_0001.jpg", 96), "a name that fits is as it is");
-	assert_equal("IMG_0001\xE2\x80\xA6"s, fit_cell_text(mc, "IMG_0001.jpg", 95),
+	assert_equal("IMG_0001.jpg"s, std::string(row->fitted_text(mc, 1, 96)), "a name that fits is as it is");
+	assert_equal("IMG_0001\xE2\x80\xA6"s, std::string(row->fitted_text(mc, 1, 95)),
 	             "one a pixel too wide keeps what fits beside the ellipsis");
+	assert_equal(true, row->fitted_text(mc, 1, 95).data() == row->_fitted[1].text.data(),
+	             "and is fitted once for its width");
 	// Room for four bytes before the ellipsis, where the fourth is half of the second e.
-	assert_equal("\xC3\x89t\xE2\x80\xA6"s, fit_cell_text(mc, "\xC3\x89t\xC3\xA9 \xC3\xA0 Paris.jpg", 56),
-	             "and never half a character");
+	assert_equal("\xC3\x89t\xE2\x80\xA6"s, std::string(row->fitted_text(mc, 3, 56)), "and never half a character");
 }
 
 // A number typed into a slider's box is held to the slider's range, as the slider itself is. What it is
@@ -6780,6 +7173,36 @@ static void should_layout_flex_elements()
 	assert_equal(0, nothing_visible.extent.cy, "a container with nothing visible occupies no height");
 }
 
+// A flex line measures a picture again at the width it has just given it. Holding the picture's longer side to the
+// width offered shrank a portrait on that second pass, and a bubble drew it squashed into a square.
+static void should_keep_a_pictures_shape_in_a_flex_line()
+{
+	struct restore_rotated
+	{
+		bool kept = setting.show_rotated;
+		~restore_rotated() { setting.show_rotated = kept; }
+	} restore;
+	setting.show_rotated = true;
+
+	flex_test_measure_context mc;
+	const auto shape = [&mc](const sizei stored, const core::orientation orientation, const int width)
+	{
+		const auto surface = std::make_shared<core::surface>();
+		surface->alloc(stored, core::texture_format::RGB, orientation);
+		const auto picture = std::make_shared<surface_element>(surface, 40, flex_item::center | flex_item::new_line);
+		picture->padding(0);
+		const auto b = calc_flex_layout(std::vector<view_element_ptr>{picture}, mc, {width, -1}, {}).layout_bounds[0];
+		return std::format("{}x{}", b.width(), b.height());
+	};
+
+	assert_equal("30x40"sv, shape({60, 80}, core::orientation::top_left, 100), "a portrait keeps its shape");
+	assert_equal("30x40"sv, shape({80, 60}, core::orientation::left_bottom, 100),
+	             "as does one stored on its side, turned as its pixels say");
+	assert_equal("40x30"sv, shape({80, 60}, core::orientation::top_left, 100), "a landscape keeps its shape");
+	assert_equal("15x20"sv, shape({60, 80}, core::orientation::top_left, 15),
+	             "a portrait wider than the line is as wide as the line");
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Item tile geometry
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -7051,12 +7474,21 @@ static void should_sort_and_size_a_detail_group_from_its_headings()
 	assert_equal(true, items._pending_items_anchor.valid && !items._pending_items_anchor.element,
 	             "but one for a heading's sort keeps the listing's place instead");
 	assert_equal(false, s.take_items_scroll_hold(), "for that rebuild alone");
-	press(duration_cell.center(), duration_cell.center());
-	s.take_items_scroll_hold();
-
-	press(duration_cell.center(), duration_cell.center());
 	resort();
 	assert_equal("b.mp3,a.mp3,c.mp3"s, names(*group), "a second click sorts the other way");
+
+	press(duration_cell.center(), duration_cell.center());
+	s.take_items_scroll_hold();
+	resort();
+	assert_equal("a.mp3,b.mp3,c.mp3"s, names(*group), "and a third gives the group back the toolbar's order");
+	assert_equal(-1, s.detail_choice(audio)->sort_column, "with no heading's sort shown");
+
+	press(duration_cell.center(), duration_cell.center());
+	s.take_items_scroll_hold();
+	press(duration_cell.center(), duration_cell.center());
+	s.take_items_scroll_hold();
+	resort();
+	assert_equal("b.mp3,a.mp3,c.mp3"s, names(*group), "a fourth click starts again from the column's own way");
 	press(duration_cell.center(), {duration_cell.center().x, duration_cell.bottom + 200});
 	resort();
 	assert_equal("b.mp3,a.mp3,c.mp3"s, names(*group), "a press let go off the heading sorts nothing");
@@ -7229,7 +7661,7 @@ static void should_resolve_list_rows_by_work_index()
 {
 	const auto resolve = [](const std::vector<int>& rows, const size_t work_index)
 	{
-		return list_view::row_for_work_index(rows.size(), work_index, [&rows](const size_t i) { return rows[i]; });
+		return review_list::row_for_work_index(rows.size(), work_index, [&rows](const size_t i) { return rows[i]; });
 	};
 
 	// Unsorted, which is the common case and the one the fast path answers without scanning.
@@ -7307,8 +7739,8 @@ static void should_track_the_active_row_across_a_reorder()
 
 // The SID monitor's parts, as its clicks find them: panels of the stack, as wide as the column and parted by its
 // gap, the voices side by side when there is room and stacked when not, the output over the filter beside the
-// register grid in a column wide enough for two parts, and a tune chip for each tune until there are too many to
-// show. Drawn for a movie, it has no controls.
+// register grid in a column wide enough for two parts, the voices stacked beside the grid in a Short's upright frame,
+// and a tune chip for each tune until there are too many to show. Drawn for a movie, it has no controls.
 static void should_lay_out_the_sid_monitor()
 {
 	ui::test::fake_measure_context mc;
@@ -7374,6 +7806,33 @@ static void should_lay_out_the_sid_monitor()
 	             "nor mute and solo");
 	assert_equal(wide.voices[0].height(), frame.voices[0].height(), "the voices as tall as they are with them");
 	assert_equal(true, frame.height < wide.height, "so the monitor is the tunes' panel shorter");
+
+	// Upright, as a Short's frame is, the voices stack, all one width, beside the register grid, which stands as tall
+	// as them with a column for each voice; the output and the filter cross the whole column below them.
+	const auto upright = layout_sid_monitor(recti(0, 0, 600, 0), 1.0, 1, mc, 4, 0, false, true);
+	assert_equal(true,
+	             upright.voices[1].top > upright.voices[0].bottom && upright.voices[2].top > upright.voices[1].bottom,
+	             "upright, the voices stack");
+	assert_equal(true,
+	             upright.voices[0].left == 0 && upright.voices[1].left == 0 && upright.voices[2].left == 0 &&
+	                 upright.voices[0].width() == upright.voices[1].width() &&
+	                 upright.voices[1].width() == upright.voices[2].width(),
+	             "all one width, from the column's edge");
+	assert_equal(true,
+	             upright.registers_by_voice && upright.registers.left > upright.voices[0].right &&
+	                 upright.registers.right == 600 && upright.registers.top == upright.voices[0].top &&
+	                 upright.registers.bottom == upright.voices[2].bottom,
+	             "the register grid down their right side, as tall as them");
+	assert_equal(true,
+	             upright.output.top > upright.voices[2].bottom && upright.output.left == 0 &&
+	                 upright.output.right == 600 && upright.filter.top > upright.output.bottom &&
+	                 upright.filter.left == 0 && upright.filter.right == 600,
+	             "the output, then the filter, across the column below them");
+	const auto no_grid = layout_sid_monitor(recti(0, 0, 600, 0), 1.0, 1, mc, 3, 0, false, true);
+	assert_equal(true,
+	             no_grid.registers.is_empty() && !no_grid.registers_by_voice && no_grid.voices[0].right == 600 &&
+	                 no_grid.voices[1].top > no_grid.voices[0].bottom,
+	             "without the grid, the stacked voices take the column's width");
 
 	const auto narrow = layout_sid_monitor(recti(0, 0, 360, 0), 1.0, 1, mc);
 	assert_equal(true, narrow.voices[1].top > narrow.voices[0].bottom, "voices stack in a narrow column");
@@ -7596,8 +8055,9 @@ static void should_draw_an_audio_clip_for_a_movie()
 	             "a file nothing plays has no length");
 }
 
-// A text screen's words sit in the middle of the frame and a caption in its lower band, white and edged so
-// either reads over any picture. The preview and the render both draw them this way, the render on a worker.
+// A text screen's words sit in the middle of the frame and a caption in its lower band, white over a soft black
+// shadow - a copy of the letters blurred wide behind them, cast in no direction - so either reads over any picture.
+// The preview and the render both draw them this way, the render on a worker.
 static void should_draw_movie_text_screens_and_captions()
 {
 	const sizei frame{1920, 1080};
@@ -7611,8 +8071,10 @@ static void should_draw_movie_text_screens_and_captions()
 	assert_equal(true, std::abs(title.at.y + size.cy / 2 - frame.cy / 2) <= 1, "and down it");
 
 	auto dark = 0;
-	auto clear = 0;
+	auto deep = 0;
 	auto white = 0;
+	auto edge_clear = true;
+	std::set<uint32_t> shades;
 
 	for (auto y = 0; y < size.cy; ++y)
 	{
@@ -7621,15 +8083,22 @@ static void should_draw_movie_text_screens_and_captions()
 			const auto pixel = title.surface->get_pixel(x, y);
 			const auto alpha = pixel >> 24;
 			const auto brightest = std::max({(pixel >> 16) & 0xFFu, (pixel >> 8) & 0xFFu, pixel & 0xFFu});
-			dark += alpha > 0 && brightest < 0x40u;
-			clear += alpha == 0;
+			const auto is_dark = alpha > 0 && brightest < 0x40u;
+			dark += is_dark;
+			// Over white, a pixel this black and this opaque leaves the picture a dark grey.
+			deep += alpha >= 0xC0u && (pixel & 0xFFFFFFu) == 0;
 			white += alpha == 255 && (pixel & 0xFFFFFFu) == 0xFFFFFFu;
+			if (is_dark) shades.insert(alpha);
+			if ((x == 0 || y == 0 || x == size.cx - 1 || y == size.cy - 1) && alpha != 0) edge_clear = false;
 		}
 	}
 
 	assert_equal(true, white > 0, "its letters are white");
-	assert_equal(true, dark > 0, "edged in black");
-	assert_equal(true, clear > 0, "on nothing at all between them");
+	assert_equal(true, dark > 0, "over a black shadow");
+	assert_equal(true, deep > 0, "dark enough beside the letters to set them off a bright picture");
+	assert_equal(true, shades.size() >= 32,
+	             std::format("soft, in many shades rather than an edge ({})", shades.size()));
+	assert_equal(true, edge_clear, "fading to nothing before the edge of what is drawn");
 
 	const auto caption = draw_movie_text("Namche Bazaar", movie_text_kind::caption, frame);
 	assert_equal(true, caption.surface != nullptr, "a caption is drawn");
@@ -7658,10 +8127,12 @@ static void should_draw_movie_text_screens_and_captions()
 	assert_equal(true, rolled.surface != nullptr, "long credits are drawn");
 	if (!rolled.surface) return;
 
-	const auto rolled_size = rolled.surface->dimensions();
-	assert_equal(true, rolled_size.cy <= small.cy * 9 / 10 && rolled.at.y > 0,
+	const auto rolled_letters = rolled.letters.extent();
+	assert_equal(true, rolled_letters.cy <= small.cy * 9 / 10 && rolled.at.y + rolled.letters.top > 0,
 	             "smaller, so every line is in the frame");
-	assert_equal(true, rolled_size.cy > small.cy / 2, "and no smaller than fitting needs");
+	assert_equal(true, rolled_letters.cy > small.cy / 2, "and no smaller than fitting needs");
+	assert_equal(true, rolled.at.y >= 0 && rolled.at.y + static_cast<int>(rolled.surface->height()) <= small.cy,
+	             "its shadow reaching no further than the frame");
 
 	const auto word = draw_movie_text(std::string(80, 'W'), movie_text_kind::caption, small);
 	assert_equal(true,
@@ -7681,15 +8152,115 @@ static void should_draw_movie_text_screens_and_captions()
 	worker.join();
 	assert_equal(true, on_worker.surface != nullptr, "and the render draws them on its worker");
 
-	// A screen is a whole picture, composed as a photo is: opaque black, with its words in the middle.
+	// A screen is a whole picture, composed as a photo is: opaque near black, with its words in the middle and their
+	// shadow just showing round them.
 	const auto screen = draw_movie_screen("The End", small);
 	assert_equal(true, screen && screen->dimensions() == small, "a text screen fills the movie's frame");
 	if (!screen) return;
 
-	assert_equal(0xff000000u, screen->get_pixel(0, 0), "its corners are opaque black");
+	assert_equal(movie_screen_background, screen->get_pixel(0, 0), "its corners are opaque near black");
+	assert_equal(true, (movie_screen_background & 0xFFu) <= 0x1Au, "a tenth of the way to white, no more");
 	auto lit = 0;
-	for (auto x = 0; x < small.cx; ++x) lit += (screen->get_pixel(x, small.cy / 2) & 0xFFFFFFu) == 0xFFFFFFu;
+	auto shaded = 0;
+	for (auto x = 0; x < small.cx; ++x)
+	{
+		const auto pixel = screen->get_pixel(x, small.cy / 2);
+		lit += (pixel & 0xFFFFFFu) == 0xFFFFFFu;
+		shaded += (pixel & 0xFFu) < (movie_screen_background & 0xFFu);
+	}
 	assert_equal(true, lit > 0, "and its words cross the middle in white");
+	assert_equal(true, shaded > 0, "darker than the screen beside them, where the shadow lies");
+	assert_equal(0xff000000u, draw_movie_screen(" ", small)->get_pixel(0, 0), "a screen with no words is black");
+}
+
+// docs/movie.md#youtube-shorts: a Short keeps its words clear of what YouTube lays over it - the fifth along its foot
+// and the buttons down its right edge - fills its frame with an audio clip's monitor, as a video's picture fills it,
+// and puts a picture of another shape whole over a blurred, darkened copy of itself rather than between black bars.
+static void should_draw_a_youtube_short()
+{
+	const auto is_short = movie_kind::youtube_short;
+	const auto frame = movie_short_extent;
+	const auto clear_below = static_cast<int>(frame.cy * (1.0 - movie_short_bottom_reserve));
+	const auto clear_side = static_cast<int>(frame.cx * movie_short_side_reserve);
+
+	const auto caption = draw_movie_text("Namche Bazaar, on the way up", movie_text_kind::caption, frame, is_short);
+	assert_equal(true, caption.surface != nullptr, "a Short's caption is drawn");
+	if (!caption.surface) return;
+
+	const auto caption_bottom = caption.at.y + caption.letters.bottom;
+	assert_equal(true, caption_bottom <= clear_below && caption_bottom > frame.cy / 2,
+	             std::format("above the fifth YouTube covers ({} of {})", caption_bottom, frame.cy));
+	assert_equal(true,
+	             caption.at.x + caption.letters.left >= clear_side - 1 &&
+	                 caption.at.x + caption.letters.right <= frame.cx - clear_side + 1,
+	             "and inside the width its buttons leave");
+
+	const auto movie_caption = draw_movie_text("Namche Bazaar, on the way up", movie_text_kind::caption, frame);
+	assert_equal(true, movie_caption.surface && movie_caption.at.y > caption.at.y,
+	             "where a movie's sits lower, in its own lower band");
+
+	const auto words = draw_movie_text("Everest", movie_text_kind::screen, frame, is_short);
+	assert_equal(true, words.surface != nullptr, "a Short's screen has its words");
+	if (!words.surface) return;
+	const auto middle = words.at.y + (words.letters.top + words.letters.bottom) / 2;
+	assert_equal(true, std::abs(middle - clear_below / 2) <= 2, "in the middle of what YouTube leaves clear");
+
+	// A picture of another shape sits over a backdrop of itself: small, dark, and in the frame's shape.
+	assert_equal(true, movie_needs_backdrop({1920, 1080}, frame), "a landscape picture needs one");
+	assert_equal(false, movie_needs_backdrop({720, 1280}, frame), "a picture of the Short's shape does not");
+
+	const auto wide = std::make_shared<core::surface>();
+	wide->alloc({400, 100}, core::texture_format::RGB);
+	for (auto y = 0; y < 100; ++y)
+		for (auto x = 0; x < 400; ++x)
+			std::bit_cast<uint32_t*>(wide->pixels_line(y))[x] = x < 200 ? 0xffff4020u : 0xff20c0ffu;
+
+	const auto backdrop = make_movie_backdrop(wide, frame);
+	assert_equal(true, backdrop && backdrop->dimensions() == sizei{frame.cx / 16, frame.cy / 16},
+	             "a backdrop is made small, in the frame's shape");
+	if (!backdrop) return;
+
+	auto brightest = 0u;
+	auto lit = 0;
+	for (auto y = 0; y < backdrop->dimensions().cy; ++y)
+	{
+		for (auto x = 0; x < backdrop->dimensions().cx; ++x)
+		{
+			const auto pixel = backdrop->get_pixel(x, y);
+			const auto most = std::max({(pixel >> 16) & 0xFFu, (pixel >> 8) & 0xFFu, pixel & 0xFFu});
+			brightest = std::max(brightest, most);
+			lit += most > 0x20u;
+		}
+	}
+	assert_equal(true, brightest > 0 && brightest <= 0x80u, std::format("dark ({})", brightest));
+	assert_equal(true, lit > backdrop->dimensions().cx * backdrop->dimensions().cy / 2, "but still the picture's own");
+
+	// An audio clip is drawn upright in a Short, its title and monitor as large as the frame holds.
+	const auto sid = test_temps.next_path(".sid");
+	const auto tune = make_test_sid_tune();
+	assert_equal(true, platform::blob_save_to_file({tune.data(), tune.size()}, sid), "the tune is written");
+	const auto upright = movie_audio_frames(sid).frame(0.5, {960, 960}, {}, frame);
+	assert_equal(true, upright && upright->dimensions() == sizei{540, 960}, "an audio clip is drawn upright");
+	if (!upright) return;
+
+	const auto size = upright->dimensions();
+	const auto background = upright->get_pixel(0, size.cy - 1);
+	recti drawn{size.cx, size.cy, 0, 0};
+
+	for (auto y = 0; y < size.cy; ++y)
+	{
+		for (auto x = 0; x < size.cx; ++x)
+		{
+			if (upright->get_pixel(x, y) == background) continue;
+			drawn = recti(std::min(drawn.left, x), std::min(drawn.top, y), std::max(drawn.right, x + 1),
+			              std::max(drawn.bottom, y + 1));
+		}
+	}
+
+	assert_equal(true, drawn.left <= size.cx / 20 && drawn.right >= size.cx - size.cx / 20,
+	             std::format("its monitor across the frame ({} to {} of {})", drawn.left, drawn.right, size.cx));
+	assert_equal(true, drawn.top <= size.cy / 10 && drawn.bottom >= size.cy * 17 / 20,
+	             std::format("and down it, title to foot ({} to {} of {})", drawn.top, drawn.bottom, size.cy));
 }
 
 // Keeps what it was last given, as a renderer's vertices do.
@@ -8256,6 +8827,43 @@ static void should_link_the_folder_of_an_item_found_elsewhere()
 	assert_equal(true, draws_folder(elsewhere, "notes.bin"), "so does a file that is not media");
 }
 
+// Whom a picture names stands beside where and when it was taken - each name a way to the other pictures naming them
+// - in the panel and in full screen alike.
+static void should_name_the_people_in_a_picture()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+	common_display_state_t common;
+
+	const auto md = std::make_shared<prop::item_metadata>();
+	md->people = core::cache(core::combine(std::vector<std::string>{"Jane Doe", "Ann Lee"}));
+	df::index_file_item indexed;
+	indexed.name = core::cache("photo.jpg"sv);
+	indexed.ft = files::file_type_from_name(indexed.name);
+	indexed.metadata.store(md);
+	state._display = std::make_shared<display_state_t>(as, common);
+	state._display->_item1 = std::make_shared<df::item_element>(test_files_folder().combine_file("photo.jpg"), indexed);
+	state._display->_is_one = true;
+
+	for (const auto compact : {false, true})
+	{
+		const auto panel = state.create_selection_controls(compact);
+		listing_draw_context dc({0, 0, 1000, 1000});
+		dc.colors.alpha = 1;
+		panel->layout(dc, recti(0, 0, 800, panel->measure(dc, 800).cy));
+		panel->render(dc, {});
+		const auto draws = [&dc](const std::string_view name)
+		{
+			return std::ranges::any_of(dc.texts, [name](const auto& t) { return t.text == name; });
+		};
+		const auto form = compact ? "in full screen"s : "in the panel"s;
+		assert_equal(true, draws("Jane Doe") && draws("Ann Lee"), std::format("both people are named {}", form));
+	}
+}
+
 static void should_layout_nested_metadata_document_panels()
 {
 	null_state_strategy ss;
@@ -8558,11 +9166,450 @@ static void should_fit_the_commodore_64_picture()
 	assert_equal(true, fit.cx == 0 && fit.cy == 0, "nothing with no room");
 }
 
-void register_view_tests(view_state& state, test_registry& tests)
+// The Explore timeline reads down from today a line a day, a header above each year: months with nothing in
+// them fold into one row, years with nothing into another, and a week or a month is drawn exactly where its days
+// are, so what the pointer is over is the part it opens.
+static void should_lay_out_the_explore_timeline()
+{
+	using df::explore_day;
+
+	df::explore_request request;
+	request.today = explore_day(2025, 3, 20);
+
+	const auto add = [&request](const uint32_t day)
+	{
+		df::explore_sample sample;
+		sample.day = day;
+		sample.kind = df::explore_kind::photo;
+		sample.path = core::file_path(std::format("c:\\timeline\\{}-{}.jpg", day, request.samples.size()));
+		request.samples.push_back(sample);
+	};
+
+	add(explore_day(2025, 3, 10));
+	add(explore_day(2025, 3, 10));
+	add(explore_day(2025, 1, 30));
+	add(explore_day(2023, 6, 1));
+
+	const auto model = df::build_explore_model(std::move(request), nullptr);
+
+	explore_timeline_metrics metrics;
+	metrics.day_height = 3;
+	const auto layout = layout_explore_timeline(model, metrics);
+
+	using kind = explore_timeline_layout::row_kind;
+	const std::vector<kind> expected = {kind::year, kind::days, kind::gap,  kind::days, kind::empty_years,
+	                                    kind::year, kind::gap,  kind::days, kind::gap};
+
+	assert_equal(expected.size(), layout.rows.size(), "a row for each year, run of days and run of nothing",
+	             "explore timeline");
+
+	for (size_t i = 0; i < std::min(expected.size(), layout.rows.size()); ++i)
+	{
+		assert_equal(true, expected[i] == layout.rows[i].kind, std::format("row {} is what it should be", i),
+		             "explore timeline");
+		if (i > 0)
+			assert_equal(layout.rows[i - 1].bottom, layout.rows[i].top, "each row starts where the last ended",
+			             "explore timeline");
+	}
+
+	const auto& march = layout.rows[1];
+	assert_equal(explore_day(2025, 3, 20), march.last_day, "the newest day, today, is at the top", "explore timeline");
+	assert_equal(explore_day(2025, 3, 1), march.first_day, "down to the first of the month", "explore timeline");
+	assert_equal(20 * 3, march.bottom - march.top, "a line a day", "explore timeline");
+
+	const auto& february = layout.rows[2];
+	assert_equal(explore_day(2025, 2, 1), february.first_day, "a month with nothing folds away", "explore timeline");
+	assert_equal(2024, layout.rows[4].year, "a year with nothing folds away too", "explore timeline");
+
+	for (const auto day : {explore_day(2025, 3, 20), explore_day(2025, 3, 10), explore_day(2025, 1, 30)})
+	{
+		const auto top = layout.top_of(day);
+		assert_equal(true, top.has_value(), "a day drawn has a line", "explore timeline");
+		assert_equal(day, layout.day_at(*top).value_or(0), "and the line is that day's", "explore timeline");
+		assert_equal(day, layout.day_at(*top + 2).value_or(0), "all the way down it", "explore timeline");
+		assert_equal(2025, layout.year_row_at(*top)->year, "under its year's header", "explore timeline");
+	}
+
+	assert_equal(false, layout.top_of(explore_day(2025, 2, 14)).has_value(), "a day folded away is not drawn",
+	             "explore timeline");
+
+	assert_equal(3u, static_cast<uint32_t>(layout.months.size()), "the three months with items are drawn",
+	             "explore timeline");
+	for (const auto& span : layout.months)
+	{
+		const auto& month = model.months[span.index];
+		assert_equal(static_cast<int>(month.last_day - month.first_day + 1) * 3, span.bottom - span.top,
+		             "a month is as tall as its days", "explore timeline");
+	}
+
+	// The week of 27 January to 2 February is drawn only where its January days are.
+	const auto week = std::ranges::find(model.weeks, explore_day(2025, 1, 27), &df::explore_week::first_day);
+	assert_equal(true, week != model.weeks.end(), "the week is in the model", "explore timeline");
+	const auto drawn = std::ranges::find(layout.weeks, static_cast<uint32_t>(week - model.weeks.begin()),
+	                                     &explore_timeline_layout::span::index);
+	assert_equal(true, drawn != layout.weeks.end(), "and drawn", "explore timeline");
+	assert_equal(5 * 3, drawn->bottom - drawn->top, "only as its five January days", "explore timeline");
+	assert_equal(drawn->index, explore_timeline_layout::span_at(layout.weeks, drawn->top + 7)->index,
+	             "and what is under the pointer there is that week", "explore timeline");
+
+	const auto mid_february = std::ranges::find(model.weeks, explore_day(2025, 2, 10), &df::explore_week::first_day);
+	assert_equal(true,
+	             std::ranges::find(layout.weeks, static_cast<uint32_t>(mid_february - model.weeks.begin()),
+	                               &explore_timeline_layout::span::index) == layout.weeks.end(),
+	             "a week wholly folded away is not drawn", "explore timeline");
+
+	assert_equal(layout.rows.back().bottom + metrics.bottom, layout.height, "the timeline ends after its last row",
+	             "explore timeline");
+}
+
+// Explore on a host with no window, handed models built by hand rather than read from the index.
+struct explore_test_view
+{
+	null_state_strategy ss;
+	deferred_async_strategy as;
+	location_cache locations;
+	index_state index{as, locations};
+	view_state state{ss, as, index, make_test_player()};
+	std::shared_ptr<detached_test_host> host = std::make_shared<detached_test_host>();
+	std::shared_ptr<explore_view> view = std::make_shared<explore_view>(state, host);
+	ui::test::fake_measure_context mc;
+	sizei extent = {1000, 800};
+
+	explore_test_view() { mc.scale_metrics(1.0); }
+
+	static void add(df::explore_request& request, const uint32_t day, const std::string_view country)
+	{
+		df::explore_sample sample;
+		sample.day = day;
+		sample.kind = df::explore_kind::photo;
+		sample.country = core::cache(country);
+		sample.path = core::file_path(std::format("c:\\explore\\{}-{}.jpg", day, request.samples.size()));
+		request.samples.push_back(sample);
+	}
+
+	df::explore_model_ptr arrive(df::explore_request request)
+	{
+		auto model = std::make_shared<const df::explore_model>(df::build_explore_model(std::move(request), nullptr));
+		view->model_arrived_for_tests(model);
+		return model;
+	}
+
+	void lay_out() { view->layout(mc, extent); }
+
+	recti drawn_label(const std::string_view label, const render::font_face font) const
+	{
+		ui::test::fake_draw_context dc;
+		view->render(dc, nullptr);
+		const auto it = std::ranges::find_if(dc.texts,
+		                                     [&](const auto& t) { return t.font == font && t.text == label; });
+		return it == dc.texts.end() ? recti{} : it->clip;
+	}
+
+	explore_target at(const pointi loc)
+	{
+		view->hover(explore_view::pane::timeline, loc);
+		return view->hovered();
+	}
+};
+
+// A model Explore is handed is shown only once the timeline is laid out for it. Shown at once, one handed over
+// while Explore was hidden was drawn, on showing, through the layout of the one before it.
+static void should_show_an_explore_model_only_once_laid_out()
+{
+	using df::explore_day;
+
+	explore_test_view f;
+	df::explore_request request;
+	request.today = explore_day(2025, 3, 20);
+	explore_test_view::add(request, explore_day(2025, 3, 10), "Australia");
+
+	const auto first = f.arrive(request);
+	f.lay_out();
+	assert_equal(true, f.view->model() == first, "laying out shows the model that arrived", "explore view");
+
+	explore_test_view::add(request, explore_day(2023, 6, 1), "Australia");
+	const auto second = f.arrive(request);
+	assert_equal(true, f.view->model() == first, "one arriving later waits", "explore view");
+
+	f.lay_out();
+	assert_equal(true, f.view->model() == second, "until the timeline is laid out for it", "explore view");
+}
+
+static void should_put_back_first_in_the_history_views_window_toolbar()
+{
+	explore_test_view f;
+	const auto faces = std::make_shared<faces_view>(f.state, nullptr);
+	const std::vector<bar_entry> window_commands{commands::browse_back, commands::view_maximize, commands::view_restore,
+	                                             commands::view_close};
+
+	for (const auto& declared : {f.view->bars(), faces->bars()})
+	{
+		assert_equal(true, declared.top == window_commands, "Back starts the window toolbar and Close ends it");
+	}
+}
+
+static void should_offer_person_review_in_the_faces_toolbar()
+{
+	explore_test_view f;
+	const auto faces = std::make_shared<faces_view>(f.state, nullptr);
+	const auto bar = faces->bars();
+	assert_equal(true, bar.bottom_leading == std::vector<bar_entry>{bar_control::face_filter, bar_control::face_size},
+	             "filter people and resize portraits without changing the review target");
+	// The narrow status bar keeps its trailing decisions first.
+	assert_equal(true,
+	             bar.bottom.size() >= 3 && bar.bottom[bar.bottom.size() - 3] == bar_entry(commands::face_name) &&
+	                 bar.bottom[bar.bottom.size() - 2] == bar_entry(commands::face_reject) &&
+	                 bar.bottom.back() == bar_entry(commands::face_confirm),
+	             "naming and the two review decisions have priority over search");
+}
+
+// Explore stands where it was left: a new model - the collection changed while it was closed - finds its timeline at
+// the same day, though every day has moved down it, and its globe faces where the sidebar's was last turned, whole.
+static void should_keep_explore_where_it_was_left()
+{
+	using df::explore_day;
+
+	explore_test_view f;
+	df::explore_request request;
+	request.today = explore_day(2026, 1, 20);
+	for (auto day = explore_day(2022, 1, 1); day <= explore_day(2025, 12, 31); day += 3)
+		explore_test_view::add(request, day, "Australia");
+	f.arrive(request);
+	f.lay_out();
+
+	const auto center = f.view->globe_view();
+	f.view->step_globe_zoom(1);
+	assert_equal(true, f.view->globe_zoom() > 1.0, "a zoom button magnifies the globe", "explore view");
+	assert_equal(true, f.view->globe_view() == center, "button zoom preserves globe facing", "explore view");
+	f.view->step_globe_zoom(-1);
+	assert_equal(true, f.view->globe_zoom() < 1.00001, "zoom out returns to the whole globe", "explore view");
+
+	platform::wheel_notch notch;
+	notch.delta = -1200;
+	f.view->mouse_wheel({f.extent.cx - 100, f.extent.cy / 2}, notch);
+	const auto scrolled = f.view->timeline_scroll();
+	assert_equal(true, scrolled > 0, "the timeline is scrolled back in time", "explore view");
+
+	const auto day = f.view->timeline().day_near(scrolled + f.view->timeline().year_height);
+	assert_equal(true, day.has_value(), "a day stands at the top", "explore view");
+	if (!day) return;
+	const auto top_before = *f.view->timeline().top_of(*day);
+
+	for (auto added = explore_day(2026, 1, 1); added <= explore_day(2026, 1, 18); ++added)
+		explore_test_view::add(request, added, "Australia");
+	f.arrive(request);
+	f.lay_out();
+
+	const auto top_after = f.view->timeline().top_of(*day);
+	assert_equal(true, top_after.has_value() && *top_after != top_before, "a newer month moves the day down",
+	             "explore view");
+	assert_equal(top_before - scrolled, *top_after - f.view->timeline_scroll(), "and the timeline moves with it",
+	             "explore view");
+
+	const gps_coordinate sydney(-33.9, 151.2);
+	f.state.turn_globes(sydney);
+	f.view->activate(f.extent);
+	assert_equal(true, f.view->globe_view() == sydney, "the globe faces where the sidebar's was turned",
+	             "explore view");
+	assert_equal(1.0, f.view->globe_zoom(), "all of it in sight", "explore view");
+}
+
+// Show in Explore opens Explore at an item: its timeline at the week it was taken, marked in the middle of the view,
+// and, where the item says where it was taken, its globe facing there, close.
+static void should_show_an_item_in_explore()
+{
+	explore_test_view f;
+	const auto path = test_files_folder().combine_file("Test.jpg");
+	load_item(f.index, path, false);
+	const auto file = f.index.find_item(path);
+	const auto md = file.metadata.load();
+	const auto taken = df::date_term_keys_of(df::date_parts_prop::original, file, md.get()).original;
+	assert_equal(true, taken.is_valid(), "the photo says when it was taken", "explore view");
+	if (!taken.is_valid()) return;
+
+	const auto day = static_cast<uint32_t>(taken.to_days());
+	df::explore_request request;
+	request.today = day + 700;
+	for (auto d = day - 900; d <= day + 690; d += 2) explore_test_view::add(request, d, "Australia");
+	f.arrive(request);
+	f.lay_out();
+	assert_equal(true, f.view->keyboard_bounds().is_empty(), "no week is marked at first", "explore view");
+
+	f.view->show_item(path);
+	f.lay_out();
+
+	const auto marked = f.view->keyboard_bounds();
+	assert_equal(false, marked.is_empty(), "the week it was taken is marked", "explore view");
+	assert_equal(true, f.view->timeline_scroll() > 0, "scrolled back to it", "explore view");
+	assert_equal(true, marked.top >= 0 && marked.bottom <= f.extent.cy, "and in sight", "explore view");
+
+	if (md && md->coordinate.is_valid())
+	{
+		assert_equal(true, f.view->globe_view() == md->coordinate, "the globe faces where it was taken",
+		             "explore view");
+		assert_equal(true, f.view->globe_zoom() > 1.0, "close", "explore view");
+	}
+}
+
+// What the pointer finds on Explore's timeline is what is drawn there: a trip's label where it hangs over its
+// year's header, and the header held at the top while its year scrolls, all of it, even when the row at the very
+// top is a shorter one of years with nothing in them. A week cut short by a month with nothing in it has its
+// bubble beside the days it is drawn as.
+static void should_show_explore_timeline_bubbles_before_turning_the_globe()
+{
+	const auto help = std::exchange(setting.show_help_tooltips, true);
+	const auto animations = std::exchange(render::animations_enabled, false);
+	const core::scope_exit restore([=]
+	{
+		setting.show_help_tooltips = help;
+		render::animations_enabled = animations;
+	});
+	explore_test_view f;
+	const gps_coordinate start(0.0, 0.0);
+	f.state.turn_globes(start);
+	f.view->activate(f.extent);
+	df::explore_request request;
+	request.today = df::explore_day(2026, 1, 12);
+	explore_test_view::add(request, request.today, "New Zealand");
+	request.samples.back().coordinate = gps_coordinate(-40.0, 175.0);
+	f.arrive(std::move(request));
+	f.lay_out();
+	while (f.as.run_next(async_queue::query)) f.as.drain_ui();
+
+	const auto* year = f.view->timeline().year_row(2026);
+	assert_equal(true, year != nullptr, "the year has a timeline header");
+	if (!year) return;
+	const auto year_label = f.drawn_label("2026", render::font_face::title);
+	assert_equal(false, year_label.is_empty(), "the year is drawn");
+	const auto loc = year_label.center();
+	assert_equal(true, f.at(loc).kind == explore_target_kind::year, "the pointer is on the year");
+	view_hover_element bubble;
+	bubble.clear();
+	bubble.active_delay = bubble_delay::help;
+	f.view->bubble(explore_view::pane::timeline, bubble);
+	assert_equal(false, bubble.is_empty(), "the year has a preview");
+	assert_equal(0u, bubble.active_delay, "the preview does not wait for a turn");
+	assert_equal(true, f.view->globe_view() == start, "building the preview does not turn the globe");
+	f.view->tick_hover_turn(loc, 1000);
+	f.view->tick_hover_turn(loc, 1499);
+	assert_equal(true, f.view->globe_view() == start, "the pointer has not rested for long enough");
+	f.view->tick_hover_turn(loc, 1500);
+	assert_equal(true, f.view->globe_view() != start, "a deliberate hover turns to the year's places");
+}
+
+static void should_point_explore_at_what_its_timeline_draws()
+{
+	using df::explore_day;
+	using kind = explore_target_kind;
+
+	explore_test_view f;
+	df::explore_request request;
+	request.today = explore_day(2026, 1, 10);
+
+	// Home all of 2025 but November, and three days in Croatia to end the year.
+	for (auto day = explore_day(2025, 1, 1); day <= explore_day(2025, 12, 20); day += 2)
+	{
+		if (df::explore_date(day).month != 11) explore_test_view::add(request, day, "Australia");
+	}
+
+	for (auto day = explore_day(2025, 12, 29); day <= explore_day(2025, 12, 31); ++day)
+	{
+		explore_test_view::add(request, day, "Croatia");
+		explore_test_view::add(request, day, "Croatia");
+	}
+
+	const auto model = f.arrive(std::move(request));
+	f.lay_out();
+	assert_equal(1u, static_cast<uint32_t>(model->trips.size()), "the days in Croatia are a trip", "explore view");
+
+	const auto& layout = f.view->timeline();
+	assert_equal(true, layout.rows.front().kind == explore_timeline_layout::row_kind::empty_years,
+	             "a year with nothing in it heads the timeline", "explore view");
+
+	const auto* const header = layout.year_row(2025);
+	assert_equal(true, header != nullptr, "2025 has a header", "explore view");
+	if (!header) return;
+	const auto year_label = f.drawn_label("2025", render::font_face::title);
+	assert_equal(false, year_label.is_empty(), "the year's label is drawn", "explore view");
+	const auto content_top = year_label.top - header->top;
+	const auto guidance_badge = [&]
+	{
+		return f.drawn_label(icon_to_utf8(icon_index::time), render::font_face::icons);
+	};
+	const auto intro = guidance_badge();
+	assert_equal(true, !intro.is_empty() && intro.bottom <= year_label.top && f.at(intro.center()).is_none(),
+	             "the timeline introduction comes before the dates and is not a date target", "explore view");
+
+	auto trip_over_header = false;
+	for (auto x = 0; x < f.extent.cx; x += 4)
+	{
+		trip_over_header |= f.at({x, year_label.bottom - 2}).kind == kind::trip;
+	}
+	assert_equal(true, trip_over_header, "the trip's label answers where it hangs over the header", "explore view");
+
+	// 1 November 2025 was a Saturday, so the week of 27 October is drawn only as its five October days.
+	const auto week = std::ranges::find(model->weeks, explore_day(2025, 10, 27), &df::explore_week::first_day);
+	const auto week_index = static_cast<uint32_t>(week - model->weeks.begin());
+	const auto drawn = std::ranges::find(layout.weeks, week_index, &explore_timeline_layout::span::index);
+	assert_equal(true, drawn != layout.weeks.end(), "the week is drawn", "explore view");
+	assert_equal(5 * layout.day_height, drawn->bottom - drawn->top, "as its October days", "explore view");
+
+	auto found_week = false;
+	for (auto x = 0; x < f.extent.cx && !found_week; x += 4)
+	{
+		const auto target = f.at({x, content_top + drawn->top + 4});
+		found_week = target.kind == kind::week && target.index == week_index;
+	}
+	assert_equal(true, found_week, "the pointer finds the week", "explore view");
+
+	ui::hover_bubble bubble;
+	bubble.clear();
+	f.view->bubble(explore_view::pane::timeline, bubble);
+	assert_equal(false, bubble.is_empty(), "the week has a bubble", "explore view");
+	assert_equal(content_top + drawn->top, bubble.window_bounds.top, "beside the days the week is drawn as",
+	             "explore view");
+	assert_equal(content_top + drawn->bottom, bubble.window_bounds.bottom, "all of them", "explore view");
+
+	platform::wheel_notch notch;
+	notch.delta = -12;
+	f.view->mouse_wheel(intro.center(), notch);
+	assert_equal(true, f.view->timeline_scroll() > 0 && guidance_badge() == intro.offset(0, -f.view->timeline_scroll()),
+	             "scrolling over the introduction moves it with the dates", "explore view");
+	notch.delta = -200;
+	f.view->mouse_wheel({f.extent.cx - 100, f.extent.cy / 2}, notch);
+	assert_equal(true, guidance_badge().is_empty(), "past the introduction no space is reserved for it",
+	             "explore view");
+
+	auto found_year = false;
+	for (auto x = 0; x < f.extent.cx; x += 4)
+	{
+		const auto target = f.at({x, layout.year_height - 4});
+		assert_equal(true, target.is_none() || target.kind == kind::year || target.kind == kind::year_place,
+		             std::format("the header held at the top answers at {}", x), "explore view");
+		found_year |= target.kind == kind::year;
+	}
+	assert_equal(true, found_year, "for its year", "explore view");
+	notch.delta = f.view->timeline_scroll();
+	f.view->mouse_wheel(intro.center(), notch);
+	assert_equal(true, guidance_badge() == intro, "returning to the top reveals the introduction again",
+	             "explore view");
+}
+
+void register_view_tests(view_state& /*state*/, test_registry& tests)
 {
 	tests.add("Should keep video thumbnails clear of playback progress overlays"s,
 	          should_keep_video_thumbnails_clear_of_playback_progress_overlays);
 	tests.add("Should lay out the SID monitor"s, should_lay_out_the_sid_monitor);
+	tests.add("Should lay out the explore timeline"s, should_lay_out_the_explore_timeline);
+	tests.add("Should show an explore model only once laid out"s, should_show_an_explore_model_only_once_laid_out);
+	tests.add("Should put Back first in the history views' window toolbar"s,
+	          should_put_back_first_in_the_history_views_window_toolbar);
+	tests.add("Should offer person review in the Faces toolbar"s, should_offer_person_review_in_the_faces_toolbar);
+	tests.add("Should keep explore where it was left"s, should_keep_explore_where_it_was_left);
+	tests.add("Should show an item in explore"s, should_show_an_item_in_explore);
+	tests.add("Should point explore at what its timeline draws"s, should_point_explore_at_what_its_timeline_draws);
+	tests.add("Should show Explore timeline bubbles before turning the globe"s,
+	          should_show_explore_timeline_bubbles_before_turning_the_globe);
 	tests.add("Should keep music scrubbers usable in narrow panels"s,
 	          should_keep_music_scrubbers_usable_in_narrow_panels);
 	tests.add("Should fit every tracker channel before any scrolls away"s,
@@ -8575,12 +9622,14 @@ void register_view_tests(view_state& state, test_registry& tests)
 	tests.add("Should present pictures alone and the rest as a stack"s,
 	          should_present_pictures_alone_and_the_rest_as_a_stack);
 	tests.add("Should link the folder of an item found elsewhere"s, should_link_the_folder_of_an_item_found_elsewhere);
+	tests.add("Should name the people in a picture"s, should_name_the_people_in_a_picture);
 	tests.add("Should layout nested metadata document panels"s, should_layout_nested_metadata_document_panels);
 	tests.add("Should fit the SID monitor to its space"s, should_fit_the_sid_monitor_to_its_space);
 	tests.add("Should fade SID register activity"s, should_fade_sid_register_activity);
 	tests.add("Should move the SID monitor with the tune"s, should_move_the_sid_monitor_with_the_tune);
 	tests.add("Should draw an audio clip for a movie"s, should_draw_an_audio_clip_for_a_movie);
 	tests.add("Should draw movie text screens and captions"s, should_draw_movie_text_screens_and_captions);
+	tests.add("Should draw a YouTube Short"s, should_draw_a_youtube_short);
 	// Release review - Mute and Solo read a monitor a rebuild had already destroyed.
 	tests.add("Should toggle a SID voice after its monitor is rebuilt"s,
 	          should_toggle_a_sid_voice_after_its_monitor_is_rebuilt);
@@ -8836,6 +9885,8 @@ void register_view_tests(view_state& state, test_registry& tests)
 	tests.add("Should follow the view's item along the strip"s, should_follow_the_view_s_item_along_the_strip);
 	tests.add("Should mark the selection on the strip's scroll bar"s,
 	          should_mark_the_selection_on_the_strip_s_scroll_bar);
+	tests.add("Should mark the selection on the items scroll bar"s, should_mark_the_selection_on_the_items_scroll_bar);
+	tests.add("Should keep an items band until it is let go"s, should_keep_an_items_band_until_it_is_let_go);
 	tests.add("Should show the strip's item once it has its size"s, should_show_the_strip_s_item_once_it_has_its_size);
 	tests.add("Should keep the strip's item in place as its set shrinks"s,
 	          should_keep_the_strip_s_item_in_place_as_its_set_shrinks);
@@ -8856,7 +9907,8 @@ void register_view_tests(view_state& state, test_registry& tests)
 	// The task views' columns are resized by their dividers.
 	tests.add("Should resize list columns by their dividers"s, should_resize_list_columns_by_their_dividers);
 	tests.add("Should show a run on the rows it ran"s, should_show_a_run_on_the_rows_it_ran);
-	tests.add("Should scroll a review by its keys"s, should_scroll_a_review_by_its_keys);
+	tests.add("Should select a review by its keys"s, should_select_a_review_by_its_keys);
+	tests.add("Should sort a review from its headings"s, should_sort_a_review_from_its_headings);
 	tests.add("Should find and step the keyboard's parts"s, should_find_and_step_the_keyboard_s_parts);
 	tests.add("Should press a part as a click does"s, should_press_a_part_as_a_click_does);
 	tests.add("Should run a table from edge to edge"s, should_run_a_table_from_edge_to_edge);
@@ -8924,7 +9976,6 @@ void register_view_tests(view_state& state, test_registry& tests)
 	          should_take_a_dialog_off_the_open_dialogs_as_it_goes);
 	tests.add("Should list a batch's results once they wait on Close"s,
 	          should_list_a_batch_s_results_once_they_wait_on_close);
-	tests.add("Should reach a term picker's add button"s, [&state] { should_reach_a_term_picker_s_add_button(state); });
 	// G13 UI-012 - failed texture uploads leave a hole rather than compacting later thumbnails.
 	tests.add("Should preserve thumbnail texture slots after upload failure"s,
 	          should_preserve_thumbnail_texture_slots_after_upload_failure);
@@ -8942,6 +9993,8 @@ void register_view_tests(view_state& state, test_registry& tests)
 	// Shared labels and numeric fields consumed the entire track in a narrow controls pane.
 	tests.add("Should keep narrow slider rows usable"s, should_keep_narrow_slider_rows_usable);
 	tests.add("Should lay out dialog buttons in a centred row"s, should_lay_out_dialog_buttons_in_a_centred_row);
+	tests.add("Should keep the unsaved decision outside the scrolling dialog body"s,
+	          should_keep_the_unsaved_decision_outside_the_scrolling_body);
 	tests.add("Should wrap a panel row of buttons that do not fit"s,
 	          should_wrap_a_panel_row_of_buttons_that_do_not_fit);
 	tests.add("Should fit a cell text to its column with an ellipsis"s,
@@ -8949,6 +10002,8 @@ void register_view_tests(view_state& state, test_registry& tests)
 	// A failed image without dimensions collapsed its destination rectangle and hid the error.
 	tests.add("Should draw image errors without source dimensions"s,
 	          should_draw_image_errors_without_source_dimensions);
+	tests.add("Should offer the face actions the face book allows on a picture"s,
+	          should_offer_the_face_actions_the_face_book_allows_on_a_picture);
 	tests.add("Should draw only hex rows inside the clip"s, should_draw_only_hex_rows_inside_the_clip);
 	tests.add("Should read a document in its encoding"s, should_read_a_document_in_its_encoding);
 	tests.add("Should show bytes that are not text as a dump"s, should_show_bytes_that_are_not_text_as_a_dump);
@@ -8977,6 +10032,7 @@ void register_view_tests(view_state& state, test_registry& tests)
 	// Flex layout
 	//
 	tests.add("Should layout flex elements"s, should_layout_flex_elements);
+	tests.add("Should keep a picture's shape in a flex line"s, should_keep_a_pictures_shape_in_a_flex_line);
 
 	//
 	// Item tile geometry

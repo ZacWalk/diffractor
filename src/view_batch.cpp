@@ -108,7 +108,7 @@ static std::vector<std::string> genre_suggestions(const view_state& s, const df:
 	return result;
 }
 
-std::array<text_t, list_view::max_col_count> batch_tool_view::col_titles()
+std::array<text_t, review_list::max_col_count> batch_tool_view::col_titles()
 {
 	if (_mode == batch_tool_mode::convert) return {tt.source, tt.destination, tt.changes, {}};
 	// Whether a field's value is added or replaced is the action each row takes; the Status column a finished
@@ -154,7 +154,7 @@ std::string_view batch_tool_view::operation_name() const
 
 void batch_tool_view::activate(const sizei extent)
 {
-	list_view::activate(extent);
+	review_list::activate(extent);
 	refresh();
 }
 
@@ -243,8 +243,8 @@ void batch_tool_view::describe_convert_plan()
 	rows.reserve(_convert_plan.size());
 	_row_names.clear();
 	_row_names.reserve(_convert_plan.size());
-	const auto error_color = core::lighten(ui::style::colors.warning_background, 0.55f);
-	const auto resolved_color = core::lighten(ui::style::colors.important_background, 0.55f);
+	const auto error_color = ui::style::tone_text(ui::style::tone::failed);
+	const auto resolved_color = ui::style::tone_text(ui::style::tone::caution);
 	int order = 0;
 	int collisions = 0;
 	for (const auto& entry : _convert_plan)
@@ -284,8 +284,7 @@ void batch_tool_view::describe_convert_plan()
 			row->_text[2] = std::format("{}x{} {}", scale.cx, scale.cy, convert_extension());
 		}
 
-		row->_order = order++;
-		row->_work_index = row->_order;
+		row->_work_index = order++;
 		rows.emplace_back(row);
 		_row_names.emplace_back(entry.destination.name());
 	}
@@ -336,7 +335,7 @@ void batch_tool_view::refresh_metadata()
 	std::vector<row_element_ptr> rows;
 	_row_names.clear();
 	_row_names.reserve(items.size());
-	const auto warning_color = core::lighten(ui::style::colors.important_background, 0.55f);
+	const auto warning_color = ui::style::tone_text(ui::style::tone::caution);
 	int order = 0;
 	for (const auto& item : items.items())
 	{
@@ -367,8 +366,7 @@ void batch_tool_view::refresh_metadata()
 		                               (setting.set_copyright_url && !prop::is_null(md->copyright_url)));
 		row->_text[2] = overwrites ? std::string(tt.collision_replace.sv()) : std::string(tt.update.sv());
 		if (overwrites) row->_text_color[2] = warning_color;
-		row->_order = order++;
-		row->_work_index = row->_order;
+		row->_work_index = order++;
 		rows.emplace_back(row);
 		_row_names.emplace_back(item->path().name());
 	}
@@ -408,12 +406,15 @@ void batch_tool_view::refresh_dates()
 	{
 		auto row = std::make_shared<row_element>(*this);
 		const auto original = item->media_created();
+		const auto adjusted = adjusted_item_date(original, _new_start, _original_start);
 		row->_text[0] = item->path().pack();
 		row->_text[1] = platform::format_date_time(original);
-		row->_text[2] = platform::format_date_time(adjusted_item_date(original, _new_start, _original_start));
+		row->_text[2] = platform::format_date_time(adjusted);
 		row->_text[3] = std::string(adjust_date_source_name(item->metadata()));
-		row->_order = order++;
-		row->_work_index = row->_order;
+		// The dates sort by when they are, not by how they read; an item with no date has no key, and follows.
+		if (original.is_valid()) row->_keys[1] = original.to_int64();
+		if (adjusted.is_valid()) row->_keys[2] = adjusted.to_int64();
+		row->_work_index = order++;
 		rows.emplace_back(row);
 		_row_names.emplace_back(item->path().name());
 	}
@@ -494,11 +495,14 @@ void batch_tool_view::show_run_results(const std::vector<item_status>& statuses,
 void batch_tool_view::queue_run_results(const view_state& s, const std::shared_ptr<batch_tool_view>& view,
                                         const size_t generation, std::vector<item_status> statuses, std::string fatal,
                                         std::string first_error, std::shared_ptr<detach_file_handles> detach,
-                                        std::string title)
+                                        std::string title, session_change change)
 {
 	s.queue_ui([view, generation, statuses = std::move(statuses), detach = std::move(detach), title = std::move(title),
-	            fatal = std::move(fatal), first_error = std::move(first_error)]() mutable
+	            fatal = std::move(fatal), first_error = std::move(first_error), change = std::move(change)]() mutable
 	{
+		// The files changed whether or not this run's review is still on screen.
+		view->_state.record_change(change.icon, change.what, std::move(change.paths));
+
 		if (!view->is_processing_generation(generation)) return;
 		view->end_processing();
 
@@ -630,6 +634,7 @@ void batch_tool_view::run_convert()
 		std::string fatal;
 		std::string first_error;
 		auto wrote_anything = false;
+		session_change change{icon_index::convert, title, {}};
 		try
 		{
 			files ff;
@@ -693,6 +698,7 @@ void batch_tool_view::run_convert()
 					{
 						statuses[plan_index] = item_status::success;
 						wrote_anything = true;
+						change.paths.emplace_back(request.destination);
 					}
 					else
 					{
@@ -717,108 +723,36 @@ void batch_tool_view::run_convert()
 		}
 
 		queue_run_results(s, view, generation, std::move(statuses), std::move(fatal), std::move(first_error), detach,
-		                  title);
+		                  title, std::move(change));
 	});
 }
 
 void batch_tool_view::run_metadata()
 {
-	struct metadata_request
-	{
-		core::file_path path;
-		core::cached xmp;
-	};
 	const auto items = _state.selected_items().items();
-	std::vector<metadata_request> requests;
+	std::vector<update_request> requests;
 	requests.reserve(items.size());
-	for (const auto& item : items)
-	{
-		requests.emplace_back(item->path(), item->xmp());
-	}
-	const auto title = std::string(tt.command_edit_metadata.sv());
-	const auto edits = metadata_changes();
+	for (const auto& item : items) requests.push_back({item->path(), item->xmp(), {}});
 	record_feature_use(features::batch_edit);
-	// See run_convert: a Close handled while the handles are released leaves this view.
-	const auto generation_before_detach = processing_generation();
-	const auto detach = std::make_shared<detach_file_handles>(_state);
-	if (processing_generation() != generation_before_detach) return;
-	begin_processing(items.size());
-	const auto generation = processing_generation();
-	const auto cancel_source = processing_cancel_source();
-	const auto cancel_version = cancel_source->load();
-	_status = std::string(tt.processing.sv());
-	_state.queue_async(async_queue::work, [&s = _state, view = shared_from_this(), requests = std::move(requests),
-	                                       edits, cancel_source, cancel_version, generation, detach, title]() mutable
-	{
-		// Nothing has been attempted yet, so a row the run never reaches reports itself
-		// as not run.
-		std::vector<item_status> statuses(requests.size(), item_status::cancel);
-		std::string fatal;
-		std::string first_error;
-		core::unique_folders written;
-		try
-		{
-			files ff;
-			for (size_t index = 0; index < requests.size() && cancel_source->load() == cancel_version; ++index)
-			{
-				s.queue_ui([view, generation, index]
-				{
-					if (view->is_processing_generation(generation)) view->processing_work_item(index, index + 1);
-				});
-				const auto& request = requests[index];
-
-				// One file that cannot be written must not decide the fate of the rest.
-				// The row records the failure and the run carries on - including when the
-				// write throws, which a refused sidecar or a codec error does.
-				try
-				{
-					const auto result = ff.update(request.path, edits, {}, file_encode_params{}, false, request.xmp);
-					statuses[index] = apply_batch_update_result(written, request.path.folder(), first_error, result);
-				}
-				catch (const std::exception& e)
-				{
-					statuses[index] = item_status::fail;
-					if (first_error.empty()) first_error = core::utf8_cast(e.what());
-				}
-			}
-		}
-		catch (const std::exception& e)
-		{
-			fatal = core::utf8_cast(e.what());
-		}
-
-		// Outside the try: the write is invisible to the index until the folder is validated,
-		// and a run that ended early still wrote everything it reported as written.
-		if (!written.empty())
-		{
-			s.item_index.queue_validate_changed_folders(std::move(written));
-		}
-
-		queue_run_results(s, view, generation, std::move(statuses), std::move(fatal), std::move(first_error), detach,
-		                  title);
-	});
+	run_updates(icon_index::edit_metadata, std::string(tt.command_edit_metadata.sv()), std::move(requests),
+	            metadata_changes());
 }
 
 void batch_tool_view::run_dates()
 {
-	struct date_update_request
-	{
-		core::file_path path;
-		core::date_t media_created;
-		core::cached xmp;
-	};
-
-	std::vector<date_update_request> requests;
-	for (const auto& item : _state.selected_items().items())
-	{
-		requests.emplace_back(item->path(), item->media_created(), item->xmp());
-	}
-
+	const auto items = _state.selected_items().items();
+	std::vector<update_request> requests;
+	requests.reserve(items.size());
+	for (const auto& item : items)
+		requests.push_back(
+			{item->path(), item->xmp(), adjusted_item_date(item->media_created(), _new_start, _original_start)});
 	record_feature_use(features::adjust_date);
+	run_updates(icon_index::time, std::string(tt.command_adjust_date.sv()), std::move(requests), {});
+}
 
-	const auto title = std::string(tt.command_adjust_date.sv());
-	const auto new_start = _new_start;
-	const auto original_start = _original_start;
+void batch_tool_view::run_updates(const icon_index icon, std::string title, std::vector<update_request> requests,
+                                  metadata_edits edits)
+{
 	// See run_convert: a Close handled while the handles are released leaves this view.
 	const auto generation_before_detach = processing_generation();
 	const auto detach = std::make_shared<detach_file_handles>(_state);
@@ -828,9 +762,9 @@ void batch_tool_view::run_dates()
 	const auto cancel_source = processing_cancel_source();
 	const auto cancel_version = cancel_source->load();
 	_status = std::string(tt.processing.sv());
-	_state.queue_async(async_queue::work,
-	                   [&s = _state, view = shared_from_this(), requests = std::move(requests), new_start,
-	                    original_start, cancel_source, cancel_version, generation, detach, title]() mutable
+	_state.queue_async(async_queue::work, [&s = _state, view = shared_from_this(), icon, title = std::move(title),
+	                                       requests = std::move(requests), edits = std::move(edits), cancel_source,
+	                                       cancel_version, generation, detach]() mutable
 	{
 		// Nothing has been attempted yet, so a row the run never reaches reports itself
 		// as not run.
@@ -841,6 +775,7 @@ void batch_tool_view::run_dates()
 		try
 		{
 			files ff;
+			metadata_edits dated;
 			for (size_t index = 0; index < requests.size() && cancel_source->load() == cancel_version; ++index)
 			{
 				s.queue_ui([view, generation, index]
@@ -848,16 +783,19 @@ void batch_tool_view::run_dates()
 					if (view->is_processing_generation(generation)) view->processing_work_item(index, index + 1);
 				});
 				const auto& request = requests[index];
-				const auto date = adjusted_item_date(request.media_created, new_start, original_start);
-				metadata_edits edits;
-				edits.date_original = date;
+				if (request.date_original)
+				{
+					dated = edits;
+					dated.date_original = request.date_original;
+				}
 
 				// One file that cannot be written must not decide the fate of the rest.
 				// The row records the failure and the run carries on - including when the
 				// write throws, which a refused sidecar or a codec error does.
 				try
 				{
-					const auto result = ff.update(request.path, edits, {}, file_encode_params{}, false, request.xmp);
+					const auto result = ff.update(request.path, request.date_original ? dated : edits, {},
+					                              file_encode_params{}, false, request.xmp);
 					statuses[index] = apply_batch_update_result(written, request.path.folder(), first_error, result);
 				}
 				catch (const std::exception& e)
@@ -879,8 +817,12 @@ void batch_tool_view::run_dates()
 			s.item_index.queue_validate_changed_folders(std::move(written));
 		}
 
+		session_change change{icon, title, {}};
+		for (size_t index = 0; index < requests.size(); ++index)
+			if (statuses[index] == item_status::success) change.paths.emplace_back(requests[index].path);
+
 		queue_run_results(s, view, generation, std::move(statuses), std::move(fatal), std::move(first_error), detach,
-		                  title);
+		                  title, std::move(change));
 	});
 }
 
@@ -895,42 +837,21 @@ view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
 
 	if (_mode == batch_tool_mode::convert)
 	{
-		controls.emplace_back(create_view_info_element(tt.convert_info));
+		controls.emplace_back(
+			std::make_shared<view_info_element>(icon_index::convert, tt.command_convert, tt.convert_info));
 		controls.emplace_back(selection_thumbnails);
 		controls.emplace_back(std::make_shared<text_element>(format_plural_text(tt.convert_info_fmt, items)));
 		controls.emplace_back(std::make_shared<divider_element>());
 		controls.emplace_back(std::make_shared<text_element>(tt.destination_folder));
 		controls.emplace_back(std::make_shared<ui::folder_picker_control>(frame, setting.write_folder, false,
 		                                                                  [this](std::string_view) { refresh(); }));
-		auto jpeg = std::make_shared<ui::check_control>(frame, tt.platform_text.jpeg_best, setting.convert.to_jpeg,
-		                                                true, false, [this](const bool checked)
-		{
-			if (checked) choose_convert_format(setting.convert.to_jpeg);
-			refresh();
-		}, radio_group_format);
 		const auto jpeg_options = std::make_shared<ui::group_control>();
 		jpeg_options->add(std::make_shared<text_element>(tt.options_jpeg_quality));
 		jpeg_options->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, setting.convert.jpeg_quality,
 		                                                       1, 100, [this] { refresh_encode_settings(); }));
 		jpeg_options->add(std::make_shared<text_element>(tt.convert_jpeg_hdr));
-		jpeg->child(jpeg_options);
-		controls.emplace_back(jpeg);
-		auto png = std::make_shared<ui::check_control>(frame, tt.platform_text.png_best, setting.convert.to_png, true,
-		                                               false, [this](const bool checked)
-		{
-			if (checked) choose_convert_format(setting.convert.to_png);
-			refresh();
-		}, radio_group_format);
 		const auto png_options = std::make_shared<ui::group_control>();
 		png_options->add(std::make_shared<text_element>(tt.convert_gain_map_left_out));
-		png->child(png_options);
-		controls.emplace_back(png);
-		auto webp = std::make_shared<ui::check_control>(frame, tt.platform_text.webp_best, setting.convert.to_webp,
-		                                                true, false, [this](const bool checked)
-		{
-			if (checked) choose_convert_format(setting.convert.to_webp);
-			refresh();
-		}, radio_group_format);
 		const auto webp_options = std::make_shared<ui::group_control>();
 		webp_options->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, setting.convert.webp_quality,
 		                                                       1, 100, [this] { refresh_encode_settings(); }));
@@ -938,14 +859,6 @@ view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
 		                                                      setting.convert.webp_lossless, false, false,
 		                                                      [this](bool) { refresh_encode_settings(); }));
 		webp_options->add(std::make_shared<text_element>(tt.convert_webp_hdr));
-		webp->child(webp_options);
-		controls.emplace_back(webp);
-		auto jxl = std::make_shared<ui::check_control>(frame, tt.platform_text.jxl_best, setting.convert.to_jxl, true,
-		                                               false, [this](const bool checked)
-		{
-			if (checked) choose_convert_format(setting.convert.to_jxl);
-			refresh();
-		}, radio_group_format);
 		const auto jxl_options = std::make_shared<ui::group_control>();
 		jxl_options->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, setting.convert.jxl_quality, 1,
 		                                                      100, [this] { refresh_encode_settings(); }));
@@ -953,14 +866,6 @@ view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
 		                                                     setting.convert.jxl_lossless, false, false,
 		                                                     [this](bool) { refresh_encode_settings(); }));
 		jxl_options->add(std::make_shared<text_element>(tt.convert_gain_map_left_out));
-		jxl->child(jxl_options);
-		controls.emplace_back(jxl);
-		auto avif = std::make_shared<ui::check_control>(frame, tt.platform_text.avif_best, setting.convert.to_avif,
-		                                                true, false, [this](const bool checked)
-		{
-			if (checked) choose_convert_format(setting.convert.to_avif);
-			refresh();
-		}, radio_group_format);
 		const auto avif_options = std::make_shared<ui::group_control>();
 		avif_options->add(std::make_shared<ui::slider_control>(frame, std::string_view{}, setting.convert.avif_quality,
 		                                                       1, 100, [this] { refresh_encode_settings(); }));
@@ -968,8 +873,36 @@ view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
 		                                                      setting.convert.avif_lossless, false, false,
 		                                                      [this](bool) { refresh_encode_settings(); }));
 		avif_options->add(std::make_shared<text_element>(tt.convert_keeps_hdr));
-		avif->child(avif_options);
-		controls.emplace_back(avif);
+		struct format_choice
+		{
+			std::string_view label;
+			bool* selected;
+			std::shared_ptr<ui::group_control> options;
+			std::string_view extension;
+		};
+		const std::array<format_choice, 5> formats{{
+			{tt.platform_text.jpeg_best, &setting.convert.to_jpeg, jpeg_options, ".jpg"},
+			{tt.platform_text.png_best, &setting.convert.to_png, png_options, ".png"},
+			{tt.platform_text.webp_best, &setting.convert.to_webp, webp_options, ".webp"},
+			{tt.platform_text.jxl_best, &setting.convert.to_jxl, jxl_options, ".jxl"},
+			{tt.platform_text.avif_best, &setting.convert.to_avif, avif_options, ".avif"},
+		}};
+		const auto extension = convert_extension();
+		for (const auto& format : formats)
+		{
+			*format.selected = format.extension == extension;
+			format.options->is_visible(*format.selected);
+			controls.emplace_back(std::make_shared<ui::check_control>(
+				frame, format.label, *format.selected, true, false,
+				[this, formats, selected = format.selected, host = std::weak_ptr(result)](const bool checked)
+			{
+				if (!checked) return;
+				choose_convert_format(*selected);
+				for (const auto& f : formats) f.options->is_visible(f.selected == selected);
+				if (const auto panel = host.lock()) panel->scroll_controls();
+				refresh();
+			}, radio_group_format));
+		}
 		controls.emplace_back(std::make_shared<divider_element>());
 		auto dimension = std::make_shared<ui::check_control>(frame, tt.limit_output_dimensions,
 		                                                     setting.convert.limit_dimension, false, false,
@@ -979,10 +912,13 @@ view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
 		controls.emplace_back(dimension);
 		controls.emplace_back(std::make_shared<divider_element>());
 		controls.emplace_back(create_collision_policy_control(frame, setting.convert.collision, [this] { refresh(); }));
+		controls.emplace_back(std::make_shared<divider_element>());
+		for (const auto& format : formats) controls.emplace_back(format.options);
 	}
 	else if (_mode == batch_tool_mode::metadata)
 	{
-		controls.emplace_back(create_view_info_element(tt.edit_metadata_info));
+		controls.emplace_back(std::make_shared<view_info_element>(icon_index::edit_metadata, tt.command_edit_metadata,
+		                                                          tt.edit_metadata_info));
 		controls.emplace_back(selection_thumbnails);
 		controls.emplace_back(std::make_shared<text_element>(format_plural_text(tt.edit_metadata_fmt, items)));
 		controls.emplace_back(std::make_shared<divider_element>());
@@ -1091,7 +1027,8 @@ view_controls_host_ptr batch_tool_view::controls(const ui::frame_ptr& owner)
 		// The controls are built before the view is activated, so the starting date must be known here
 		// or the picker would show a date that neither the preview nor the run would use.
 		update_date_start();
-		controls.emplace_back(create_view_info_element(tt.adjust_date_info));
+		controls.emplace_back(
+			std::make_shared<view_info_element>(icon_index::time, tt.command_adjust_date, tt.adjust_date_info));
 		controls.emplace_back(selection_thumbnails);
 		controls.emplace_back(std::make_shared<text_element>(format_plural_text(tt.adjust_date_info_fmt, items)));
 		controls.emplace_back(std::make_shared<divider_element>());

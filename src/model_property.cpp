@@ -83,6 +83,11 @@ static text_t prop_name_crc32c = "crc32c"sv;
 static text_t prop_name_panorama = "panorama"sv;
 // The same: `@animated` and `@transparent` are what a user types.
 static text_t prop_name_picture_flags = "picture"sv;
+// The same: a picture's face regions are drawn on it and never named as a property.
+static text_t prop_name_face_regions = "face regions"sv;
+// The same: the colour a file states is read as its colour profile and its HDR, which are the names users see.
+static text_t prop_name_icc_profile = "icc profile"sv;
+static text_t prop_name_colour_coding = "colour coding"sv;
 
 prop::key prop::album('al', "", "album", tt.prop_name_album, icon_index::star, data_type::string,
                       prop::style::groupable | prop::style::sortable | prop::style::auto_complete,
@@ -205,7 +210,7 @@ prop::key prop::iso_speed('is', "", "iso", tt.prop_name_iso, icon_index::star, d
                           search_presence_mask::camera_settings);
 prop::key prop::latitude('lx', "", "latitude", tt.prop_name_latitude, icon_index::world, data_type::float32,
                          prop::style::none, search_presence_mask::location);
-// locations.md 2.8: metres above sea level and km/h. Neither is groupable or sortable -- they
+// docs/locations.md#item-locations: metres above sea level and km/h. Neither is groupable or sortable -- they
 // exist to classify height, and a pile of distinct altitudes answers nothing.
 prop::key prop::altitude('la', "", "altitude", tt.prop_name_altitude, icon_index::world, data_type::float32,
                          prop::style::none, search_presence_mask::location);
@@ -297,6 +302,49 @@ prop::key prop::contents('ls', "", "contents", tt.prop_name_contents, icon_index
                          prop::style::multi_value, 0);
 prop::key prop::picture_flags('pa', "", "picture.flags", prop_name_picture_flags, icon_index::star, data_type::int32,
                               prop::style::none, 0);
+// docs/faces.md#21-reading-names: whom a picture's metadata names, multi-valued as tags are.
+prop::key prop::person('pe', "", "person", tt.prop_name_person, icon_index::person, data_type::string,
+                       prop::style::multi_value | prop::style::auto_complete, search_presence_mask::person);
+// Where its face regions are: stored with the record and never searched, so it has no scope of its own.
+prop::key prop::face_regions('fx', "", "face.regions", prop_name_face_regions, icon_index::person, data_type::string,
+                             prop::style::none, 0);
+// The colour a file states, kept as it states it, from which its colour profile and HDR are read as its record is.
+// Stored with the record and never searched: `color.profile` and `hdr` are what is.
+prop::key prop::icc_profile('ip', "", "icc.profile", prop_name_icc_profile, icon_index::star, data_type::string,
+                            prop::style::none, 0);
+prop::key prop::colour_coding('cg', "", "colour.coding", prop_name_colour_coding, icon_index::star, data_type::int32,
+                              prop::style::none, 0);
+
+// H.273's names, as photographers and video editors each call them - BT.709's primaries are sRGB's.
+static std::string_view primaries_name(const uint8_t primaries, const bool video)
+{
+	switch (primaries)
+	{
+	case 1: return video ? "BT.709"sv : "sRGB"sv;
+	case 5:
+	case 6: return "BT.601"sv;
+	case 9: return "BT.2020"sv;
+	case 11: return "DCI-P3"sv;
+	case 12: return "Display P3"sv;
+	default: return {};
+	}
+}
+
+void prop::item_metadata::read_colour()
+{
+	if (!has_stated_colour()) return;
+
+	// Its ICC profile's own name, else the primaries its coded colour description names; nothing for a file that
+	// says neither, rather than the sRGB it is most likely to be.
+	const auto video = (picture_flags & picture_flag::video) != 0;
+	color_profile = !is_empty(icc_profile) ? icc_profile : core::cache(primaries_name(colour_primaries, video));
+
+	// HDR by the transfer the file's colour description names, else by the gain map it carries.
+	hdr = colour_transfer == 16                           ? hdr_kind::pq
+	      : colour_transfer == 18                         ? hdr_kind::hlg
+	      : (picture_flags & picture_flag::gain_map) != 0 ? hdr_kind::gain_map
+	                                                      : hdr_kind::none;
+}
 
 static core::hash_map<unsigned short, prop::key_ref> build_properties_by_id()
 {
@@ -383,6 +431,7 @@ static property_map build_properties_by_name()
 	result["tag"] = prop::tag;
 	result["tagged"] = prop::tag;
 	result["tags"] = prop::tag;
+	result["people"] = prop::person;
 	result["taken"] = prop::created_exif;
 	result["timeline"] = prop::created_exif;
 	result["updated"] = prop::modified;
@@ -453,6 +502,9 @@ std::vector<prop::prop_scope> prop::search_scopes()
 		dates_packed,
 		panorama,
 		picture_flags,
+		face_regions,
+		icc_profile,
+		colour_coding,
 		// Registered as a name and never stored against an item, so any value the user types for it
 		// is compared against nothing.
 		encoding_tool,
@@ -490,8 +542,8 @@ std::vector<prop::prop_scope> prop::key_scopes()
 	// stored value behind them, so `with:` would answer no and `without:` would answer the whole
 	// collection - and `null` is not a scope at all.
 	const std::unordered_set<const key*> exclusions{
-		created_digitized, dates_packed,   panorama, picture_flags, null, crc32c,
-		encoding_tool,     media_category, streams,  unique_id,
+		created_digitized, dates_packed, panorama,  picture_flags, null,        crc32c,        encoding_tool,
+		media_category,    streams,      unique_id, face_regions,  icc_profile, colour_coding,
 	};
 
 	std::vector<prop_scope> result;
@@ -575,6 +627,7 @@ search_presence_mask prop::item_metadata::calc_search_presence() const
 	if (!is_null(altitude)) result.types |= prop::altitude.search_presence_bit;
 	if (!is_null(gps_speed)) result.types |= prop::gps_speed.search_presence_bit;
 	if (!is_null(tags)) result.types |= tag.search_presence_bit;
+	if (!is_null(people)) result.types |= person.search_presence_bit;
 	if (!is_null(label)) result.types |= prop::label.search_presence_bit;
 	if (!is_null(doc_id)) result.types |= prop::doc_id.search_presence_bit;
 

@@ -1,4 +1,4 @@
-﻿// This file is part of the Diffractor photo and video organizer
+// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -585,7 +585,7 @@ struct file_encode_params
 };
 
 // What a post-write re-scan needs. files::update runs the scan itself, while the file it just wrote
-// is still open, so no caller ever reopens it by name (see docs/file-io.md section 6).
+// is still open, so no caller ever reopens it by name (see docs/file-io.md#coherent-read-back).
 struct rescan_spec
 {
 	bool wanted = false;
@@ -1207,6 +1207,35 @@ core::const_surface_ptr apply_image_edits(const core::const_surface_ptr& source,
 std::optional<gain_map_surface> edited_gain_map(const gain_map_surface& gain_map, const image_edits& edits,
                                                 sizei photo_extent);
 
+// A change to whom a picture's faces name, written into its face regions: docs/faces.md#10-saving-names-to-files.
+struct face_name_edit
+{
+	enum class kind : uint8_t
+	{
+		// Names the face at `area`: in the region there, or in a new one.
+		name,
+		// Takes `name` off the face at `area` - its region goes - or, with no area, out of the names the packet
+		// states without one.
+		remove,
+		// Changes `name` to `to` wherever the packet states it.
+		rename,
+	};
+
+	kind what = kind::name;
+	// Where the face is, as fractions of the upright picture.
+	std::optional<rectd> area;
+	std::string name;
+	std::string to;
+};
+
+struct face_name_edits
+{
+	std::vector<face_name_edit> edits;
+	// The picture's pixels as stored, and the orientation it is shown in: areas are written in the stored space.
+	sizei stored;
+	core::orientation orientation = core::orientation::top_left;
+};
+
 class metadata_edits
 {
 public:
@@ -1247,6 +1276,8 @@ public:
 	std::optional<std::string> location_state;
 	std::optional<std::string> location_country;
 
+	std::optional<face_name_edits> faces;
+
 	metadata_edits() noexcept = default;
 	~metadata_edits() = default;
 	metadata_edits(const metadata_edits&) = default;
@@ -1266,7 +1297,8 @@ public:
 		       year.has_value() || rating.has_value() || label.has_value() || track_num.has_value() ||
 		       disk_num.has_value() || location_coordinate.has_value() || location_place.has_value() ||
 		       location_state.has_value() || location_country.has_value() || orientation.has_value() ||
-		       !add_tags.is_empty() || !remove_tags.is_empty() || remove_rating;
+		       !add_tags.is_empty() || !remove_tags.is_empty() || remove_rating ||
+		       (faces.has_value() && !faces->edits.empty());
 	}
 
 	// Orientation is the only edit here that changes what is drawn. Every other field leaves both the
@@ -1293,6 +1325,9 @@ struct still_decode_request
 	sizei target_extent;
 	bool can_use_yuv = false;
 	decode_intent intent = decode_intent::display;
+	// The caller fits the result within target_extent: a JPEG is reduced as far as its fitted size allows, where
+	// otherwise it keeps enough to cover target_extent in both dimensions.
+	bool fit_within_target = false;
 };
 
 // Everything Diffractor knows about one still image format libfiles names from its first bytes: the
@@ -1461,7 +1496,7 @@ class files final : core::no_copy
 	av_scaler& scaler();
 	core::surface_ptr decode_jpeg(core::cspan data, sizei target_extent, bool can_use_yuv,
 	                              std::optional<core::orientation> orientation_override, bool& is_yuv,
-	                              const core::cancel_token& token, decode_intent intent);
+	                              const core::cancel_token& token, decode_intent intent, bool fit_within_target = false);
 
 	friend core::surface_ptr files_test_hooks::decode_jpeg(files& ff, core::cspan data, sizei target_extent,
 	                                                       bool can_use_yuv, decode_intent intent, bool& is_yuv);
@@ -1485,6 +1520,8 @@ public:
 	                                   decode_intent intent = decode_intent::display);
 	core::surface_ptr image_to_surface(core::cspan data, sizei scale_hint = {}, bool can_use_yuv = false,
 	                                   decode_intent intent = decode_intent::display);
+	// In-memory bytes decoded as the request asks; image_to_surface asks for the target alone.
+	core::surface_ptr decode_still(core::cspan data, const still_decode_request& request);
 
 	// Reduces a surface to fit within a ceiling, never enlarging: a picture already inside it comes
 	// back untouched, and so does one no resampler would take. Whoever asks for a ceiling wants a

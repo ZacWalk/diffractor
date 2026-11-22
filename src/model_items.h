@@ -15,6 +15,7 @@
 #include "app_text.h"
 #include "model_search.h"
 #include "ui_elements.h"
+#include "libdesktop/ui/text/table_layout.h"
 
 class group_title_control;
 class view_state;
@@ -1137,6 +1138,9 @@ namespace df
 			return md && md->has_gps();
 		}
 
+		// Whether Explore can place the item: it says where or when it was taken.
+		bool has_explore_place_or_time() const { return has_gps() || _media_created.is_valid(); }
+
 		uint32_t crc32c() const
 		{
 			core::assert_true(platform::is_ui_thread());
@@ -2152,11 +2156,20 @@ namespace df
 			draw(rc, text, rank_color, bounds, text_font, text_style, color);
 		}
 
-		static void draw(render::draw_context& rc, const std::string_view text, const core::color bg_color,
-		                 const recti bounds, const render::font_face text_font, const render::text_style text_style,
-		                 const core::color color)
+		// A value wider than its column - one the user narrowed below what its widest value needs - ends in an
+		// ellipsis, as a cell too narrow for its text does in every table, rather than being cut off unmarked.
+		void draw(render::draw_context& rc, const std::string_view text, const core::color bg_color, const recti bounds,
+		          const render::font_face text_font, const render::text_style text_style, const core::color color) const
 		{
-			rc.draw_text(text, bounds, text_font, text_style, color, bg_color);
+			if (width < extent)
+			{
+				rc.draw_text(ui::table_layout::fit_text(rc, text, bounds.width(), text_font), bounds, text_font,
+				             text_style, color, bg_color);
+			}
+			else
+			{
+				rc.draw_text(text, bounds, text_font, text_style, color, bg_color);
+			}
 		}
 	};
 
@@ -2403,7 +2416,7 @@ namespace df
 	                                                       const item_group_ptr& g);
 };
 
-// locations.md 7.1: the totals affordance text. Defined next to the grouping label it was split
+// docs/design.md#application-structure: the totals affordance text. Defined next to the grouping label it was split
 // away from, so the two can never drift into saying the same thing twice.
 std::string format_items_totals(const df::file_group_histogram& summary, bool is_init_complete);
 std::string format_items_summary(group_by grouping, sort_by order, const df::file_group_histogram& summary,

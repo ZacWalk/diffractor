@@ -13,9 +13,9 @@ Ask the user which behavior to constrain if it is not already clear from the con
    A regression goes in that file with the issue as a comment above its registration
    (`// Issue #177 - search term negation`). There is no regressions file.
 
-2. **Check whether the behavior is reachable headless.** `view_state` runs with
-   `null_state_strategy`, `null_async_strategy` and a null `view_host_base_ptr` — see
-   `browsing_fixture` in [test_app.cpp](../../src/test_app.cpp). If the decision is trapped inside a
+2. **Check whether the behavior is reachable headless.** `view_state` runs on
+   `null_state_strategy` and `null_async_strategy`, driven through a null `view_host_base_ptr` — see
+   `browsing_fixture` in [test_fixtures.h](../../src/test_fixtures.h). If the decision is trapped inside a
    method that also performs it, **extract the decision into a pure function** rather than building
    a window. Zoom, playback advance, the address-box session and the accelerator table are tested
    that way.

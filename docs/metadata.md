@@ -1,9 +1,11 @@
 # Metadata
 
-This document owns the mapping between Diffractor properties and media metadata standards.
-[Design](design.md) owns what metadata commands mean; [File I/O](file-io.md) owns staging, sidecars,
-backups, and failure; [Third-party](third-party.md) owns libfiles, which reads and writes the packets, and the DNG SDK's XMP
-backend.
+This document owns the mapping between Diffractor's properties and the metadata standards files keep
+them in. [Design](design.md) owns what metadata commands mean; [File I/O](file-io.md) owns staging,
+sidecars, backups and failure; [Third-party](third-party.md) owns libfiles - which reads and writes the
+blocks, packets and container tags, and whose
+[design](https://github.com/ZacWalk/libfiles/blob/main/docs/design.md) gives each format's exact fields -
+and the DNG SDK's XMP backend.
 
 Media files remain authoritative. The index stores derived property snapshots for search and display.
 
@@ -11,176 +13,168 @@ Media files remain authoritative. The index stores derived property snapshots fo
 
 | Container | Read | Write |
 | --- | --- | --- |
-| JPEG, TIFF | EXIF, IPTC, XMP | XMP reconciled to EXIF/IPTC where supported |
-| PNG | EXIF/XMP where present | XMP |
-| WebP | EXIF/XMP where present | XMP, and the EXIF it holds |
-| RAW photos | EXIF and embedded/sidecar XMP | Sidecar XMP |
+| JPEG, TIFF, PSD | EXIF, IPTC, XMP | XMP, and the EXIF and IPTC fields an edit sets |
+| PNG, GIF | XMP, and a PNG's EXIF | XMP |
+| WebP | EXIF and XMP where present | XMP, and the EXIF it holds |
+| HEIC, AVIF | EXIF and XMP | XMP and the EXIF it holds; a turn in its image's rotation and mirror |
+| JPEG XL | EXIF and XMP boxes, Brotli-compressed or not | XMP and the EXIF it holds; a turn in its codestream's orientation |
+| Camera raw | EXIF, and embedded or sidecar XMP | Sidecar XMP |
 | DNG | EXIF and XMP, or its sidecar's XMP when it has one | Its sidecar when it has one, otherwise the DNG |
-| JPX, WBMP | Sidecar XMP | Sidecar XMP |
-| MP4, MOV, M4A | QuickTime/iTunes tags and XMP | XMP, Windows tags and rating, movie header dates, ISO copyright |
-| MP3, MP2, MPA | ID3v2 and XMP | XMP reconciled to ID3v2 |
-| AVI, WAV | RIFF INFO and XMP | XMP reconciled to RIFF INFO |
-| ASF, WMV, WMA | Windows Media attributes and XMP | XMP reconciled to Windows Media attributes |
-| FLV | `onMetaData` and XMP | XMP |
-| HEIC, AVIF | EXIF and XMP | XMP, and the EXIF it holds; a turn in its image's rotation and mirror; an AVIF converted or saved is encoded with its EXIF and XMP |
-| JPEG XL | EXIF and XMP boxes | XMP, and the EXIF it holds; a turn in its codestream's orientation; a converted or saved file is encoded with its EXIF and XMP |
-| MKV, WebM | Matroska tags | Not editable |
+| JPX, WBMP, and MPEG streams (MPG, VOB, MP2 and kin) | Sidecar XMP | Sidecar XMP |
+| MP4, MOV, M4A | QuickTime and iTunes tags, XMP | XMP; tags and rating in the Xtra box Windows reads, the created date in the movie header, copyright in `cprt` |
+| MP3, MPA | ID3v2, XMP | XMP, and the ID3v2 text frames and POPM rating an edit sets |
+| WAV, AVI | RIFF INFO, XMP | XMP, and the LIST INFO fields an edit sets |
+| ASF, WMV, WMA | Windows Media attributes, XMP | XMP, and the Content Description, WM/Category, WM/SharedUserRating and File Properties fields an edit sets |
+| FLV | `onMetaData`, XMP | XMP |
+| MKV, WebM, FLAC, Ogg, AIFF | Their tags, and an AIFF's or FLAC's XMP | Not editable |
 
-Read and write support are intentionally asymmetric. libfiles reads more container tags than the
-writers reconcile, so displaying a property does not prove it can be stored back into that
-container. Per-format edit traits gate commands before the write path runs.
+A converted or saved AVIF or JPEG XL is encoded with its EXIF and XMP ([File I/O](file-io.md#writing)).
+Read and write are deliberately asymmetric: libfiles reads more container tags than the writers
+reconcile, so displaying a property does not prove it can be stored back. A file type's traits
+(`file_traits::edit`, `embedded_xmp`) gate commands before the write path runs.
 
 ## Property Mapping
 
-| Diffractor property | XMP | Photo metadata | Audio/video metadata |
+| Diffractor property | XMP | Photo blocks | Audio and video tags |
 | --- | --- | --- | --- |
-| Title | Dublin Core title | IPTC Object Name | ID3 title, RIFF title, QuickTime title |
-| Description | Dublin Core description | EXIF ImageDescription, IPTC Caption | ID3 comment, RIFF comment, container description |
-| Comment and synopsis | XMP comment/description fields | EXIF UserComment where present | ID3 comment, long description |
-| Tags | Dublin Core subject | IPTC keywords, Windows XP keywords | ID3 genre/keyword fields, RIFF keywords |
-| Rating | `xmp:Rating` | EXIF/Windows rating fields | ID3 POPM, Windows shared rating, Matroska rating on read |
-| Label | `xmp:Label` | XMP only | XMP only |
-| Artist/creator | Dublin Core creator | EXIF Artist, IPTC By-line | ID3 artist, QuickTime artist, RIFF artist |
-| Album/track/disc | Dynamic Media fields | n/a | ID3 and QuickTime album/track/disc fields |
-| Copyright | Dublin Core rights | EXIF Copyright, IPTC CopyrightNotice | ID3, RIFF, ASF, and ISO copyright fields |
-| Location text | IPTC Core location fields | IPTC/XMP city, state, country | XMP where the container supports it |
-| Coordinate | EXIF GPS and XMP location | EXIF GPS latitude/longitude/altitude | ISO6709 location where exposed |
+| Title | `dc:title` | IPTC Object Name, EXIF XPTitle | ID3, RIFF, QuickTime, ASF and Matroska title |
+| Description | `dc:description` | EXIF ImageDescription (else XPSubject), IPTC Caption | MP4 description, RIFF ISBJ, Matroska DESCRIPTION |
+| Comment | `xmpDM:logComment`, read else from `exif:UserComment` | EXIF UserComment (else XPComment) | ID3, RIFF and QuickTime comment; ASF description |
+| Synopsis | `xmpDM:synopsis` | - | MP4 `ldes`, Matroska SYNOPSIS |
+| Tags | `dc:subject`, with `exif:XPKeywords` written beside it | IPTC Keywords, EXIF XPKeywords | MP4 and QuickTime keywords, RIFF IKEY, Matroska KEYWORDS, Windows' WM/Category |
+| Rating | `xmp:Rating`, with `MicrosoftPhoto:Rating` written beside it | EXIF Rating and RatingPercent | ID3 POPM, WM/SharedUserRating, Matroska RATING |
+| Label | `xmp:Label` | - | - |
+| Artist | `xmpDM:artist` | EXIF Artist (else XPAuthor), IPTC By-lines | ID3, RIFF and QuickTime artist; ASF author |
+| Creator | `dc:creator` | Written to EXIF Artist and IPTC By-lines | Written as ASF's author where no artist is set |
+| Album, album artist, genre, track, disc, show, season, episode | `xmpDM:` of each | - | ID3, QuickTime and iTunes, RIFF and Matroska fields of each |
+| Copyright | `dc:rights`, its URL `xmpRights:WebStatement` | EXIF Copyright, IPTC Copyright Notice | ID3, RIFF, ASF and ISO `cprt` copyright |
+| Credit, source | `photoshop:Credit`, `photoshop:Source` | IPTC Credit, Source | - |
+| Location text | `photoshop:City`, `State`, `Country` | IPTC City, Province/State, Country | - |
+| Coordinate | `exif:GPSLatitude`, `GPSLongitude` | EXIF GPS, with altitude and speed | ISO 6709 location |
+| People, and where their faces are | `mwg-rs` face regions, else Microsoft's regions; `Iptc4xmpExt:PersonInImage` | - | - |
 
-String alternatives are normalized into one property snapshot. XMP generally has precedence over
-legacy fields because it is the representation Diffractor writes; format-specific readers retain
-legacy values when no higher-priority value exists. Ratings are normalized to zero through five.
-The QuickTime `rtng` atom is a content-advisory flag, not a star rating.
-For tags, an empty XMP `dc:subject` is an explicit higher-priority empty list; an absent
-`dc:subject` does not suppress legacy or container keywords.
+A dash means XMP only. People and their face regions are [faces](faces.md)' to describe: which schema is
+read when and how a region's area is turned upright ([§2](faces.md#2-people-the-files-name)), and how a
+name is written into a region when a person is renamed ([§10](faces.md#10-saving-names-to-files)).
+
+A still's EXIF is read, then its IPTC over it, then its packet over both; a recording's container tags,
+then a media manager's `.nfo` ([below](#films-episodes-and-music)), then its packet. What a later block
+states replaces what earlier ones gave - and a packet states a property by holding it at all, even
+empty - except that IPTC's keywords and by-lines join EXIF's. So an empty `dc:subject` is an explicit
+empty tag list, while an absent one leaves legacy and container keywords in place. Ratings are stars
+from 1 to 5, 0 for none and -1 for rejected, as `xmp:Rating` has them; Windows' percent scales are
+converted, and a POPM rating is read from Windows Media Player's frame, else the first, on Windows Media
+Player's scale. The QuickTime `rtng` atom is a content advisory, not a rating.
 
 ## Dates
 
-Diffractor exposes three date concepts:
+Diffractor shows three dates, each answered by the highest-ranked source a file gives (`date_sources` in
+[model_dates.h](../src/model_dates.h)):
 
-| Date | Meaning | Typical sources |
+| Date | Meaning | Sources, highest first |
 | --- | --- | --- |
-| Original | When the depicted or recorded content was made | EXIF DateTimeOriginal, XMP CreateDate, GPS date/time |
-| Created | When this media file or encoding was made | EXIF DateTimeDigitized, container creation time, filesystem creation |
-| Modified | When the file last changed | XMP ModifyDate, container modification time, filesystem modification |
+| Original | When the content was made | EXIF DateTimeOriginal, `exif:DateTimeOriginal`, IPTC Date Created, an ID3 original release date, a media manager's `.nfo`, a film's or episode's name, `photoshop:DateCreated`, the Windows shell's date taken for a cloud file not downloaded |
+| Created | When this file or encoding was made | EXIF DateTimeDigitized, `exif:DateTimeDigitized`, IPTC Digital Creation Date, `xmp:CreateDate`, the container's creation time, a rip date, the filesystem's creation time |
+| Modified | When the file last changed | The filesystem's modification time, then EXIF DateTime, then `xmp:ModifyDate` |
 
-The scanner retains candidate values with source identity and precision, then resolves one answer per
-concept using the precedence in `model_dates.h`. A timezone-qualified instant outranks an otherwise
-equivalent floating local value, but the pack keeps incompatible representations distinct: a UTC
-instant and a floating wall-clock reading that display alike on the current machine remain separate
-candidate values. Invalid, placeholder, and out-of-range dates are ignored.
+The GPS time stamp is read beside them but answers none of the three. Where one date is shown, it is
+Original, else Created, else Modified.
 
-UTC/local conversion uses the timezone rules for the timestamp's date, not today's daylight-saving
-offset, and preserves the timestamp's fractional precision. Ambiguous or skipped local times follow
-the operating system's timezone rules. Each year's offsets are taken from the operating system once
-per time zone and reused, so converting every item's date stays cheap. Filesystem creation is a
-birth-time fact; inode-change time is not substituted when a filesystem cannot supply it.
+A file's dates are kept with the tags they were read from, sources that agree sharing one value, up to
+four distinct values; a further source's tag is recorded but cannot answer. A value keeps its form: a
+UTC instant - a container or filesystem stamp, converted when shown - or a wall-clock reading with or
+without an offset. Readings of one wall-clock second merge, keeping a stated offset and the finer
+fraction, but a UTC instant and a floating reading that display alike on this machine stay distinct.
+Invalid, placeholder and out-of-range dates are ignored.
 
-The date pack is self-describing: readers consume fields they understand and skip later additions.
-Source-bit meanings are never reused. Compatibility fields permit older builds to recover useful
-dates when they encounter a newer cache row; the cache remains disposable and may be rescanned.
+UTC/local conversion uses the time-zone rules of the timestamp's own date, not today's offset, keeps its
+fraction, and follows the operating system for ambiguous or skipped local times; each year's rules are
+taken from the operating system once per zone and reused. A filesystem creation time is a birth time:
+where a filesystem has none, inode-change time is not substituted.
 
-Writes update the standard matching the property and container. File-system dates are not silently
-substituted for authored metadata during a metadata save.
+The cached date pack is self-describing: readers take the fields they understand and skip later ones, a
+source bit's meaning is never reused, and compatibility fields let older builds recover useful dates
+from a newer row; the cache stays disposable.
+
+An edited Original is written to `photoshop:DateCreated` and `exif:DateTimeOriginal`, and an edited
+Created to `xmp:CreateDate` and `exif:DateTimeDigitized` - both, so the file's own EXIF cannot outrank
+the edit - and to the format's own date fields where it keeps them. A metadata save never writes a
+filesystem date as authored metadata.
 
 ## Photo Metadata
 
-EXIF supplies camera, lens, exposure, dimensions, orientation, resolution, color space, GPS, and
-capture dates. IPTC supplies editorial title, caption, creator, copyright, location text, and
-keywords. JPEG stores IPTC in Photoshop image resources, so resource order, Pascal names, odd
-payload padding - a last resource may lack its pad byte - and unrelated resources do not change
-the effective IPTC payload; of IPTC resources a file repeats, the first that holds anything is the
-one read and the one an edit changes. IPTC text is
-UTF-8 where it is valid and Windows-1252 where it is not, as Photoshop and the wire services wrote
-it, so an older caption's curly quotes and dashes read as written. XMP can override
-or extend both and carries Diffractor's editable rating, label, tags, description, and location
-values. A TIFF's camera, lens, exposure and date fields are read from the file's own directories by
-the same EXIF parser used for embedded blocks; its dates follow the normal EXIF resolution, IPTC and
-XMP keep their precedence over them, and the scan does not copy TIFF pixel data into a metadata block.
+EXIF gives camera, lens, exposure, dimensions, orientation, resolution, colour space, GPS and capture
+dates; IPTC editorial title, caption, creator, copyright, location text and keywords; XMP overrides or
+extends both and carries Diffractor's edits. libfiles reads each block as its
+[Metadata blocks](https://github.com/ZacWalk/libfiles/blob/main/docs/design.md#metadata-blocks) says: a
+JPEG's IPTC from its Photoshop resources, where the first IPTC resource that holds anything is the one
+read and the one an edit changes; IPTC text as UTF-8 where it is valid and Windows-1252 where not, so an
+older caption's curly quotes and dashes read as written; and a TIFF's own directories by the same EXIF
+parser, without copying its pixels into a metadata block.
 
-Orientation affects presentation and is therefore not treated as display-neutral metadata. A pixel
-edit draws the stored orientation into the pixels it writes, so saving one resets the orientation to
-upright rather than leaving the tag to turn the saved image a second time. The EXIF orientation is
-the last Orientation in IFD0, else the last in IFD1, which describes the thumbnail; a copy of the tag
-in any other directory is not the image's. The item, the scan and every decoder read it by that one
-rule, through libfiles, so a file is never shown turned one way and its thumbnail another. Embedded
-thumbnails and ICC profiles are parsed with the image and invalidated when their source metadata
-changes.
-Stored image dimensions follow transformed pixels, including lossless JPEG rotation, which sets the
-EXIF orientation upright and the dimensions where the block holds them - every copy, where a block
-repeats a tag, so it reads back upright whichever copy a reader takes - and changes nothing else in
-it, maker notes included.
+Orientation is not display-neutral. The EXIF orientation is the last Orientation in IFD0, else the last
+in IFD1; the item, the scan and every decoder read it by that rule through libfiles, so a file is never
+shown turned one way and its thumbnail another. A pixel edit draws the orientation into the pixels it
+writes and resets it to upright. A lossless JPEG turn sets the orientation upright and the dimensions in
+every copy the block holds, and changes nothing else in it, maker notes included. Embedded thumbnails
+and ICC profiles are parsed with the image and invalidated when their source changes.
 
-Unknown tags are not rewritten merely because Diffractor does not display them. XMP updates begin
-from the existing packet. A format conversion writes the source's packet - or, for a format libfiles
-cannot update, such as a camera raw file without a sidecar, the packet its scan finds - and fills what
-the packet lacks from what the item shows, since the new format may have no place for the source's
-IPTC. For a photo, each field an edit sets is also written to the EXIF and IPTC
-fields that hold it - title to IPTC Object Name; description to EXIF ImageDescription and IPTC
-Caption; tags to IPTC Keywords and Windows XP keywords; rating to the EXIF and Windows rating fields;
-creator, copyright, dates, GPS, orientation and location text likewise - and nothing else in either
-block changes. IPTC is created when a field it holds is written, and is stored as UTF-8. A tag edit
-on a packet without `dc:subject` starts from the tags the item shows, legacy keywords included.
-An MP4 or QuickTime edit writes tags and rating to the Xtra box Windows reads as well, a copyright to
-the ISO `cprt` box and a created date to the movie header; the packet always follows the movie box,
-since FFmpeg reads no XMP box before it. An ASF edit writes the title, the artist - or the creators where
-no artist is given - as the author, the copyright, and the comment as the description to the header's
-Content Description, where Windows and FFmpeg read them; tags and rating to the WM/Category and WM/SharedUserRating
-descriptors, and a created date to the File Properties. An MP3 edit writes the ID3v2 text frames
-players read - title, artist, album, album artist, genre, comment, track, disc, copyright and date - and
-a rating to Windows Media Player's POPM frame, keeping the tag's version and every frame the edit does
-not own. A WAV or AVI edit writes title, artist, comment, copyright, date and genre to LIST INFO, an
-AVI's INFO before `movi` and its packet after it, where libfiles' media scan reads them. An FLV keeps its packet in an
-`onXMPData` tag after `onMetaData`. Only the fields an edit sets are written: a native field the packet
-lacks is left as it is.
+An edit starts from the file's existing packet and writes only the fields it sets - into the packet and
+wherever else the format keeps them ([Containers](#containers)) - so tags Diffractor does not display
+are never rewritten, and a native field the edit does not set is left as it is. IPTC is created only
+when a field it holds is written, and is written as UTF-8. libfiles'
+[How it writes](https://github.com/ZacWalk/libfiles/blob/main/docs/design.md#how-it-writes) gives each
+format's fields and where they go. A tag edit on a packet without `dc:subject` starts from the tags the
+item shows, legacy keywords included. A conversion writes the source's packet - or, for a file libfiles
+cannot update, such as a camera raw without a sidecar, the packet its scan finds - and fills what the
+packet lacks from what the item shows, since the new format may have no place for the source's IPTC.
 
 ## Audio And Video Metadata
 
-libfiles' media scan reads every audio and video container libfiles knows - MP4 and QuickTime,
-Matroska and WebM, AVI, WAV, AIFF, ASF, MPEG audio, FLAC, Ogg, FLV, MPEG-TS and MPEG-PS - without
-decoding: its streams, duration, tags, XMP packet and cover art. The cover art is the file's front
-cover, or else the first picture it carries of the recording; an icon, or the picture ID3 and FLAC call
-"a bright coloured fish" - the type a store embeds its drawing of the track's waveform under - is never
-taken for it, by the scan or by the player. Its tags are mapped onto shared
-properties by the names FFmpeg's demuxers give them, so a recording files where it did; the Windows
-tags and ratings libfiles writes (MP4's Xtra box, ASF's WM/Category and WM/SharedUserRating, MP3's
-POPM) read back from where they were written. A file libfiles cannot describe whole has its streams
-described by FFmpeg, and its tags too when libfiles could not read them at all. Language-tagged
-comments are selected by an untagged value, then the UI language, then any available value; where
-FFmpeg reads the tags, every text field is chosen the same way, so a tag a Matroska file states only
-in a language other than its default, which FFmpeg names "TITLE-ger" and the like, is still read. The
-info panel lists every tag under the name the container stores it by, beside the container's structure.
-A date keeps the zone the file states: a creation date with its offset, as Apple's cameras write it,
-is the time the camera's clock showed, as a photo's EXIF time with its offset is; a UTC instant, as an
-MP4 movie header holds, is converted for display; and a date alone, as an MP3's ID3 date often is, is
-that day wherever it is shown.
+libfiles' media scan reads every container libfiles knows - MP4 and QuickTime, Matroska and WebM, AVI,
+WAV, AIFF, ASF, MPEG audio, FLAC, Ogg, FLV, MPEG-TS and MPEG-PS - without decoding: streams, duration,
+tags, XMP packet and cover art. Tags fill the shared properties by the names FFmpeg's demuxers give
+them, so a recording files where it did, and the Windows tags and ratings libfiles writes (MP4's Xtra
+box, ASF's WM/Category and WM/SharedUserRating, MP3's POPM) read back from where they were written. A
+file libfiles cannot describe whole has its streams described by FFmpeg, and its tags too when libfiles
+read none. MP4 and MOV writes leave the iTunes atoms as they are, so software that reads neither the
+packet nor the Xtra box may still show an older value.
 
-Container duration, streams, codecs and their profiles, bitrate, frame rate, pixel format, audio
-sample type, bit depth and HDR transfer are technical properties and are not written through the user
-metadata editor. They are Diffractor's own terms whichever library read them: codecs by short name
-(`h264`, `mpeg2`, `dv`, `pcm`), a pixel format as chroma with a depth past 8 bits (`yuv420`,
-`yuv422 10bit`), and the audio sample type as the stream codes its samples - `16bit`, `24bit`,
-`float` for PCM and lossless audio, none for a lossy codec.
+The cover art is the front cover, else the first picture of the recording; an icon, or the picture ID3
+and FLAC call "a bright coloured fish" - the type a store embeds its drawing of the track's waveform
+under - is never taken for it, by the scan or by the player. One comment is shown: an untagged one, else
+one in the UI language, else any; where FFmpeg reads the tags every text field is chosen so, which reads
+a tag a Matroska file states only in another language than its default (`TITLE-ger`). The info panel
+lists every tag under the name the container stores it by, beside the container's structure.
 
-A video's shape also comes from the container rather than from its frames: the sample aspect ratio
-gives the displayed dimensions for anamorphic video, and the display matrix gives the orientation -
-its turn, and its mirror where the transform reflects the picture, numbered as EXIF numbers an
-orientation. Both are read without decoding, so a scan that never opens a frame describes the same
-shape the player does.
+A date keeps the zone the file states: a creation date with its offset, as Apple's cameras write it, is
+the time the camera's clock showed, as a photo's EXIF time with its offset is; a UTC instant, as an MP4
+movie header holds, is converted for display; and a date alone, as an MP3's ID3 date often is, is that
+day wherever it is shown. A tag giving only a year (`©day` 1998, `TYER`) dates its track or film to that
+year.
 
-Writes reconcile a bounded legacy subset. In particular, MP4/MOV writes do not rewrite the
-full iTunes atom set, so software that ignores XMP may continue to show an older atom value.
-Matroska metadata is read-only.
+Duration, streams, codecs and their profiles, bitrate, frame rate, pixel format, audio sample type, bit
+depth and HDR transfer are technical properties, never written through the metadata editor, and named
+in Diffractor's terms whichever library read them: codecs by short name (`h264`, `mpeg2`, `dv`, `pcm`),
+a pixel format as chroma with any depth past 8 bits (`yuv420`, `yuv422 10bit`), and the sample type as
+the stream codes its samples - `16bit`, `24bit`, `float` for PCM and lossless audio, none for a lossy
+codec.
+
+A video's shape also comes from the container, not its frames: the sample aspect ratio gives the
+displayed dimensions of anamorphic video, and the display matrix its orientation - its turn, and its
+mirror where the transform reflects the picture, numbered as EXIF numbers an orientation - so a scan
+that never opens a frame describes the shape the player shows.
 
 ## How A Picture Is Coded
 
-What a picture or video is coded as is read from the file alone, indexed so it can be searched, and
-never written: its color profile - its ICC profile's own name, else the primaries its coded color
-description names (`sRGB`, or `BT.709` for video, `BT.601`, `BT.2020`, `DCI-P3`, `Display P3`), and
-none for a file that states neither, rather than the sRGB it most likely is; its bit depth; a video's
-frame rate; whether it is HDR - coded with PQ or HLG, or a photo carrying a gain map (Ultra HDR, ISO
-21496-1 or Apple's); and whether a picture is the first frame of an animation or has an alpha channel.
-`color:`, `bits:`, `fps:` and `hdr:` (`hdr:hlg`, `hdr:pq`, `hdr:"gain map"`) search them, and a whole
-frame rate finds what rounds to it, so `fps:30` finds 29.97 too.
+How a picture or video is coded is read from the file alone, indexed for search, and never written: its
+colour profile - its ICC profile's own name, else the primaries its coded colour description names
+(`sRGB`, or `BT.709` for video; `BT.601`, `BT.2020`, `DCI-P3`, `Display P3`), and none for a file that
+states neither, rather than the sRGB it most likely is; its bit depth; a video's frame rate; whether it
+is HDR - coded with PQ or HLG, or a photo carrying a gain map (Ultra HDR, ISO 21496-1 or Apple's); and
+whether a picture is the first frame of an animation or has an alpha channel. `color:`, `bits:`, `fps:`
+and `hdr:` (`hdr:hlg`, `hdr:pq`, `hdr:"gain map"`) search them; a whole frame rate finds what rounds to
+it, so `fps:30` finds 29.97 too.
 
 ## Commodore 64 Images
 
@@ -210,8 +204,7 @@ What a collection folder holds, chosen in [Options](design.md#options), decides 
 
 A film files under its release year and an episode under the day it aired, read from the name, when the
 file's own dates name another year or day, so a download does not file under the day it was copied.
-Such a date shows as "File name" among the item's dates. A tag giving only a year (`©day` 1998, `TYER`)
-dates its track or film to that year.
+Such a date shows as "File name" among the item's dates.
 
 An MP4 marked a film (`stik` 9) is never an episode, whatever its `tvsn` and `tves` say. Matroska tags
 that name their level give a show, season and episode: `COLLECTION/TITLE`, `SEASON/PART_NUMBER` and
@@ -231,62 +224,51 @@ a film's only when the folder holds that film alone, named for it as media manag
 (`Dune (2021)/Dune (2021).mkv`): beside home videos, many films, or a season's episodes, folder art would
 make every video look the same.
 
-## Current Limitations
-
-- MKV and WebM do not expose editable metadata traits. Diffractor encodes no HEIC: a HEIC's picture is turned
-  where it lies, and any other edit of it is saved as a JPEG of its own.
-- MP4/MOV legacy iTunes atoms are broader on read than on write.
-- A POPM rating is read from Windows Media Player's frame, or failing that the first one; other
-  players' scales are read as Windows Media Player's.
-- A fixed number of date candidates is retained; excess sources remain marked present but may not
-  participate in resolution.
-
 ## Panorama
 
-An image is a panorama only when GPano metadata declares it. `ProjectionType` maps to
-equirectangular, cylindrical, unspecified panorama, or none. Other GPano fields can establish an
-unspecified panorama when projection type is absent. Aspect ratio alone never declares one.
+An image is a panorama only when GPano metadata declares it: `ProjectionType` maps to equirectangular,
+cylindrical, an unspecified panorama, or none, and other GPano fields declare an unspecified one when it
+is absent. Aspect ratio alone never declares one. Full dimensions and crop offsets are read when the item
+is displayed; a crop that disagrees with the decoded dimensions or leaves the declared panorama discards
+the projection. A valid embedded declaration - read from HEIF, AVIF and JPEG XL too, compressed boxes
+included - wins; otherwise a sidecar's is read on its own, never joined to an incomplete embedded one.
+These values feed [zoom.md](zoom.md#panorama) and are never written back.
 
-Full panorama dimensions and crop offsets are read when the item is displayed. The crop must agree
-with decoded dimensions and remain inside the declared full panorama; otherwise projection geometry
-is discarded. These values feed [zoom.md](zoom.md#panorama) and are not written as derived metadata.
-
-Embedded geometry is read from HEIF/AVIF and JPEG XL too, including compressed
-JPEG XL XMP boxes. A valid embedded declaration wins; otherwise a sidecar is
-read on its own, never combined with an incomplete embedded declaration.
-
-`@panorama` and `@pano` search the stored projection classification and canonicalize to one term.
-`@wide` asks the shape instead: anything shown at least twice as wide as it is tall, declared or not.
+`@panorama` and `@pano` search the declared projection and canonicalize to one term. `@wide` asks the
+shape instead: anything shown at least twice as wide as it is tall, declared or not.
 
 ## Where this lives
 
-- libdesktop's [win/platform.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/platform.cpp) and [linux/platform.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/linux/platform.cpp):
+- libfiles' [properties.h](https://github.com/ZacWalk/libfiles/blob/main/include/libfiles/properties.h):
+  the one table each block is read by, marking what it states, and the one rule reconciling them.
+- [files.cpp](../src/files.cpp)'s `file_scan_result::to_props` and `apply_properties`: what an item takes
+  from a still's EXIF and IPTC, a recording's tags, a media manager's `.nfo` and the packet, in that
+  order; `apply_properties` is the one place libfiles' properties meet an item.
+- [metadata.cpp](../src/metadata.cpp): writing and listing. `metadata_edits::apply` maps an edit into
+  the packet and `legacy_edits_of` into the fields outside it; `metadata_xmp` reads and writes packets
+  and sidecars; `metadata_exif` writes EXIF through libfiles - a fresh block with `make_exif`, a turned
+  picture's numbers with `set_exif_numbers` - and lists it with `list_exif`; `metadata_iptc` lists IPTC
+  with `list_iptc`.
+- [model_dates.h](../src/model_dates.h): date sources, their ranking (`date_sources`), and the date pack.
+- libdesktop's [win/platform.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/platform.cpp)
+  and [linux/platform.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/linux/platform.cpp):
   date-sensitive conversion between UTC and local wall time.
-- [model_dates.h](../src/model_dates.h): date sources, retained candidates, and resolution.
-- [files.cpp](../src/files.cpp)'s `file_scan_result::to_props` and `apply_properties`: what
-  an item takes from a photo's blocks. libfiles reads EXIF, IPTC and XMP by its one table, marking
-  what each states, and reconciles EXIF and IPTC by its one rule - IPTC's keywords and by-lines
-  joining EXIF's, each whole. `to_props` applies them, then the container's and a media manager's
-  details, then the packet over all of them, and `apply_properties` is the one place libfiles'
-  properties meet an item.
-- [metadata.cpp](../src/metadata.cpp): writing and listing. `metadata_exif` writes EXIF
-  through libfiles - a fresh block with `make_exif`, a turned picture's numbers with
-  `set_exif_numbers` - and lists it with `list_exif`; `metadata_iptc` lists IPTC with libfiles'
-  `list_iptc`; and `metadata_xmp` maps Diffractor's edits into the packet and writes it.
-- [files.cpp](../src/files.cpp)'s `scan_media_file`: an audio or video file as libfiles' media scan
-  reads it - its streams, properties, cover art and info panel blocks, in Diffractor's own terms.
-- [files.cpp](../src/files.cpp)'s `color_profile_of` and `hdr_kind_of`: how a picture is coded, as its
-  properties; and `files::scan_c64_media`: a Commodore image's listing as its properties.
+- [files.cpp](../src/files.cpp)'s `scan_media_file` and `file_scan_result::parse_media_properties`: an
+  audio or video file as libfiles' media scan reads it, in Diffractor's own terms; and
+  `file_scan_result::parse_metadata_ffmpeg_kv`: the tags FFmpeg reads of a file libfiles cannot describe
+  whole, which [av_format.cpp](../src/av_format.cpp) describes.
+- [model_property.cpp](../src/model_property.cpp): shared property identity and formatting, and
+  `prop::item_metadata::read_colour`, a picture's colour profile and HDR, from the profile name
+  [files.cpp](../src/files.cpp)'s `icc_profile_of` reads and the coded colour description.
+- [files.cpp](../src/files.cpp)'s `files::scan_c64_media`: a Commodore image's listing as its properties.
 - [model_index.cpp](../src/model_index.cpp): films, episodes and shows read from file and folder names
-  (`scan_info_from_title`, `derive_name_values`), and what each collection folder holds;
-  [files.cpp](../src/files.cpp): media managers' `.nfo` files, and the art kept beside music and films.
-- [av_format.cpp](../src/av_format.cpp): what FFmpeg describes of a file libfiles cannot describe
-  whole, mapped onto the same terms.
-- [model_property.cpp](../src/model_property.cpp): shared property identity and formatting.
+  (`scan_info_from_title`, `derive_name_values`), and what each collection folder holds
+  (`index_state::library_kind_of`); [files.cpp](../src/files.cpp): media managers' `.nfo` files
+  (`read_video_nfo`, `apply_nfo`) and the art kept beside music and films (`load_folder_art`).
 - [model_db_pack.h](../src/model_db_pack.h) and [model_db.cpp](../src/model_db.cpp): cached metadata
   serialization.
 - [files.cpp](../src/files.cpp): format dispatch and scan publication. Every still - JPEG, PNG, WebP,
   GIF, TIFF, PSD, BMP, HEIF and AVIF, and JPEG XL - is scanned by
-  [libfiles](https://github.com/ZacWalk/libfiles), whose result `scan_photo` maps onto a
+  [libfiles](https://github.com/ZacWalk/libfiles), whose result `scan_still_libfiles` maps onto a
   `file_scan_result`; [files_heif.cpp](../src/files_heif.cpp) decodes the HEIF thumbnail item a scan
   wants, and libfiles reads a JPEG XL's compressed boxes with its own Brotli decoder.

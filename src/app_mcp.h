@@ -255,6 +255,7 @@ void add_engine_tools(mcp_host& host);
 void add_library_tools(mcp_host& host);
 void add_ui_tools(mcp_host& host);
 void add_control_tools(mcp_host& host);
+void add_face_tools(mcp_host& host);
 
 // -tool:<name> name=value...: calls the tool once, without a session, and prints its result: its structured content
 // as JSON on stdout where it has some, otherwise its text, and what it reports on the way on stderr. The process's

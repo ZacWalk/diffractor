@@ -120,7 +120,7 @@ LANG_ISO3 = {
 
 
 # ============================================================================
-# Qualification level and record flags (locations.md 2.1 / 2.2)
+# Qualification level and record flags (docs/locations.md#place-data)
 # ============================================================================
 #
 # The flags column is fixed width and is written immediately BEFORE the name column,
@@ -133,7 +133,7 @@ LANG_ISO3 = {
 #   bit  2    extent feature: matched by bounding box, no meaningful centroid. Excluded
 #             from find_closest / find_largest / radius search. Populated places are
 #             never extent features; water bodies (location-waters.txt) are.
-#   bits 3-31 reserved, MUST be written as zero and ignored on read.
+#   bits 3-31 GeoNames ID of an enclosing city inferred for a populated section, or zero.
 
 LEVEL_NAME = 0
 LEVEL_NAME_COUNTRY = 1
@@ -181,7 +181,7 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 # GeoNames disambiguates colliding names with a trailing parenthetical, and some records carry
 # a truncated one with no closing bracket. Either way the bracket is editorial apparatus, not
-# part of the name, and locations.md 2.1 already qualifies a name with its region and country.
+# part of the name, and the record's qualification level already qualifies a name with its region and country.
 _TRAILING_PAREN_RE = re.compile(r"\s*\(([^()]*)\)?\s*$")
 
 
@@ -217,7 +217,7 @@ def split_parenthetical_name(name: str) -> tuple[str, list[str]]:
 
 
 def assign_qualification_levels(records) -> dict[int, int]:
-    """Assign locations.md 2.2 qualification levels over the records actually emitted.
+    """Assign qualification levels (docs/locations.md#place-data) over the records actually emitted.
 
     Records must expose ``name``, ``country_code``, ``state_code`` and ``population`` and
     accept a ``flags`` attribute. Levels are computed from DEFAULT names only, so a record
@@ -320,8 +320,10 @@ class CityRecord:
     alternate_names: list[str] = field(default_factory=list)
     # Localized display names keyed by LANGUAGE_BITS bit index (issue #119).
     localized: dict[int, str] = field(default_factory=dict)
-    # Qualification level and record flags (locations.md 2.1); set by assign_qualification_levels.
+    # Qualification level and record flags (docs/locations.md#place-data); set by assign_qualification_levels.
     flags: int = 0
+    feature_code: str = ""
+    admin2: str = ""
 
     def __str__(self) -> str:
         # Localized names in bit order build the langmask; a localized name that equals the
@@ -744,6 +746,8 @@ def load_cities(cities_file: Path) -> list[CityRecord]:
                     state_code=admin1,
                     country_code=country,
                     population=pop,
+                    feature_code=feature_code,
+                    admin2=parts[11],
                     alternate_names=alt_names
                 )
                 
@@ -999,6 +1003,29 @@ def collapse_duplicate_places(cities: list[CityRecord]) -> list[CityRecord]:
     return cities
 
 
+def assign_enclosing_cities(cities: list[CityRecord]) -> None:
+    """Give a section a search-only parent, never infer that a separate town is a suburb."""
+    centers = defaultdict(list)
+    for c in cities:
+        if (c.admin2 and c.state_code and c.population >= 100_000 and
+                (c.feature_code == "PPL" or c.feature_code in ADMINISTRATIVE_FEATURE_CODES)):
+            centers[c.country_code, c.state_code, c.admin2].append(c)
+
+    for c in cities:
+        if c.feature_code != "PPLX" or not c.admin2 or not c.state_code:
+            continue
+        nearby = [p for p in centers.get((c.country_code, c.state_code, c.admin2), ())
+                  if p.population > c.population and
+                  haversine_km(c.latitude, c.longitude, p.latitude, p.longitude) <= 50]
+        nearby.sort(key=lambda p: (-p.population, p.id))
+        # A broad administrative district can contain two cities. Don't guess between peers.
+        if nearby and (len(nearby) == 1 or nearby[0].population >= 2 * nearby[1].population):
+            parent = nearby[0].id
+            if not 0 < parent < (1 << 29):
+                raise ValueError(f"Enclosing city ID does not fit the flags column: {parent}")
+            c.flags = (c.flags & 7) | (parent << 3)
+
+
 def process_cities(cities_file: Path, alt_names_file: Path, output_file: Path) -> None:
     """Process cities and write output file."""
     print(f"Using cities file: {cities_file}")
@@ -1025,9 +1052,10 @@ def process_cities(cities_file: Path, alt_names_file: Path, output_file: Path) -
     cities.sort(key=lambda c: (c.name, c.state_code, c.country_code, c.latitude, c.longitude))
     print("  Sorting cities, completed.")
 
-    # Qualification levels (locations.md 2.2) over the records actually emitted.
+    # Qualification levels (docs/locations.md#place-data) over the records actually emitted.
     print("  Assigning qualification levels...")
     histogram = assign_qualification_levels(cities)
+    assign_enclosing_cities(cities)
     print(f"  Levels: name={histogram[LEVEL_NAME]}, "
           f"name+country={histogram[LEVEL_NAME_COUNTRY]}, "
           f"name+region+country={histogram[LEVEL_NAME_REGION_COUNTRY]}.")

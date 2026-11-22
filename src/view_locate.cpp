@@ -172,7 +172,7 @@ public:
 
 			ui::auto_complete_results found;
 
-			// locations.md 3.4: the gazetteer already ranks matches (exact spelling, then
+			// docs/locations.md#location-search: the gazetteer already ranks matches (exact spelling, then
 			// population, then distance). Re-sorting on distance alone put a nearby hamlet
 			// above the city the user was obviously typing.
 			for (const auto& local : locally_found)
@@ -496,29 +496,23 @@ void locate_view::on_marker_hover(view_hover_element& hover, const int marker_in
 	}
 
 	const auto& item = marker.item;
-	if (!item) return;
 	const auto elements = std::make_shared<view_elements>();
 
 	// Thumbnail of the representative photo (mirrors the items-view scrollbar preview).
-	// It may be absent if the item's thumbnail has not been decoded into memory, so a
-	// caption is always added below to guarantee the bubble has content.
-	const auto surface = item->thumbnail_surface();
+	// The caption can show even when the representative or its thumbnail is not available yet.
+	if (item)
+	{
+		const auto surface = item->thumbnail_surface();
 
-	if (is_valid(surface))
-	{
-		elements->add(std::make_shared<surface_element>(surface, 160, flex_item::center, item->layout_orientation()));
-	}
-	else if (is_valid(item->thumbnail()))
-	{
-		item->stage_thumbnail_surface(_state._async, false, true);
-	}
-	else if (_thumbnail_requests.emplace(item->path()).second)
-	{
-		_state.item_index.queue_load_thumbnail(item);
+		if (is_valid(surface)) elements->add(std::make_shared<surface_element>(surface, 160, flex_item::center));
+		else if (is_valid(item->thumbnail())) item->stage_thumbnail_surface(_state._async, false, true);
+		else if (_thumbnail_requests.emplace(item->path()).second) _state.item_index.queue_load_thumbnail(item);
 	}
 
 	// Caption: item count for a cluster, otherwise the representative file name.
-	const auto caption = count > 1 ? format_plural_text(tt.map_items_here_fmt, count) : std::string(item->name().sv());
+	const auto name = item ? item->name().sv() : marker.path.name().sv();
+	const auto caption = count > 1 || name.empty() ? format_plural_text(tt.map_items_here_fmt, count)
+	                                               : std::string(name);
 
 	elements->add(std::make_shared<text_element>(caption, flex_item::center | flex_item::new_line));
 
@@ -531,7 +525,7 @@ void locate_view::on_marker_hover(view_hover_element& hover, const int marker_in
 }
 
 // Here the centre is the answer, so a picked bubble is moved under the crosshair rather than
-// marked in place. Contrast the advanced-search map, which picks without moving.
+// marked in place. Contrast Explore's globe, where clicking a cluster searches without moving.
 void locate_view::on_marker_clicked(const gps_coordinate& coordinate, const int /*count*/)
 {
 	if (!coordinate.is_valid()) return;
@@ -554,7 +548,7 @@ void locate_view::request_reverse_geocode(const gps_coordinate& gps)
 	std::weak_ptr<locate_view> weak_self = shared_from_this();
 	_state._async.queue_location([&async = _state._async, gps, weak_self, request_id](const location_cache& locations)
 	{
-		// locations.md 2.5: bounded attribution. find_closest would name a city hundreds of
+		// docs/locations.md#item-locations: bounded attribution. find_closest would name a city hundreds of
 		// kilometres away with the same confidence as a correct answer.
 		const auto attributed = locations.find_attributed(gps);
 
@@ -631,7 +625,7 @@ bool locate_view::run(detach_file_handles& /*detach*/)
 	metadata_edits edits;
 	edits.location_coordinate = gps_coordinate(_location->latitude, _location->longitude);
 
-	// locations.md 2.9: only the coordinate is written. Place, state and country are derived from
+	// docs/locations.md#item-locations: only the coordinate is written. Place, state and country are derived from
 	// it at read time, so writing them would freeze one gazetteer's answer into the user's file.
 
 	// Only record locations that map to a known place id; "0" is meaningless
@@ -703,7 +697,8 @@ view_controls_host_ptr locate_view::controls(const ui::frame_ptr& owner)
 	overwrite_summary->update_background_color();
 
 	std::vector<view_element_ptr> controls;
-	controls.emplace_back(create_view_info_element(tt.map_instructions));
+	controls.emplace_back(
+		std::make_shared<view_info_element>(icon_index::location, tt.command_locate, tt.map_instructions));
 	controls.emplace_back(selection_thumbnails);
 	controls.emplace_back(target_summary);
 	controls.emplace_back(overwrite_summary);

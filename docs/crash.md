@@ -1,79 +1,74 @@
 # Crash investigation
 
-This document owns the procedure for turning a Diffractor crash report into an
-attributed defect: what a report contains, where symbols come from, how to make a
-minidump resolve, and how to tell the faulting frame apart from the cause. What the
-code does belongs to [implementation.md](implementation.md) and the owning subsystem
-document; this is only how to find out which one is at fault.
+This document owns turning a Diffractor crash report into an attributed defect: what a report contains,
+where symbols come from, how to make a minidump resolve, and how to tell the faulting frame from the
+cause. What the code does belongs to [implementation.md](implementation.md) and the owning subject
+document.
 
 ## 1. What a report contains
 
-`app_frame::crash` (src/app.cpp) zips and posts:
+libdesktop's exception filter calls `app_frame::crash` ([app.cpp](../src/app.cpp)), which posts a
+`crash.zip` to diffractor.com under the subject `Diffractor CRASH report`, beside form fields carrying
+`calc_app_info` - the block the logo's tooltip shows with debug info on. The zip holds:
 
-- `Diffractor-<version>-<build>-<yyyymmdd>-<hhmmss>.dmp` — a user minidump.
+- `Diffractor-<version>-<build>-<yyyymmdd>-<hhmmss>.dmp` (UTC) — a user minidump.
 - `diffractor.log` — the crashing session.
 - `diffractor.previous.log` — the session before it.
 
-The post is a `crash.zip` attachment plus form fields carrying `calc_app_info` — the
-same block the About tooltip shows with debug info on — under the subject
-`Diffractor CRASH report`. The **Support** command (`send_info`, src/app_dialogs.cpp)
-posts to the same endpoint with the same app-info block, but as `logs.zip` under the
-subject `Diffractor LOG` and with no dump. Read the subject first: a `LOG` report is a
-user asking for help, not a fault.
+**Support** (`send_info`, [app_dialogs.cpp](../src/app_dialogs.cpp)) posts the same block and logs to the
+same endpoint as `logs.zip` under `Diffractor LOG`, with no dump. Read the subject first: a `LOG` report is
+a user asking for help, not a fault.
 
-The dump is the part most likely to be missing. `create_dump` needs `dbghelp` and a
-writable temp file, and when either fails the report is still sent with the logs alone
-— the log then says `no minidump was written - reporting logs only`. A report with no
-`.dmp` is therefore a real crash, not a truncated upload. Both temp artifacts are
-deleted once the attempt finishes, so nothing on the user's machine is left to ask for
-afterwards.
+The dump is the part most likely to be missing: writing it needs `dbghelp` and a writable temp file, and
+without either the logs go alone, the log saying `no minidump was written - reporting logs only`. A report
+with no `.dmp` is therefore a real crash, not a truncated upload. Both temp files are deleted once the
+attempt ends, so nothing is left on the user's machine to ask for.
 
-Reports are only sent when `setting.send_crash_dumps` is set, and only one thread
-claims the handler (`df::handling_crash`), so a report is never a duplicate of a
-second fault inside the first. The crashed-file skip list is written before any of
-this and independently of it. Some faults produce no report at all — see
-[implementation.md](implementation.md#crash-loop-protection) for what the handler
-cannot reach and what covers those cases instead.
+One thread claims the handler (`df::handling_crash`), so a report never duplicates a second fault inside
+the first. Before anything else, and whether or not it reports, the handler adds the files the faulting
+thread had open to the skip list ([crash-loop protection](implementation.md#crash-loop-protection)). No
+report comes from the Store build, which compiles the filter out (`WINSTORE`) - its crashes reach Partner
+Center's health reports through the `.appxsym` symbols in the upload `.\dd.ps1 store` builds - nor with
+`setting.send_crash_dumps` off, from a run with `-profile:`, or from an agent session without `network`
+(`app_frame::apply_run_settings`). When Windows ends a hung or crashing process, in either build, its
+recovery callback (`save_recovery_state`) logs `*** recover callback ***` and `Open file <type> in <stage>`
+for each open file, and adds them to the skip list.
 
 ## 2. Read the logs before the dump
 
-The log is cheaper than the dump and often decides the answer on its own. Take:
+The log is cheaper than the dump and often decides the answer on its own. Each line holds the thread ID,
+milliseconds since the first line, and its context - usually the function that logged it; paths show the
+account name as `%user%`. Take:
 
-- **Line 1-2** — version, build, OS, bit-ness, `debug`/`release`, core count.
-- **Startup block** — settings backend, GPU adapter and vendor/device IDs, whether
-  the D3D11 device was created, `p010`/`nv12` support, image budgets.
-- **Timeline** — every line is milliseconds since start. Compare the timestamp of the
-  last log line with `Process Uptime` in the dump: a long gap means the fault has no
-  logged neighbour and the log is only context.
-- **The tail** — `*** CRASH ***`, plus `Last file type opened` and `Rendering
-  function` (from `render::rendering_func`, maintained by `render::scope_rendering_func`) when
-  they were set.
-- **`crash_files_db` lines** — file types added to the skip list, and on the next run
-  the count of files skipped because they crashed a previous run of the same release line.
-- **The previous log** — if it shows the same anomaly, the crash is reproducible on
-  that machine and the anomaly is a lead rather than a coincidence.
+- **Lines 1-2** — version, build, OS, bit-ness, `debug`/`release`, core count.
+- **Startup block** — settings backend, GPU adapter and vendor/device IDs, whether the D3D11 device was
+  created, `p010`/`nv12` support, image budgets.
+- **Timeline** — compare the last line's time with `Process Uptime` in the dump: a long gap means the
+  fault has no logged neighbour and the log is only context.
+- **The tail** — `Add file type to crash list <type>`, then `*** CRASH ***`, plus `Last file type opened`
+  and `Rendering function` (from `render::rendering_func`, maintained by `render::scope_rendering_func`)
+  when they were set.
+- **`skipping <n> file(s) that crashed a previous run of this release`** — files earlier crashes listed,
+  left unscanned in this session.
+- **The previous log** — if it shows the same anomaly, the crash is reproducible on that machine and the
+  anomaly is a lead rather than a coincidence.
 
-Anything a `__try`/`__except` or `catch` swallowed appears here and nowhere else. A
+A log that reaches 4 MiB says `*** log truncated ...` and then keeps only `main` and `perf` lines, so its
+crash tail is missing. Anything a `__try`/`__except` or `catch` swallowed appears here and nowhere else; a
 swallowed fault minutes before the crash is a suspect, not a footnote.
 
 ## 3. Symbols
 
-`dd.ps1` publishes symbols with `Add-ToSymbolStore`, using `symstore.exe` from
-the Windows SDK's `Windows Kits\10\Debuggers\x64` directory. Install the
-SDK's **Debugging Tools for Windows** component on a release machine; desktop
-and Store packaging fail before changing the version when it is absent.
-Without administrator rights, an SDK administrative image may be deployed
-under `%LOCALAPPDATA%\Microsoft\WindowsSDK\Debuggers\<SDK version>`.
-The image retains its `Windows Kits\10\Debuggers\x64` layout; the newest
-numeric version is used when there is no machine-installed copy.
-It runs `symstore add /r /f <file> /s c:\code\symbols /t Diffractor /compress`. Two
-consequences:
+`dd.ps1`'s `Add-ToSymbolStore` publishes with
+`symstore add /r /f <file> /s c:\code\symbols /t Diffractor /compress`, run from the Windows SDK's
+`Windows Kits\10\Debuggers\x64`: its **Debugging Tools for Windows**, without which desktop and Store
+packaging fail before changing the version (`Get-SymStore`). Without administrator rights, deploy an SDK
+administrative image under `%LOCALAPPDATA%\Microsoft\WindowsSDK\Debuggers\<SDK version>`, keeping that
+layout; the newest version is used when there is no machine-installed copy. The 32- and 64-bit desktop
+binaries and the Store `diffractor.exe` are published with their PDBs, so:
 
 - The store is `c:\code\symbols`, indexed by `<name>\<key>\<name>.ex_` / `.pd_`.
-- Entries are **cab-compressed**, so they must be `expand`ed before a debugger can use
-  them as an image.
-
-Both the 32- and 64-bit desktop binaries and the Store `diffractor.exe` are published.
+- Entries are **cab-compressed**, so they must be `expand`ed before a debugger can use them as an image.
 
 The console debugger is the WinDbg store app, not the Windows Kits install:
 
@@ -162,10 +157,10 @@ In order, and stopping as soon as the answer is unambiguous:
   inside a system DLL. The corrupter ran earlier and left no frame. Go back to the log
   and look for a swallowed fault, a third-party or driver call, or an operation that
   writes a buffer — and check whether the previous session shows the same thing.
-- **Deliberate test crashes.** A three-line log (`main` version, OS, `*** CRASH ***`)
-  with a process uptime of a few seconds is a `/test:` console run, not a user
-  session. Check the stack for `run_console_tests`; some negative tests deliberately
-  verify an access violation.
+- **Deliberate crashes.** A Debug build's `debug_action` tool ([agents](agents.md)) crashes on purpose:
+  `crash` writes through a null pointer in `app_frame::run_test_action`, and `send-crash-report` sends a
+  report whose "dump" is the fixture `Test.jpg`. A crash with `run_console_tests` on its stack and an
+  uptime of seconds is a `/test` console run, not a user session.
 
 An attributed crash needs three things that agree: the faulting instruction, a
 mechanism in our code that produces it, and something in the log or the dump's globals
@@ -175,11 +170,12 @@ that says this configuration took that path. Two out of three is a hypothesis.
 
 | Crash-handling subject | Source |
 |---|---|
-| Exception filter and report contents | [app.cpp](../src/app.cpp) |
-| Minidump writing, and restart and recovery registration | libdesktop's [process.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/process.cpp) |
-| The open-file list a fault records, and its bounds | [util_crash_files_db.h](../src/util_crash_files_db.h) |
+| Report contents and posting | `app_frame::crash` and `calc_app_info` in [app.cpp](../src/app.cpp); `send_info` in [app_dialogs.cpp](../src/app_dialogs.cpp) |
+| Exception filter, minidump writing, and restart and recovery registration | libdesktop's [process.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/process.cpp) |
+| The open-file list a fault records, and its bounds | [util_crash_files_db.h](../src/util_crash_files_db.h); `app_frame::save_recovery_state` in [app.cpp](../src/app.cpp) |
 | The graphics crash guard and hardware-acceleration fallback | libdesktop's [settings.cpp](https://github.com/ZacWalk/libdesktop/blob/main/src/platform/win/settings.cpp) keeps the guards; `apply_gpu_crash_guard` in [app.cpp](../src/app.cpp) falls back from them |
-| The safe start after two unsettled launches | [app.cpp](../src/app.cpp), [app_settings.cpp](../src/app_settings.cpp) |
+| The safe start after two unsettled launches | `app_frame::load_settings` in [app.cpp](../src/app.cpp), `decide_startup` in [app_settings.h](../src/app_settings.h), `reset_presentation` in [app_settings.cpp](../src/app_settings.cpp) |
 | Diagnostic log and session counters | libdesktop's [core/log.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/core/log.h), [core/util.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/core/util.h) and [platform/services.h](https://github.com/ZacWalk/libdesktop/blob/main/include/libdesktop/platform/services.h); [app_perf.h](../src/app_perf.h) |
-| SDK symbol-store discovery and publishing | `Get-SymStore` and `Add-ToSymbolStore` in [dd.ps1](../dd.ps1) |
+| SDK symbol-store discovery and publishing | `Get-SymStore` and `Add-ToSymbolStore` in [dd.ps1](../dd.ps1), checked by [test_release_tools.ps1](../tools/test_release_tools.ps1) |
 | Debugging a reproducible crash in Visual Studio (`dd.ps1 vs`) | `Open-VisualStudio` in [dd.ps1](../dd.ps1) |
+| Deliberate crashes in a Debug build | `app_frame::run_test_action` in [app_commands.cpp](../src/app_commands.cpp) |

@@ -283,7 +283,7 @@ namespace
 			t.label = short_label(button->window_text());
 			if (!c->traits.push_button)
 			{
-				t.checked = c->is_checked();
+				t.checked = button->is_checked();
 				w.read_before = button->window_text();
 			}
 		}
@@ -502,10 +502,12 @@ namespace
 
 			for (const auto& c : bar->_controls)
 			{
-				const auto* const name = c == app._search_edit   ? "address"
-				                         : c == app._filter_edit ? "filter"
-				                         : c == app._item_size   ? "item size"
-				                                                 : "";
+				const auto* const name = c == app._search_edit        ? "address"
+				                         : c == app._filter_edit      ? "filter"
+				                         : c == app._item_size        ? "item size"
+				                         : c == app._face_filter_edit ? "people filter"
+				                         : c == app._face_size        ? "face size"
+				                                                      : "";
 				add_control(w, c, true, name);
 			}
 		};
@@ -816,10 +818,12 @@ namespace
 		const auto* found = find_target(targets, r.id);
 		if (!found) return "it is no longer shown";
 
-		// One its frame has scrolled out of sight is scrolled into view first, as a user scrolls to it.
+		// One its frame has scrolled out of sight is scrolled into view first, as a user scrolls to it. The frame is laid
+		// out then, as it is before any input a user could give next, so the controls in it have moved with the scroll.
 		if (found->reveal && !found->visible.is_empty() && !found->visible.contains(found->bounds.center()))
 		{
 			found->reveal(found->bounds);
+			if (found->frame) found->frame->layout();
 			targets = window_targets(app);
 			found = find_target(targets, r.id);
 			if (!found) return "it went once scrolled into view";
@@ -895,6 +899,11 @@ namespace
 			{
 				const keyboard_part part{target.element, target.part, target.bounds};
 				app._view_frame->keyboard_to(*target.area, &part);
+			}
+			else if (target.kind == "content")
+			{
+				if (app._view_frame && frame == app._view_frame->frame()) app.focus_view();
+				else if (frame) frame->focus();
 			}
 
 			ui::send_key(frame, r.key, r.keys);

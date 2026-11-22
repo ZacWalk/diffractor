@@ -46,6 +46,6 @@ so. "It is only the renderer" is the most common misjudgement in this repository
 ## Checks
 
 `/test:*surface*`, `/test:*colour*`, `/test:*video*`, `/test:*audio*`, after a Debug build with
-`python tools\dd.py build`. The suite has no `render::draw_context_device`, so anything whose only
-output is pixels on a real device is verified by eye — run `.\dd.ps1 cpu` as well as a normal run
-when a change touches both backends.
+`python tools\dd.py build`. The suite draws into no window, so anything whose only output is pixels on
+screen is verified by eye — run `.\dd.ps1 cpu` as well as a normal run when a change touches both
+backends.

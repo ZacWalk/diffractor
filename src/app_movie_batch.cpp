@@ -205,6 +205,7 @@ namespace
 	{
 		std::vector<movie_clip> clips;
 		movie_output output;
+		movie_kind kind = movie_kind::movie;
 		double duration = 0;
 		bool ready = false;
 	};
@@ -212,7 +213,7 @@ namespace
 	// What a render of these clips would make and whether it can. With `skip_missing`, a clip whose source
 	// cannot be used is left out rather than refusing the movie, and the report says how many.
 	prepared_movie prepare_movie(std::vector<movie_clip> clips, const core::file_path project_path,
-	                             const bool skip_missing)
+	                             const movie_kind kind, const bool skip_missing)
 	{
 		const auto is_sourced = [](const movie_clip& clip)
 		{
@@ -247,10 +248,11 @@ namespace
 		}
 
 		movie_project project;
-		project.reset(clips, project_path);
+		project.reset(clips, project_path, kind);
 
 		prepared_movie result;
 		result.output = project.output();
+		result.kind = kind;
 		const auto timing = project.timing();
 		result.duration = timing.duration;
 		result.ready = project.is_ready_to_render() && !no_clip_left;
@@ -271,12 +273,24 @@ namespace
 		r.seconds = result.duration;
 		r.size = result.output.extent;
 		r.frame_rate = result.output.frame_rate;
+		r.youtube_short = kind == movie_kind::youtube_short;
 
 		print_line(std::format("  movie     {} videos, {} photos, {} audio files and {} text screens, {} long; "
-		                       "{}x{} at {} fps, {:.1f} Mbit/s",
+		                       "{}x{} at {} fps, {:.1f} Mbit/s{}",
 		                       std::ssize(clips) - photos - audio - screens, photos, audio, screens,
 		                       format_duration(result.duration), result.output.extent.cx, result.output.extent.cy,
-		                       result.output.frame_rate, result.output.video_bitrate / 1000000.0));
+		                       result.output.frame_rate, result.output.video_bitrate / 1000000.0,
+		                       r.youtube_short ? "; a YouTube Short" : ""));
+
+		// A Short ends by three minutes: one whose items run longer is cut there, and the report says so.
+		if (timing.cut)
+		{
+			const auto cut = std::format("its items run {}, so the Short fades out at {}",
+			                             format_duration(timing.whole), format_duration(timing.duration));
+			r.warnings.push_back("cut short: " + cut);
+			print_line(std::format("  cut       {}", cut));
+		}
+
 		print_text(clips, timing);
 
 		// Each reason the movie is not ready, as a line of the report and as a reason the tool gives.
@@ -522,7 +536,7 @@ namespace
 			}
 		}
 
-		auto movie = prepare_movie(std::move(clips), project_path, options.skip_missing);
+		auto movie = prepare_movie(std::move(clips), project_path, loaded.kind, options.skip_missing);
 		if (!movie.ready) return project_outcome::failed;
 
 		if (options.mode == movie_batch_mode::check)
@@ -534,6 +548,7 @@ namespace
 		movie_render_request request;
 		request.clips = std::move(movie.clips);
 		request.output = movie.output;
+		request.kind = movie.kind;
 		request.path = *destination;
 		request.fail_if_exists = !options.overwrite;
 
@@ -650,6 +665,8 @@ std::string format_movie_batch_report(const movie_batch_report& report)
 		w.Uint64(p.captions);
 		w.Key("stabilize");
 		w.Uint64(p.stabilize);
+		w.Key("youtube_short");
+		w.Bool(p.youtube_short);
 		w.Key("seconds");
 		w.Double(p.seconds);
 		w.Key("width");

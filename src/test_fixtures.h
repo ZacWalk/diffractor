@@ -162,6 +162,15 @@ public:
 	}
 };
 
+// A dialog's frame that remembers how it was answered: OK, Cancel, or not at all.
+class answered_test_frame final : public ui::null_frame
+{
+public:
+	std::optional<bool> cancelled;
+
+	void close(const bool is_cancel) override { cancelled = is_cancel; }
+};
+
 class null_async_strategy : public async_strategy
 {
 public:
@@ -202,10 +211,17 @@ class deferred_async_strategy final : public null_async_strategy
 public:
 	// The database a test wants its database tasks run against, at once; with none they are dropped.
 	database* db = nullptr;
+	// The same for the map tile store's tasks.
+	tile_cache_db* tile_db = nullptr;
 
 	void queue_database(const std::function<void(database&)> f) override
 	{
 		if (db) f(*db);
+	}
+
+	void queue_tile_db(const std::function<void(tile_cache_db&)> f) override
+	{
+		if (tile_db) f(*tile_db);
 	}
 
 	void queue_ui(const std::function<void()> f) override { _ui.emplace_back(f); }
@@ -710,6 +726,13 @@ public:
 	prop_test& tag(const std::string_view s)
 	{
 		_f.safe_ps()->tags = core::cache(s);
+		return *this;
+	}
+
+	// Whom the picture names, joined as files' names are read.
+	prop_test& people(const std::vector<std::string>& names)
+	{
+		_f.safe_ps()->people = core::cache(core::combine(names));
 		return *this;
 	}
 

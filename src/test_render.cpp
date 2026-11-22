@@ -1290,6 +1290,127 @@ namespace
 	}
 }
 
+// Explore drapes map tiles over the globe at the level each part of it needs, standing the nearest loaded
+// ancestor in for a tile still on its way, and the world map in where no tile reaches - round the poles, past
+// the latitudes Web Mercator covers.
+static void should_drape_map_tiles_over_the_globe()
+{
+	class one_tile final : public globe_tile_source
+	{
+	public:
+		core::surface_ptr blue = std::make_shared<core::surface>();
+		std::vector<std::array<int, 3>> wanted;
+		int deepest = 3;
+
+		one_tile()
+		{
+			blue->alloc(256, 256, core::texture_format::ARGB);
+
+			for (auto y = 0; y < 256; ++y)
+			{
+				auto* const line = std::bit_cast<core::color32*>(blue->pixels_line(y));
+				for (auto x = 0; x < 256; ++x) line[x] = core::rgba(0, 0, 255);
+			}
+		}
+
+		int max_level() const override { return deepest; }
+
+		core::const_surface_ptr tile(const int z, const int x, const int y) const override
+		{
+			return z == 0 && x == 0 && y == 0 ? blue : nullptr;
+		}
+
+		void want(const int z, const int x, const int y) override { wanted.push_back({z, x, y}); }
+	};
+
+	globe_renderer renderer;
+	renderer.set_source(make_globe_test_source());
+
+	constexpr int radius = 100;
+	constexpr pointi center(104, 104);
+
+	core::surface destination;
+	destination.alloc(208, 208, core::texture_format::ARGB);
+
+	one_tile tiles;
+	const globe_projection west({0.0, -90.0}, center, radius);
+
+	assert_equal(true, renderer.render(destination, west), "the globe renders without tiles", "globe tiles");
+	assert_equal('r', globe_hue(destination.get_pixel(center.x, center.y)), "from the world map", "globe tiles");
+
+	assert_equal(true, renderer.render(destination, west, &tiles), "and with them", "globe tiles");
+	assert_equal('b', globe_hue(destination.get_pixel(center.x, center.y)),
+	             "the tile it has stands in for the finer one it wants", "globe tiles");
+	assert_equal(true, std::ranges::any_of(tiles.wanted, [](const auto& t) { return t[0] > 0; }),
+	             "the finer tile is asked for", "globe tiles");
+	assert_equal(true, std::ranges::all_of(tiles.wanted, [&tiles](const auto& t) { return t[0] <= tiles.deepest; }),
+	             "and none finer than the view reads", "globe tiles");
+
+	tiles.wanted.clear();
+	assert_equal(true, renderer.render(destination, globe_projection({90.0, 0.0}, center, radius), &tiles),
+	             "a view of the pole renders", "globe tiles");
+	assert_equal('g', globe_hue(destination.get_pixel(center.x, center.y)),
+	             "and the pole, which no tile covers, is the world map's", "globe tiles");
+
+	tiles.deepest = -1;
+	tiles.wanted.clear();
+	renderer.render(destination, west, &tiles);
+	assert_equal('r', globe_hue(destination.get_pixel(center.x, center.y)), "a source offering no level draws none",
+	             "globe tiles");
+	assert_equal(true, tiles.wanted.empty(), "and asks for none", "globe tiles");
+}
+
+// After a zoom out, the finer tiles still held stand in for their quarters of a tile on its way - sharper than any
+// ancestor - and are wanted meanwhile, so they are not let go while they do.
+static void should_stand_finer_map_tiles_in_after_a_zoom_out()
+{
+	class finer_tiles final : public globe_tile_source
+	{
+	public:
+		core::surface_ptr green = std::make_shared<core::surface>();
+		std::vector<std::array<int, 3>> wanted;
+
+		finer_tiles()
+		{
+			green->alloc(256, 256, core::texture_format::ARGB);
+
+			for (auto y = 0; y < 256; ++y)
+			{
+				auto* const line = std::bit_cast<core::color32*>(green->pixels_line(y));
+				for (auto x = 0; x < 256; ++x) line[x] = core::rgba(0, 255, 0);
+			}
+		}
+
+		int max_level() const override { return 1; }
+
+		core::const_surface_ptr tile(const int z, const int /*x*/, const int /*y*/) const override
+		{
+			return z == 2 ? green : nullptr;
+		}
+
+		void want(const int z, const int x, const int y) override { wanted.push_back({z, x, y}); }
+	};
+
+	globe_renderer renderer;
+	renderer.set_source(make_globe_test_source());
+
+	constexpr int radius = 100;
+	constexpr pointi center(104, 104);
+
+	core::surface destination;
+	destination.alloc(208, 208, core::texture_format::ARGB);
+
+	finer_tiles tiles;
+	assert_equal(true, renderer.render(destination, globe_projection({0.0, -90.0}, center, radius), &tiles),
+	             "the globe renders", "globe tiles");
+	assert_equal('g', globe_hue(destination.get_pixel(center.x, center.y)),
+	             "the finer tile held stands in for the one wanted", "globe tiles");
+	assert_equal(true, std::ranges::any_of(tiles.wanted, [](const auto& t) { return t[0] == 1; }),
+	             "the tile wanted is still asked for", "globe tiles");
+	assert_equal(true, std::ranges::any_of(tiles.wanted, [](const auto& t) { return t[0] == 2; }),
+	             "and the finer one kept while it stands in", "globe tiles");
+}
+
 static void should_render_the_globe()
 {
 	globe_renderer renderer;
@@ -1875,5 +1996,7 @@ void register_render_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should not CPU transform planar surfaces"s, should_not_cpu_transform_planar_surfaces);
 	tests.add("Should rotate 133"s, should_rotate133);
 	tests.add("Should render the globe"s, should_render_the_globe);
+	tests.add("Should drape map tiles over the globe"s, should_drape_map_tiles_over_the_globe);
+	tests.add("Should stand finer map tiles in after a zoom out"s, should_stand_finer_map_tiles_in_after_a_zoom_out);
 	tests.add("Should render a projected panorama"s, should_render_a_projected_panorama);
 }

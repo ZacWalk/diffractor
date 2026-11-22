@@ -41,7 +41,7 @@ class locate_view final : public map_view, public std::enable_shared_from_this<l
 	// map supersedes whatever it still has in flight.
 	std::weak_ptr<locate_auto_complete_strategy> _place_search;
 	// Composed by the location worker: the qualified place name already carrying its Near or
-	// Remote form, and the locations.md 2.7 bearing descriptor for anything not `at` a place.
+	// Remote form, and the bearing descriptor (docs/locations.md#item-locations) for anything not `at` a place.
 	std::string _place_label;
 	std::string _bearing;
 

@@ -130,6 +130,29 @@ AVBufferRef* av_platform_create_hw_device(int device_type);
 using av_packet_ptr = std::shared_ptr<av_packet>;
 using av_frame_ptr = std::shared_ptr<av_frame>;
 
+// docs/faces.md#33-videos: one key frame of a video's picture stream, as the container holds it - its packet, and when
+// it is shown on the timeline playback uses - read by one thread for another to decode.
+struct av_key_frame
+{
+	av_packet_ptr packet;
+	double time = 0.0;
+	// The stream's next picture packet, where the key frame is the first of a picture's two fields - as camcorders
+	// store interlaced video in transport streams - and the picture is whole only with its second.
+	av_packet_ptr next;
+
+	size_t bytes() const;
+};
+
+// What decodes a stream's key frames: the stream's parameters, copied from the decoder that read them, shared by the
+// threads that decode them.
+struct av_key_frame_codec;
+using av_key_frame_codec_ptr = std::shared_ptr<const av_key_frame_codec>;
+
+// One key frame decoded alone: packed 32-bit, fitted within max_dim and never enlarged, carrying the orientation it is
+// shown in, made whole where it is interlaced and tone mapped where it is HDR. Null where it does not decode. Any
+// thread; each keeps a decoder for the stream it decoded last, as a video's frames come to it in turn.
+core::surface_ptr av_decode_key_frame(const av_key_frame_codec& codec, const av_key_frame& frame, sizei max_dim);
+
 struct av_nearest_frame_choice
 {
 	bool found = false;
@@ -839,6 +862,12 @@ public:
 	// slideshow.
 	bool extract_frame_at(core::surface_ptr& dest_surface, sizei max_dim, double wanted_time,
 	                      double tolerance_seconds = 0.0, core::cancel_token abandon = {});
+	// docs/faces.md#33-videos: the picture stream's first key frame at or after `wanted` on the timeline, read for a
+	// decoder on another thread. Seeks to it, or with `in_order` reads on from where the demuxer stands, for a file
+	// that cannot seek. Empty past the last key frame, or where none can be read. After init_streams.
+	std::optional<av_key_frame> read_key_frame(double wanted, bool in_order = false);
+	// What decodes those key frames on another thread; null without a picture stream to read them from.
+	av_key_frame_codec_ptr key_frame_codec() const;
 	// Peak amplitude per bucket over the whole audio stream, 0-255, for showing where the sound is.
 	// Empty when the file carries no audio. This decodes the stream once from wherever it is
 	// positioned, so it belongs on a worker and on a decoder nothing else is using.

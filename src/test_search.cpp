@@ -13,6 +13,7 @@
 #include "model_postings.h"
 #include "model_tokenizer.h"
 #include "app_match.h"
+#include "libdesktop/ui/test_support.h"
 
 // Path syntax is the vehicle in most of these tests, not the subject: what they constrain - where
 // the folder ends, what makes a browse recursive, which part is a wildcard, what a parent is - is
@@ -535,7 +536,7 @@ static void should_classify_search_scope()
 		assert_equal("#"s, s.vocab_query(), "bare tag: matches all tags");
 	}
 
-	// locations.md 3.4/3.5: every location scope completes from the gazetteer, differing only in
+	// docs/locations.md#location-search: every location scope completes from the gazetteer, differing only in
 	// the level it constrains to, and the candidate arrives as a finished canonical term.
 	{
 		using l = df::location_level;
@@ -595,6 +596,12 @@ static void should_format_search_predictions()
 	// Issue #139 - a completed path containing spaces reads as one term. Committing it after a lead
 	// term is the case the whole-input auto-quote cannot reach.
 	null_complete_strategy strategy;
+
+	ui::test::fake_draw_context dc;
+	const text_match person(strategy, "person:\"Zac Walker\"", "london ", {{8, 3}});
+	person.render(dc, {});
+	assert_equal(true, std::ranges::any_of(dc.texts, [](const auto& draw)
+	{ return draw.text == "london person:\"Zac Walker\""; }), "the separator is part of the drawn line");
 
 	const auto my_photos = as_platform_path("C:\\My Photos");
 	const auto photos = as_platform_path("C:\\Photos");
@@ -1950,8 +1957,8 @@ static void should_escape()
 	assert_equal(base_folder, s.search().text(), "parent escape **");
 }
 
-// locations.md 3.5: `@remote` is a built-in location class -- a closed word, no argument -- that
-// selects the items step 5 of the attribution ladder refuses to name.
+// docs/locations.md#location-search: `@remote` is a built-in location class -- a closed word, no argument -- that
+// selects the items the last step of the attribution ladder refuses to name.
 static void should_select_remote_items()
 {
 	assert_equal("@remote", df::search_t::parse("@remote").format_terms(), "the canonical spelling");
@@ -2491,6 +2498,61 @@ static void should_match_what_a_disk_holds()
 	prop_test().rate(1).is_match("without:contents").is_not_match("commodore");
 }
 
+// faces.md 2.3: a person is found by the start of any word of their name - unquoted, in person: or in plain text - or,
+// quoted in person:, by their whole name, whatever its case. with:person asks whether a picture names anyone. None of it
+// needs face search.
+static void should_match_the_people_a_picture_names()
+{
+	prop_test()
+		.people({"Jane Doe", "Ann"})
+		.is_match("person:\"Jane Doe\"")
+		.is_match("people:\"jane doe\"")
+		.is_match("person:Ann")
+		.is_match("person:Jane*")
+		.is_match("person:Jane")
+		.is_match("person:doe")
+		.is_match("person:ja")
+		.is_not_match("person:ane")
+		.is_not_match("person:\"Jane\"")
+		.is_match("person:\"ann\"")
+		.is_not_match("-person:Ann")
+		.is_not_match("-person:do")
+		.is_match("person:jane person:ann")
+		.is_not_match("person:jane person:bob")
+		.is_match("\"Jane Doe\"")
+		.is_match("doe")
+		.is_match("jane doe")
+		.is_not_match("oe")
+		.is_match("with:person")
+		.is_not_match("without:person");
+
+	prop_test().people({"Mary-Ann O'Neil"}).is_match("person:ann").is_match("person:neil").is_not_match("person:nn");
+	prop_test().people({"Annabel"}).is_match("person:ann").is_not_match("person:\"Ann\"");
+	prop_test().rate(3).is_match("without:person").is_not_match("with:person").is_not_match("person:Ann");
+}
+
+// faces.md 8: a person: term reads back as it was typed - by the start of a word, or quoted, whole - and a link's term,
+// made for one person, is that person's whole name.
+static void should_read_back_how_a_person_term_finds_a_name()
+{
+	const auto reads_back = [](const df::search_t& search)
+	{
+		return df::search_t::parse(search.format_terms()).terms() == search.terms();
+	};
+
+	const auto typed = df::search_t::parse("person:zac");
+	assert_equal(true, typed.terms().size() == 1 && typed.terms().front().by_word_start, "typed unquoted, by word"sv);
+	assert_equal(true, reads_back(typed), "and read back so"sv);
+
+	const auto quoted = df::search_t::parse("person:\"Zac\"");
+	assert_equal(true, quoted.terms().size() == 1 && !quoted.terms().front().by_word_start, "quoted, whole"sv);
+	assert_equal(true, reads_back(quoted), "and read back so"sv);
+
+	const auto link = df::search_t().with(prop::person, "Ann");
+	assert_equal("person: \"Ann\""sv, link.format_terms(), "a link's term is written whole"sv);
+	assert_equal(true, reads_back(link), "and read back whole"sv);
+}
+
 // Every part of the query has to be found: the result test counts one hit per part, so a part that
 // matched must move on to the next part rather than ending the walk. And the highlights it hands
 // back have to be in text order, because both renderers walk the text forwards and drop anything
@@ -2813,6 +2875,8 @@ void register_search_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should read back a media type term"s, should_read_back_a_media_type_term);
 	tests.add("Should match how a picture is coded"s, should_match_how_a_picture_is_coded);
 	tests.add("Should match what a disk holds"s, should_match_what_a_disk_holds);
+	tests.add("Should match the people a picture names"s, should_match_the_people_a_picture_names);
+	tests.add("Should read back how a person term finds a name"s, should_read_back_how_a_person_term_finds_a_name);
 	tests.add("Should complete on every word"s, should_complete_on_every_word);
 	// UI-006 - auto-complete highlights must describe the matched text, not the query byte count.
 	tests.add("Should highlight the actual auto complete match text"s,
@@ -3103,9 +3167,8 @@ void register_search_tests(view_state& /*state*/, test_registry& tests)
 	register_should_search(">size:1mb", 11, 11, 10);
 
 	register_should_search("dog london", 1, 1, 1);
-	// locations.md 3.6: free text searches the stored field. The GPS-only Prague photo carries no
-	// stored place, so the location vocabulary is what finds it.
-	register_should_search("prague", 4, 4, 4);
+	// Free text now finds the GPS-only Prague photo as well as the four with matching text.
+	register_should_search("prague", 5, 5, 5);
 	register_should_search("loc:prague", 5, 5, 5);
 	register_should_search("ipad", 1, 1, 1);
 	register_should_search("48kHz", 5, 5, 4);

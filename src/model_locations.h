@@ -126,7 +126,7 @@ public:
 
 struct csv_entry;
 
-// locations.md 2.1: index of the default name column in a current location-places.txt
+// docs/locations.md#place-data: index of the default name column in a current location-places.txt
 // (id, latitude, longitude, stateCode, countryCode, population, langmask, flags, name).
 // model_locations.cpp static_asserts this against the Cols enum.
 constexpr int location_cache_default_name_col = 8;
@@ -232,7 +232,7 @@ class location_cache final : public core::no_copy
 	// or -1 for none. Selects the localized place name from a record's language bitmap.
 	std::atomic<int> _display_lang_bit = -1;
 
-	// locations.md 2.1: column index of the default name in location-places.txt. A current
+	// docs/locations.md#place-data: column index of the default name in location-places.txt. A current
 	// file carries the fixed-width flags column before the name, so the name sits one column
 	// later. A stale pre-flags file is detected once during load_index and read with the old
 	// offsets, so it degrades to over-qualified names rather than wrong names.
@@ -279,6 +279,7 @@ class location_cache final : public core::no_copy
 
 	location_t build_location(uint32_t offset) const;
 	location_t build_location(const csv_entry* entries) const;
+	location_t find_named_record(std::string_view query, bool require_common_parent) const;
 
 public:
 	location_cache();
@@ -296,26 +297,33 @@ public:
 
 	bool is_index_loaded() const { return _index_loaded.load(std::memory_order_acquire); }
 
+	uint64_t search_names_version() const
+	{
+		return static_cast<uint64_t>(_load_generation.load()) << 32 |
+		       static_cast<uint32_t>(display_language_bit() + 1);
+	}
+
 	country_loc find_country(double x, double y) const;
 	location_t find_closest(double x, double y) const;
 	location_t find_closest(double x, double y, country_loc* country) const;
 	location_t find_by_id(uint32_t id) const;
 
-	// locations.md 3.1: resolve a place query to its canonical record. Exact name match,
+	// docs/locations.md#location-search: resolve a place query to its canonical record. Exact name match,
 	// optionally qualified by region or country, largest population wins.
 	location_t find_by_name(std::string_view query) const;
+	uint32_t find_enclosing_city(std::string_view query) const;
 	location_t find_largest(double min_latitude, double min_longitude, double max_latitude, double max_longitude) const;
 
 	// A map cluster needs a recognizable landmark rather than the nearest small feature.
 	// Returns the highest-population place whose normal `At` radius contains the coordinate.
-	location_t find_largest_attributed(double x, double y) const;
+	location_t find_largest_attributed(double x, double y, double max_km = location_attribution_radius_km(1000000.0)) const;
 
 	location_t find_largest_attributed(const gps_coordinate coord) const
 	{
 		return find_largest_attributed(coord.latitude(), coord.longitude());
 	}
 
-	// locations.md 2.5: bounded attribution. Unlike find_closest this refuses to name a place
+	// docs/locations.md#item-locations: bounded attribution. Unlike find_closest this refuses to name a place
 	// that is too far away to be a truthful answer, and says Remote instead. The optional
 	// country is canonical (English) for the same reason find_country's is: it doubles as a
 	// search term, while located_place::place carries the localized display names.

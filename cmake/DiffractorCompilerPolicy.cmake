@@ -42,8 +42,20 @@ if (MSVC)
             $<$<COMPILE_LANGUAGE:CXX>:/GR>           # RuntimeTypeInfo
             $<$<COMPILE_LANGUAGE:C,CXX>:/fp:precise> # preserve floating-point semantics
                 $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:/O2>
-                $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:/GL>
     )
+
+    # WholeProgramOptimization, except in a 32-bit build by a compiler before 19.52. 19.51's x86 link-time code
+    # generation dropped every store FFmpeg's av_buffer_alloc makes to the reference it returns, so the first video,
+    # sound or HEIF decode wrote through an uninitialised pointer - while its x64 build, and 19.52's x86 build of the
+    # same source, passed every test.
+    set(DIFFRACTOR_WHOLE_PROGRAM ON)
+    if (DIFFRACTOR_TARGET_ARCH STREQUAL "x86" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 19.52)
+        set(DIFFRACTOR_WHOLE_PROGRAM OFF)
+        message(STATUS "MSVC ${CMAKE_C_COMPILER_VERSION}: x86 Release built without whole-program optimisation")
+    endif ()
+    if (DIFFRACTOR_WHOLE_PROGRAM)
+        add_compile_options($<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:/GL>)
+    endif ()
 
     # EnableEnhancedInstructionSet StreamingSIMDExtensions2. SSE2 is unconditional on x64, where
     # the switch is rejected rather than ignored, so it is only meaningful for the 32-bit build.
@@ -63,9 +75,11 @@ if (MSVC)
     set(CMAKE_C_FLAGS_DEBUG "/Od /Ob0 /RTC1 /guard:cf /D_DEBUG")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
 
-    # Optimization MaxSpeed, InlineFunctionExpansion AnySuitable, FavorSizeOrSpeed Size,
-    # OmitFramePointers, WholeProgramOptimization, SupportJustMyCode false.
-    set(CMAKE_C_FLAGS_RELEASE "/Ob2 /Os /Oy /JMC- /DNDEBUG")
+    # Optimization MaxSpeed, InlineFunctionExpansion AnySuitable, OmitFramePointers,
+    # WholeProgramOptimization, SupportJustMyCode false. The project's FavorSizeOrSpeed Size, /Os,
+    # is not carried: beside /O2 it made cl favour small code everywhere - the code /O1 makes - and
+    # Release favours speed, as every application in the workspace does (tools/build-divergence.txt).
+    set(CMAKE_C_FLAGS_RELEASE "/Ob2 /Oy /JMC- /DNDEBUG")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 
     # GenerateDebugInformation is true in both configurations: a release build without symbols
@@ -76,8 +90,12 @@ if (MSVC)
     # UseFastLinkTimeCodeGeneration. Spelled out rather than using CMake's interprocedural
     # optimisation property, which emits plain /LTCG and would not be the same build. SetChecksum
     # is the /RELEASE flag, and it writes the PE checksum an installer can verify.
+    set(_diffractor_ltcg "")
+    if (DIFFRACTOR_WHOLE_PROGRAM)
+        set(_diffractor_ltcg " /LTCG:incremental")
+    endif ()
     foreach (kind EXE SHARED MODULE)
-        set(CMAKE_${kind}_LINKER_FLAGS_RELEASE "/OPT:REF /OPT:ICF /LTCG:incremental /RELEASE")
+        set(CMAKE_${kind}_LINKER_FLAGS_RELEASE "/OPT:REF /OPT:ICF${_diffractor_ltcg} /RELEASE")
     endforeach ()
 else ()
     # Guarded by language like the MSVC switches: nasm assembles some of the vendored SIMD, and it

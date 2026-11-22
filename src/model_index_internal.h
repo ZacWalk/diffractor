@@ -5,10 +5,31 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: Helpers the index's own translation units share - model_index.cpp, the duplicate and
-// presence pass, and the summary pass - and nothing outside them should reach for.
+// Purpose: Helpers shared by the index and its scan workers.
 
 #pragma once
+
+#if __has_include("libdesktop/platform/storage.h")
+#include "libdesktop/platform/storage.h"
+#endif
+
+class scan_storage_probe
+{
+#if __has_include("libdesktop/platform/storage.h")
+	platform::storage_probe _storage;
+#endif
+
+public:
+	bool seek_free([[maybe_unused]] const core::folder_path folder)
+	{
+#if __has_include("libdesktop/platform/storage.h")
+		return _storage.seek_free(folder);
+#else
+		// With a platform library that cannot identify the medium, keep the scans serial.
+		return false;
+#endif
+	}
+};
 
 // A folder's files are kept sorted by name, so a name is found by binary search.
 inline df::index_item_infos::iterator find_file(df::index_item_infos& files, const std::string_view name)

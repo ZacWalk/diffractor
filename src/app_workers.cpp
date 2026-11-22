@@ -16,6 +16,8 @@
 
 #include "model_location.h"
 #include "model_db.h"
+#include "model_db_faces.h"
+#include "model_faces_search.h"
 #include "model_index.h"
 #include "model.h"
 
@@ -45,7 +47,8 @@ core::cancel_token make_index_update_token_for_worker_tests()
 // count of jobs running, which lights the logo, alone.
 void start_worker(platform::task_queue& q, std::string_view name, bool background_work = true);
 void start_map_worker(platform::task_queue& q);
-static void start_pool_worker(platform::task_queue& q, std::string_view thread_name, std::string_view perf_name);
+static void start_pool_worker(platform::task_queue& q, std::string_view thread_name, std::string_view perf_name,
+                              bool background_work = true);
 static void start_media_preview();
 static void start_tile_db_worker(tile_cache_db& db, platform::task_queue& queue);
 
@@ -274,6 +277,8 @@ static void start_database(database& db, platform::task_queue& database_task_que
 	try
 	{
 		platform::thread_init c;
+		// The face book first, so the first people and groups made once the index loads are made with it.
+		db.open_faces(app_data_folder().combine_file(face_database::file_name));
 		db.open(app_cache_folder(), "diffractor-cache");
 		async.queue_ui(std::move(index_loaded_func));
 
@@ -424,6 +429,17 @@ void app_frame::queue_async(const async_queue q, std::function<void()> f)
 		}
 		thumbnail_decode_task_queue.enqueue(std::move(f));
 		break;
+	case async_queue::thumbnail_stage:
+		if (claim_worker_start(_thumbnail_stage_workers_started))
+		{
+			for (auto i = 0; i < index_state::thumbnail_decode_threads(); ++i)
+			{
+				_threads.start_if_running([&q = thumbnail_stage_task_queue]
+				{ start_pool_worker(q, "thumbnail stage", "thumbnail_stage"); });
+			}
+		}
+		thumbnail_stage_task_queue.enqueue(std::move(f));
+		break;
 	case async_queue::load: load_task_queue.enqueue(std::move(f)); break;
 	case async_queue::load_raw: load_raw_task_queue.reset_and_enqueue(std::move(f)); break;
 	case async_queue::render: render_task_queue.enqueue(std::move(f)); break;
@@ -464,11 +480,31 @@ void app_frame::queue_async(const async_queue q, std::function<void()> f)
 		ensure_worker(_agent_worker_started, agent_task_queue, "agent", false);
 		agent_task_queue.enqueue(std::move(f));
 		break;
+	case async_queue::faces:
+		// Not background work: a scan runs for hours, and the activity it would show is the progress face search
+		// reports itself.
+		ensure_worker(_faces_worker_started, faces_task_queue, "faces", false);
+		faces_task_queue.enqueue(std::move(f));
+		break;
+	case async_queue::faces_work:
+		if (claim_worker_start(_faces_work_workers_started))
+		{
+			for (auto i = 0; i < index_state::face_threads(); ++i)
+			{
+				_threads.start_if_running([&q = faces_work_task_queue]
+				{ start_pool_worker(q, "faces work", "faces_work", false); });
+			}
+		}
+		faces_work_task_queue.enqueue(std::move(f));
+		break;
+	case async_queue::faces_overview:
+		ensure_worker(_faces_overview_worker_started, faces_overview_task_queue, "faces overview", false);
+		faces_overview_task_queue.enqueue(std::move(f));
+		break;
 	case async_queue::map_tile:
 		if (claim_worker_start(_map_tile_workers_started))
 		{
-			// Two, so decoding one tile never delays the fetch of the next.
-			for (auto i = 0; i < 2; ++i)
+			for (auto i = 0; i < map_tile_workers; ++i)
 			{
 				_threads.start_if_running([&q = map_tile_task_queue] { start_map_worker(q); });
 			}
@@ -772,7 +808,7 @@ void start_worker_group(std::vector<worker_queue_binding> bindings, const std::s
 // Several threads taking one task at a time from a shared queue, so its tasks run side by side. thread_name is what a
 // debugger shows; perf_name is the report row, a literal, so it outlives the thread that registers it.
 static void start_pool_worker(platform::task_queue& q, const std::string_view thread_name,
-                              const std::string_view perf_name)
+                              const std::string_view perf_name, const bool background_work)
 {
 	log_func lf(__FUNCTION__, perf_name);
 	core::set_thread_description(thread_name);
@@ -799,7 +835,8 @@ static void start_pool_worker(platform::task_queue& q, const std::string_view th
 
 					try
 					{
-						core::scope_locked_inc l(df::jobs_running);
+						std::atomic_int not_counted = 0;
+						core::scope_locked_inc l(background_work ? df::jobs_running : not_counted);
 						core::bump(perf->batches);
 						core::bump(perf->tasks);
 						record_queue_wait(task, perf);
@@ -930,6 +967,8 @@ void app_frame::start_workers()
 
 	// Before the cache loads, because each row's name is read with its folder's library kind as it loads.
 	_state.item_index.library_kinds(parse_library_types(setting.collection.library_types));
+	// And because each row's face record is loaded with it only while face search is on.
+	_state.item_index.faces().configure(setting.faces.photos, setting.faces.videos, setting.faces.paused);
 
 	_threads.start_if_running([&db = _db, &q = database_task_queue, &async, app, index_loaded_func]
 	{ start_database(db, q, async, app, index_loaded_func); });
@@ -982,6 +1021,7 @@ void app_frame::start_workers()
 	location_task_queue.enqueue([this]
 	{
 		_locations.load_index();
+		_state.item_index.queue_update_search_index();
 		invalidate_view(view_invalid::sidebar);
 	});
 }

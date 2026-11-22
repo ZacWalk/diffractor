@@ -194,9 +194,6 @@ msgstr "생성된 항목을 엽니다.\nCtrl+클릭하면 수정된 항목을 �
 msgid "{} items close to {} in the collection."
 msgstr "컬렉션에서 {} 근처에 있는 항목 {}개."
 
-msgid "{} items close to {}"
-msgstr "{}개 항목, {} 근처"
-
 msgid "filter"
 msgstr "필터"
 
@@ -227,9 +224,6 @@ msgstr "컬렉션 관리에 대한 추가 정보."
 msgid "More information about metadata templates."
 msgstr "메타데이터 템플릿에 대한 추가 정보."
 
-msgid "Videos"
-msgstr "비디오"
-
 msgid "Your collection"
 msgstr "당신의 컬렉션"
 
@@ -238,9 +232,6 @@ msgstr "색상"
 
 msgid "Adjust date and time"
 msgstr "날짜 및 시간 조정"
-
-msgid "Advanced Search"
-msgstr "고급 검색"
 
 msgid "Exit"
 msgstr "종료"
@@ -1778,6 +1769,9 @@ msgstr "현재 인덱스 데이터베이스의 크기는 {}이고 {} 항목의 �
 msgid "Indexing"
 msgstr "인덱싱"
 
+msgid "Indexing faces"
+msgstr "얼굴 인덱싱 중"
+
 msgid "Diffractor is reading your collection so search, duplicates and totals stay complete. You can keep browsing while it works."
 msgstr "검색, 중복, 합계를 완전하게 유지하기 위해 Diffractor가 컬렉션을 읽고 있습니다. 그동안에도 계속 탐색할 수 있습니다."
 
@@ -1870,6 +1864,9 @@ msgstr "Esc"
 
 msgid "Gets you out of full screen, zoom or other modes."
 msgstr "전체 화면, 확대/축소 또는 기타 모드를 종료합니다."
+
+msgid "Closes the current view. In the normal Items view, exits Diffractor."
+msgstr "현재 보기를 닫습니다. 일반 항목 보기에서는 Diffractor를 종료합니다."
 
 msgid "F1"
 msgstr "F1"
@@ -2661,44 +2658,14 @@ msgstr "{} 저장 중..."
 msgid "Failed to Scan."
 msgstr "스캔하지 못했습니다."
 
-msgid "All these terms"
-msgstr "이 모든 용어"
-
 msgid "Christmas"
 msgstr "크리스마스"
-
-msgid "Search in the collection"
-msgstr "컬렉션에서 검색"
-
-msgid "From"
-msgstr "시작"
-
-msgid "Until"
-msgstr "종료"
-
-msgid "Search in a folder"
-msgstr "폴더에서 검색"
 
 msgid "Last 7 days"
 msgstr "지난 7일"
 
-msgid "Located within"
-msgstr "내에 위치"
-
-msgid "None of these terms"
-msgstr "해당 용어 없음"
-
 msgid "Search criteria or folder"
 msgstr "검색 기준 또는 폴더"
-
-msgid "Photos"
-msgstr "사진"
-
-msgid "Select term"
-msgstr "용어 선택"
-
-msgid "Search in subfolders"
-msgstr "하위 폴더에서 검색"
 
 msgid "Searching..."
 msgstr "검색 중..."
@@ -3035,12 +3002,6 @@ msgstr "ICC"
 
 msgid "press ctrl+space"
 msgstr "ctrl+space 누르기"
-
-msgid "Scope"
-msgstr "범위"
-
-msgid "Value"
-msgstr "값"
 
 msgid "Volume 200%"
 msgstr "볼륨 200%"
@@ -3630,9 +3591,6 @@ msgstr "표시된 이미지를 확대하거나 축소합니다. 0을 누르면 �
 msgid "Add folders to your collection (F6)"
 msgstr "컬렉션에 폴더 추가 (F6)"
 
-msgid "Select at least one search criterion."
-msgstr "검색 조건을 하나 이상 선택하세요."
-
 msgid "Could not check for updates. Check your internet connection and try again."
 msgstr "업데이트를 확인할 수 없습니다. 인터넷 연결을 확인하고 다시 시도하세요."
 
@@ -3786,6 +3744,24 @@ msgstr "{}을(를) 렌더링했습니다."
 msgid "Rendering was canceled. Nothing was written."
 msgstr "렌더링이 취소되었습니다. 아무것도 기록되지 않았습니다."
 
+msgid "YouTube Short: upright, three minutes at most"
+msgstr "YouTube Shorts: 세로, 최대 3분"
+
+msgid "Its items run {}, so it fades out at three minutes."
+msgstr "항목 길이가 {}이므로 3분에서 페이드 아웃됩니다."
+
+msgid "It ends where the tune starts again, so YouTube loops it seamlessly."
+msgstr "곡이 다시 시작되는 지점에서 끝나므로 YouTube에서 끊김 없이 반복됩니다."
+
+msgid "Render each item as its own Short"
+msgstr "각 항목을 개별 Shorts로 렌더링"
+
+msgid "Rendering Short {} of {}"
+msgstr "Shorts {}/{} 렌더링 중"
+
+msgid "{} could not be rendered. {}"
+msgstr "{}을(를) 렌더링할 수 없습니다. {}"
+
 msgid "No missing clip was found in that folder."
 msgstr "해당 폴더에서 누락된 클립을 찾지 못했습니다."
 
@@ -3817,6 +3793,16 @@ msgid_plural "{count} clips cannot find their source files."
 msgstr[0] "클립 1개가 원본 파일을 찾지 못했습니다."
 msgstr[1] "클립 {count}개가 원본 파일을 찾지 못했습니다."
 
+
+msgid "Rendered 1 Short."
+msgid_plural "Rendered {count} Shorts."
+msgstr[0] "Shorts 1개를 렌더링했습니다."
+msgstr[1] "Shorts {count}개를 렌더링했습니다."
+
+msgid "Rendering was canceled after 1 Short."
+msgid_plural "Rendering was canceled after {count} Shorts."
+msgstr[0] "Shorts 1개 이후 렌더링이 취소되었습니다."
+msgstr[1] "Shorts {count}개 이후 렌더링이 취소되었습니다."
 
 msgid "Pattern"
 msgstr "패턴"
@@ -4113,3 +4099,541 @@ msgstr "프레임 속도"
 
 msgid "Contents"
 msgstr "내용"
+
+msgid "Explore"
+msgstr "탐색"
+
+msgid "Reading the collection..."
+msgstr "컬렉션을 읽는 중..."
+
+msgid "Nothing in the collection says when or where it was taken yet."
+msgstr "컬렉션에 아직 촬영 시기나 장소를 알 수 있는 항목이 없습니다."
+
+msgid "Drag to turn the globe and scroll to zoom. Click a place or a time to show its items."
+msgstr "끌어서 지구본을 돌리고 스크롤하여 확대/축소합니다. 장소나 시기를 클릭하면 해당 항목을 표시합니다."
+
+msgid "Nothing in {}"
+msgstr "{}: 항목 없음"
+
+msgid "Nothing yet in {}"
+msgstr "{}: 아직 항목 없음"
+
+msgid "Taken from {} to {}"
+msgstr "{}부터 {}까지 촬영"
+
+msgid "Taken in {}"
+msgstr "{}에 촬영"
+
+msgid "Click to show the items taken there that year."
+msgstr "클릭하면 그해 그곳에서 촬영한 항목을 표시합니다."
+
+msgid "Click to show the year's items."
+msgstr "클릭하면 해당 연도의 항목을 표시합니다."
+
+msgid "Click to show the month's items."
+msgstr "클릭하면 해당 월의 항목을 표시합니다."
+
+msgid "Click to show the week's items, or drag up or down to take in more weeks."
+msgstr "클릭하면 해당 주의 항목을 표시하고, 위아래로 끌면 더 많은 주를 포함합니다."
+
+msgid "Release to show these weeks' items."
+msgstr "놓으면 이 주들의 항목을 표시합니다."
+
+msgid "Click to show the items taken there on this trip."
+msgstr "클릭하면 이번 여행에서 그곳에서 촬영한 항목을 표시합니다."
+
+msgid "Nothing was taken then."
+msgstr "이 기간에 촬영된 항목이 없습니다."
+
+msgid "1 trip away"
+msgid_plural "{count} trips away"
+msgstr[0] "여행 1회"
+msgstr[1] "여행 {count}회"
+
+msgid "1 item taken in {first-name}"
+msgid_plural "{count} items taken in {first-name}"
+msgstr[0] "{first-name}에서 촬영한 항목 1개"
+msgstr[1] "{first-name}에서 촬영한 항목 {count}개"
+
+msgid "Show in Explore"
+msgstr "탐색에서 보기"
+
+msgid "Expand the globe into Explore: where the collection was taken, beside when."
+msgstr "지구본을 탐색으로 확장하여 컬렉션을 언제 어디서 촬영했는지 보여 줍니다."
+
+msgid "Recent changes"
+msgstr "최근 변경 사항"
+
+msgid "What you have changed since Diffractor started. Pick a change to see its items again, selected, wherever they are now."
+msgstr "Diffractor를 시작한 이후 변경한 내용입니다. 변경 사항을 선택하면 해당 항목이 현재 위치에서 선택된 상태로 다시 표시됩니다."
+
+msgid "Faces"
+msgstr "얼굴"
+
+msgid "Save names to files"
+msgstr "파일에 이름 저장"
+
+msgid "Export face data"
+msgstr "얼굴 데이터 내보내기"
+
+msgid "Import face data"
+msgstr "얼굴 데이터 가져오기"
+
+msgid "Confirm {}"
+msgstr "{} 인물로 확인"
+
+msgid "Not {}"
+msgstr "{} 아님"
+
+msgid "Confirm all"
+msgstr "모두 확인"
+
+msgid "Name all"
+msgstr "모두 이름 지정"
+
+msgid "Hide all"
+msgstr "모두 숨기기"
+
+msgid "Confirm every suggested face here as this person. You are asked first."
+msgstr "여기에 제안된 모든 얼굴을 이 사람으로 확인합니다. 먼저 확인을 요청합니다."
+
+msgid "Name every face in this group as one person: choose a name, or type a new one."
+msgstr "이 그룹의 모든 얼굴에 한 사람의 이름을 지정합니다. 이름을 선택하거나 새 이름을 입력하세요."
+
+msgid "Hide every face in this group from review. Hidden lists them, and Show again brings them back."
+msgstr "이 그룹의 모든 얼굴을 검토에서 숨깁니다. 숨김에 표시되며 다시 표시로 되돌릴 수 있습니다."
+
+msgid "Move to {}"
+msgstr "{}(으)로 이동"
+
+msgid "This name comes from picture files. Renaming it changes those files."
+msgstr "이 이름은 사진 파일에 기록되어 있습니다. 이름을 바꾸면 해당 파일도 변경됩니다."
+
+msgid "Last placement: {} in {}."
+msgstr "최근 배치: {} → {}."
+
+msgid "No people match this filter."
+msgstr "필터에 맞는 사람이 없습니다."
+
+msgid "Names in your photos"
+msgstr "사진 속 이름"
+
+msgid "Comparing two files"
+msgstr "두 파일 비교"
+
+msgid "Selection summary"
+msgstr "선택 항목 요약"
+
+msgid "Choose a date or trip to open its items."
+msgstr "날짜나 여행을 선택하면 해당 항목이 열립니다."
+
+msgid "Hidden"
+msgstr "숨김"
+
+msgid "Click to rename."
+msgstr "클릭하여 이름을 바꿉니다."
+
+msgid "No faces have been found yet."
+msgstr "아직 찾은 얼굴이 없습니다."
+
+msgid "That name belongs to someone else. Choose a different name."
+msgstr "다른 인물이 사용 중인 이름입니다. 다른 이름을 선택하세요."
+
+msgid "Names will be written into {}: {} and {}. Everything else the files hold is kept."
+msgstr "{}에 이름을 기록합니다: {}, {}. 파일의 다른 내용은 모두 유지됩니다."
+
+msgid "Names will be written into {}: {}. Everything else the files hold is kept."
+msgstr "{}에 이름을 기록합니다: {}. 파일의 다른 내용은 모두 유지됩니다."
+
+msgid "Diffractor face data"
+msgstr "Diffractor 얼굴 데이터"
+
+msgid "{} and {} were saved to {}."
+msgstr "{} 및 {}을(를) {}에 저장했습니다."
+
+msgid "{} could not be written."
+msgstr "{}을(를) 기록할 수 없습니다."
+
+msgid "{} and {} were read from {}."
+msgstr "{} 및 {}을(를) {}에서 읽었습니다."
+
+msgid "{} could not be read: {}."
+msgstr "{}을(를) 읽을 수 없습니다: {}."
+
+msgid "Click to show their pictures."
+msgstr "클릭하여 이 인물의 사진을 표시합니다."
+
+msgid "Show in face view"
+msgstr "얼굴 보기에서 표시"
+
+msgid "Name face"
+msgstr "얼굴에 이름 지정"
+
+msgid "Choose an existing name or enter a new one."
+msgstr "기존 이름을 선택하거나 새 이름을 입력하세요."
+
+msgid "Name as someone else"
+msgstr "다른 사람으로 이름 지정"
+
+msgid "Choose who this face is instead, or enter a new name."
+msgstr "대신 이 얼굴의 주인을 선택하거나 새 이름을 입력하세요."
+
+msgid "New person: {}"
+msgstr "새 인물: {}"
+
+msgid "Go to the next picture afterwards"
+msgstr "나중에 다음 사진으로 이동"
+
+msgid "Open or select one picture."
+msgstr "사진 한 장을 열거나 선택하세요."
+
+msgid "Turn on face search in the Faces view to name faces."
+msgstr "얼굴에 이름을 지정하려면 [얼굴] 보기에서 얼굴 감지를 켜세요."
+
+msgid "No face was found in this picture."
+msgstr "이 사진에서 얼굴을 찾지 못했습니다."
+
+msgid "This picture has more than one face. Point at the one to name."
+msgstr "이 사진에는 얼굴이 여러 개 있습니다. 이름을 지정할 얼굴을 가리키세요."
+
+msgid "The faces found in {} will be removed and face search turned off. Names in your files are kept."
+msgstr "{}에서 찾은 얼굴이 제거되고 얼굴 검색이 꺼집니다. 파일에 있는 이름은 유지됩니다."
+
+msgid "The faces found in your pictures will be removed and face search turned off. Names in your files are kept."
+msgstr "사진에서 찾은 얼굴이 제거되고 얼굴 검색이 꺼집니다. 파일에 있는 이름은 유지됩니다."
+
+msgid "1 face"
+msgid_plural "{count} faces"
+msgstr[0] "얼굴 1개"
+msgstr[1] "얼굴 {count}개"
+
+msgid "1 person"
+msgid_plural "{count} people"
+msgstr[0] "1명"
+msgstr[1] "{count}명"
+
+msgid "1 decision"
+msgid_plural "{count} decisions"
+msgstr[0] "결정 1개"
+msgstr[1] "결정 {count}개"
+
+msgid "1 suggested"
+msgid_plural "{count} suggested"
+msgstr[0] "추천 1개"
+msgstr[1] "추천 {count}개"
+
+msgid "1 face named"
+msgid_plural "{count} faces named"
+msgstr[0] "이름을 지정할 얼굴 1개"
+msgstr[1] "이름을 지정할 얼굴 {count}개"
+
+msgid "1 name taken out"
+msgid_plural "{count} names taken out"
+msgstr[0] "제거할 이름 1개"
+msgstr[1] "제거할 이름 {count}개"
+
+msgid "and 1 more picture"
+msgid_plural "and {count} more pictures"
+msgstr[0] "외 사진 1장"
+msgstr[1] "외 사진 {count}장"
+
+msgid "Hide"
+msgstr "숨기기"
+
+msgid "Show again"
+msgstr "다시 표시"
+
+msgid "Person search"
+msgstr "인물 검색"
+
+msgid "Open in folder"
+msgstr "폴더에서 열기"
+
+msgid "Open pictures with a strong match for this face in Items."
+msgstr "이 얼굴과 매우 닮은 얼굴이 있는 사진을 항목 보기에서 엽니다."
+
+msgid "Find pictures of {} in Items."
+msgstr "항목 보기에서 {} 님의 사진을 찾습니다."
+
+msgid "Select one face that can be compared."
+msgstr "비교할 수 있는 얼굴 하나를 선택하세요."
+
+msgid "Select one face to open its picture in Items."
+msgstr "항목 보기에서 사진을 열려면 얼굴 하나를 선택하세요."
+
+msgid "Suggested"
+msgstr "추천"
+
+msgid "Similar faces"
+msgstr "비슷한 얼굴"
+
+msgid "Unique faces"
+msgstr "고유한 얼굴"
+
+msgid "Small or unclear faces"
+msgstr "작거나 흐릿한 얼굴"
+
+msgid "Finding faces..."
+msgstr "얼굴을 찾는 중..."
+
+msgid "Filter people"
+msgstr "인물 필터"
+
+msgid "Clear filter"
+msgstr "필터 해제"
+
+msgid "Find similar faces"
+msgstr "비슷한 얼굴 찾기"
+
+msgid "Scan for faces"
+msgstr "얼굴 감지"
+
+msgid "Scan for faces in photos"
+msgstr "사진에서 얼굴 감지"
+
+msgid "Scan for faces in videos"
+msgstr "동영상에서 얼굴 감지"
+
+msgid "Faces are found and compared on this computer. Nothing is uploaded."
+msgstr "얼굴은 이 컴퓨터에서 찾고 비교합니다. 아무것도 업로드되지 않습니다."
+
+msgid "Every picture in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused."
+msgstr "컬렉션의 모든 사진({})을 한 번 더 읽습니다. 이 컴퓨터에서 약 {} 걸립니다. 검사는 일시 중지할 수 있습니다."
+
+msgid "Every video in the collection is read once more - {}, which takes about {} on this computer. The scan can be paused."
+msgstr "컬렉션의 모든 동영상({})을 한 번 더 읽습니다. 이 컴퓨터에서 약 {} 걸립니다. 검사는 일시 중지할 수 있습니다."
+
+msgid "Every picture and video in the collection is read once more - {} and {}, which takes about {} on this computer. The scan can be paused."
+msgstr "컬렉션의 모든 사진과 동영상({}, {})을 한 번 더 읽습니다. 이 컴퓨터에서 약 {} 걸립니다. 검사는 일시 중지할 수 있습니다."
+
+msgid "Face scanning is off."
+msgstr "얼굴 감지가 꺼져 있습니다."
+
+msgid "Pause"
+msgstr "일시 중지"
+
+msgid "Resume"
+msgstr "다시 시작"
+
+msgid "Paused"
+msgstr "일시 중지됨"
+
+msgid "Paused after reading {} of {}."
+msgstr "{}개를 읽은 후 일시 중지됨(전체 {})."
+
+msgid "{} of {} read, {} found. About {} left."
+msgstr "{}개 읽음(전체 {}), {} 찾음. 약 {} 남음."
+
+msgid "All {} read, {} found."
+msgstr "모두 읽음({}), {} 찾음."
+
+msgid "1 picture could not be read."
+msgid_plural "{count} pictures could not be read."
+msgstr[0] "사진 1장을 읽을 수 없습니다."
+msgstr[1] "사진 {count}장을 읽을 수 없습니다."
+
+msgid "1 file could not be read."
+msgid_plural "{count} files could not be read."
+msgstr[0] "파일 1개를 읽을 수 없습니다."
+msgstr[1] "파일 {count}개를 읽을 수 없습니다."
+
+msgid "1 picture is on a drive or folder that isn't available."
+msgid_plural "{count} pictures are on drives or folders that aren't available."
+msgstr[0] "사진 1장이 사용할 수 없는 드라이브나 폴더에 있습니다."
+msgstr[1] "사진 {count}장이 사용할 수 없는 드라이브나 폴더에 있습니다."
+
+msgid "1 file is on a drive or folder that isn't available."
+msgid_plural "{count} files are on drives or folders that aren't available."
+msgstr[0] "파일 1개가 사용할 수 없는 드라이브나 폴더에 있습니다."
+msgstr[1] "파일 {count}개가 사용할 수 없는 드라이브나 폴더에 있습니다."
+
+msgid "Delete face data"
+msgstr "얼굴 데이터 삭제"
+
+msgid "{} will be renamed {} in {}."
+msgstr "{}의 이름이 {}(으)로 바뀝니다({})."
+
+msgid "{0} is also named in {1}. Change the name there to {2} too?"
+msgstr "{0}은(는) {1}에도 이름으로 기록되어 있습니다. 그곳의 이름도 {2}(으)로 바꿀까요?"
+
+msgid "Change in files"
+msgstr "파일에서도 변경"
+
+msgid "Only in Diffractor"
+msgstr "Diffractor에서만"
+
+msgid "Phone or camera"
+msgstr "휴대폰 또는 카메라"
+
+msgid "{} (phone or camera)"
+msgstr "{} (휴대폰 또는 카메라)"
+
+msgid "Reading {}..."
+msgstr "{}을(를) 읽는 중..."
+
+msgid "Copying from {}: {} of {}"
+msgstr "{}에서 복사 중: {}/{}"
+
+msgid "No photos or videos were found on {}. If it is locked, unlock it, and if it asks, allow this computer to access its files."
+msgstr "{}에서 사진이나 동영상을 찾지 못했습니다. 잠겨 있으면 잠금을 해제하고, 묻는 경우 이 컴퓨터가 파일에 액세스하도록 허용하세요."
+
+msgid "There is not enough free space to copy from {}: {} more is needed."
+msgstr "{}에서 복사할 여유 공간이 부족합니다. {}이(가) 더 필요합니다."
+
+msgid "Photos and videos are copied from a phone or camera: it keeps its own."
+msgstr "사진과 동영상은 휴대폰이나 카메라에서 복사되며, 기기에는 원본이 그대로 남습니다."
+
+msgid "Person"
+msgstr "인물"
+
+msgid "1 picture"
+msgid_plural "{count} pictures"
+msgstr[0] "사진 1장"
+msgstr[1] "사진 {count}장"
+
+msgid "1 video"
+msgid_plural "{count} videos"
+msgstr[0] "동영상 1개"
+msgstr[1] "동영상 {count}개"
+
+msgid "1 picture or video"
+msgid_plural "{count} pictures and videos"
+msgstr[0] "사진 또는 동영상 1개"
+msgstr[1] "사진 및 동영상 {count}개"
+
+msgid "1 minute"
+msgid_plural "{count} minutes"
+msgstr[0] "1분"
+msgstr[1] "{count}분"
+
+msgid "1 hour"
+msgid_plural "{count} hours"
+msgstr[0] "1시간"
+msgstr[1] "{count}시간"
+
+msgid "1 face selected"
+msgid_plural "{count} faces selected"
+msgstr[0] "얼굴 1개 선택됨"
+msgstr[1] "얼굴 {count}개 선택됨"
+
+msgid "{first-name} could not be read from the device."
+msgid_plural "{first-name} and {other} other files could not be read from the device."
+msgstr[0] "기기에서 {first-name}을(를) 읽을 수 없습니다."
+msgstr[1] "기기에서 {first-name} 외 {other}개 파일을 읽을 수 없습니다."
+
+msgid "Confirm that the selected faces belong to the indicated person. This changes the face book, not the pictures."
+msgstr "선택한 얼굴이 표시된 인물의 얼굴임을 확인합니다. 얼굴 기록만 변경되며 사진은 변경되지 않습니다."
+
+msgid "Restore the face book to before this last change. The picture files are not changed."
+msgstr "얼굴 기록을 마지막 변경 전 상태로 복원합니다. 사진 파일은 변경되지 않습니다."
+
+msgid "People"
+msgstr "인물"
+
+msgid "Confirmed"
+msgstr "확인됨"
+
+msgid "Name faces"
+msgstr "얼굴 이름 지정"
+
+msgid "Person name"
+msgstr "인물 이름"
+
+msgid "Not this person"
+msgstr "이 사람이 아님"
+
+msgid "Confirm"
+msgstr "확인"
+
+msgid "Name a face in Unknown to start a person. Confirm suggestions, reject a wrong match, or hide faces you do not want to review."
+msgstr "알 수 없는 얼굴에 이름을 지정하여 인물을 추가하세요. 추천을 확인하거나 거부하고, 검토하지 않을 얼굴은 숨길 수 있습니다."
+
+msgid "As you confirm faces, Diffractor learns and gets better at making suggestions."
+msgstr "얼굴을 확인할수록 Diffractor가 학습하여 더 정확한 제안을 합니다."
+
+msgid "Never suggest this person for these faces again. They can still be named as someone else."
+msgstr "이 얼굴에 대해 이 인물을 다시 추천하지 않습니다. 다른 사람의 이름을 지정할 수 있습니다."
+
+msgid "Show these faces again without changing their names or rejections."
+msgstr "이름이나 거부 기록을 변경하지 않고 이 얼굴을 다시 표시합니다."
+
+msgid "Select one named person."
+msgstr "이름이 있는 인물 한 명을 선택하세요."
+
+msgid "Backup"
+msgstr "백업"
+
+msgid "Export face data saves the people you named and your decisions to a file. Import face data reads one back, on this PC or another."
+msgstr "얼굴 데이터 내보내기는 이름을 지정한 인물과 결정 사항을 파일에 저장합니다. 얼굴 데이터 가져오기는 이 PC나 다른 PC에서 그 파일을 다시 읽어 옵니다."
+
+msgid "Names you confirm stay in Diffractor until you save them. Saving writes them into the photos, where other photo apps can read them."
+msgstr "확인한 이름은 저장할 때까지 Diffractor에만 보관됩니다. 저장하면 사진에 기록되어 다른 사진 앱에서도 읽을 수 있습니다."
+
+msgid "Scan for faces to name people and review suggested matches."
+msgstr "얼굴을 검색해 인물에 이름을 지정하고 추천을 검토하세요."
+
+msgid "Your face data is kept in {}."
+msgstr "얼굴 데이터 저장 위치: {}."
+
+msgid "Face data cannot be saved: the database could not be opened."
+msgstr "데이터베이스를 열 수 없어 얼굴 데이터를 저장할 수 없습니다."
+
+msgid "Your latest face changes could not be saved yet. Diffractor keeps trying; Export face data keeps a copy now."
+msgstr "최근 얼굴 변경 사항을 아직 저장하지 못했습니다. Diffractor가 계속 다시 시도합니다. 지금 사본을 남기려면 얼굴 데이터 내보내기를 사용하세요."
+
+msgid "Another Diffractor window is changing faces, so this window only shows them. It can change them once that window closes."
+msgstr "다른 Diffractor 창에서 얼굴을 변경하고 있어 이 창에서는 표시만 합니다. 그 창이 닫히면 이 창에서도 변경할 수 있습니다."
+
+msgid "Read only: another Diffractor window is changing faces."
+msgstr "읽기 전용: 다른 Diffractor 창에서 얼굴을 변경하고 있습니다."
+
+msgid "Face changes are not saved yet."
+msgstr "얼굴 변경 사항이 아직 저장되지 않았습니다."
+
+msgid "There are no face names to write."
+msgstr "기록할 이름이 없습니다."
+
+msgid "Names and review decisions stay on this computer unless you export them."
+msgstr "내보내지 않는 한 이름과 검토 결과는 이 컴퓨터에만 보관됩니다."
+
+msgid "Also forget names and review decisions made in Diffractor"
+msgstr "Diffractor에서 지정한 이름과 검토 결과도 지우기"
+
+msgid "Forget names and decisions?"
+msgstr "이름과 결정을 지울까요?"
+
+msgid "{} and {} made in Diffractor will be forgotten. This cannot be undone: export face data first if you might want them back. Names saved in your photos are kept."
+msgstr "Diffractor에서 만든 {} 및 {}이(가) 지워집니다. 이 작업은 실행 취소할 수 없습니다. 나중에 다시 필요할 수 있다면 먼저 얼굴 데이터를 내보내세요. 사진에 저장된 이름은 유지됩니다."
+
+msgid "Forget"
+msgstr "지우기"
+
+msgid "Enter a new name for {}."
+msgstr "{}의 새 이름을 입력하세요."
+
+msgid "Updating suggestions..."
+msgstr "추천 업데이트 중…"
+
+msgid "Hide the selected faces from review. Similar faces stay visible. Choose Show again to bring them back."
+msgstr "선택한 얼굴을 숨깁니다. 비슷한 얼굴은 그대로 표시됩니다. 다시 표시를 선택하면 복원됩니다."
+
+msgid "Combine people?"
+msgstr "인물을 합칠까요?"
+
+msgid "A person named {1} already exists. Combine {0} with {1}? This changes only the face book, not your photos."
+msgstr "{1} 이름의 인물이 이미 있습니다. {0} 인물을 {1} 인물과 합칠까요? 얼굴 기록만 변경되며 사진은 바뀌지 않습니다."
+
+msgid "Combined {} with {}."
+msgstr "{} 인물을 {} 인물과 합쳤습니다."
+
+msgid "These people have changed. Review their names and try again."
+msgstr "인물 정보가 변경되었습니다. 이름을 확인한 후 다시 시도하세요."
+
+msgid "Face CSVs contain names and biometric face signatures, not filenames. Share only with people you trust."
+msgstr "CSV에는 이름과 얼굴 생체 서명이 포함되며 파일 이름은 포함되지 않습니다. 신뢰하는 사람과만 공유하세요."
+
+msgid "Face decisions without an unambiguous signature were not exported: {}."
+msgstr "명확한 서명이 없어 내보내지 않은 얼굴 결정 수: {}."
+
+msgid "The face book is updating. Wait for recognition to finish, then export again."
+msgstr "얼굴 기록을 업데이트하는 중입니다. 인식이 끝난 다음 다시 내보내세요."

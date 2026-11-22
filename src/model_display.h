@@ -699,9 +699,9 @@ public:
 		_async.invalidate_view(view_invalid::view_redraw);
 	}
 
-	// zoom.md L6: the projection is a state the user can change, so it has a control that shows
-	// which one is on. Leaving the projection lands on the flat picture at 100%, which is the
-	// answer someone asking for the pixels wanted.
+	// docs/zoom.md#standing-inside-an-equirectangular-panorama: the projection is a state the user can change,
+	// so it has a control that shows which one is on. Leaving the projection lands on the flat picture at 100%,
+	// which is the answer someone asking for the pixels wanted.
 	void toggle_panorama_projection()
 	{
 		if (!declares_equirectangular()) return;

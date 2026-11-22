@@ -23,6 +23,7 @@
 #include "ui_tracker.h"
 #include "view_items.h"
 #include "app_sidebar.h"
+#include "libdesktop/ui/list_selection.h"
 
 static view_element_ptr find_center_scroll_element(const std::vector<view_element_ptr>& elements,
                                                    const view_scroller& scroller)
@@ -125,6 +126,7 @@ public:
 class item_select_controller final : public item_pointer_controller
 {
 	bool _selecting = false;
+	ui::edge_scroll _edge_scroll;
 
 public:
 	item_select_controller(const view_host_ptr& host, items_view& parent, view_state& s, view_scroller& scroller,
@@ -165,7 +167,7 @@ public:
 			                           .intersection(_scroller.client_bounds());
 			if (!selection.is_empty())
 			{
-				rc.draw_rect(selection, core::color(ui::style::colors.dialog_selected_background, 0.5));
+				rc.draw_rect(selection, ui::marquee_fill(rc.colors.alpha));
 			}
 		}
 	}
@@ -174,6 +176,8 @@ public:
 	{
 		_tracking = true;
 		_cancel = false;
+		_selecting = false;
+		_edge_scroll.reset();
 		_last_loc = _start_loc = loc;
 		_last_logical_loc = _start_logical_loc = _scroller.device_to_logical(loc);
 		update_state();
@@ -183,15 +187,17 @@ public:
 	{
 		_last_loc = loc;
 		update_state();
+		carry();
 		update_hover_preview(loc);
 	}
 
+	// Once the pointer is out of the start area the press is a band until it is let go, as every list's band is:
+	// back over the press, it is a band that small rather than a click again.
 	void update_state()
 	{
 		const auto previous_sel_bounds = calc_logical_selection_bounds();
 
-		const auto start_area = center_rect({8, 8}, _start_loc);
-		_selecting = _tracking && !_cancel && !start_area.contains(_last_loc);
+		_selecting = _tracking && !_cancel && (_selecting || ui::is_drag(_start_loc, _last_loc));
 		_last_logical_loc = _scroller.device_to_logical(_last_loc);
 		apply_highlight(previous_sel_bounds);
 	}
@@ -282,32 +288,24 @@ public:
 		return true;
 	}
 
-	void tick() override
+	void tick() override { carry(); }
+
+	// A band held near the top or the bottom carries the items along, at the pace a drag carries every list.
+	void carry()
 	{
-		if (_selecting)
-		{
-			constexpr auto offset = 32;
-			const auto client_bounds = _scroller.client_bounds();
-			constexpr auto scroll_zone = 64;
+		if (!_selecting) return;
 
-			if (_last_loc.y < client_bounds.top + scroll_zone)
-			{
-				_scroller.offset(_host, 0, -offset);
-			}
-			else if (_last_loc.y > client_bounds.bottom - scroll_zone)
-			{
-				_scroller.offset(_host, 0, offset);
-			}
-			else
-			{
-				return;
-			}
+		const auto client_bounds = _scroller.client_bounds();
+		const auto step = _edge_scroll.step(_last_loc.y, client_bounds.top, client_bounds.bottom,
+		                                    _host->frame()->scale_factor());
+		if (step == 0) return;
 
-			// The pointer is stationary while the content moves, so the logical end of the rectangle
-			// only follows if it is recomputed here. Without this the highlight froze during the
-			// scroll and the whole scrolled-past run appeared in the selection at the release.
-			update_state();
-		}
+		_scroller.offset(_host, 0, step);
+
+		// The pointer is stationary while the content moves, so the logical end of the rectangle
+		// only follows if it is recomputed here. Without this the highlight froze during the
+		// scroll and the whole scrolled-past run appeared in the selection at the release.
+		update_state();
 	}
 };
 
@@ -336,9 +334,9 @@ public:
 		_last_loc = loc;
 
 		// Leaving the tile is not enough on its own: the tiles abut, so a press near an edge turned a
-		// one-pixel twitch into a drag of the whole selection. The same start area the rubber band
-		// uses has to be cleared as well, so one surface does not hold two thresholds.
-		if (_tracking && !_cancel && !_bounds.contains(loc) && !center_rect({8, 8}, _start_loc).contains(loc))
+		// one-pixel twitch into a drag of the whole selection. The distance every press goes before it is a
+		// drag has to be covered as well, so one surface does not hold two thresholds.
+		if (_tracking && !_cancel && !_bounds.contains(loc) && ui::is_drag(_start_loc, loc))
 		{
 			start_drag();
 		}
@@ -393,6 +391,8 @@ void items_view::activate(const sizei extent)
 {
 	_client_extent = extent;
 	_visible_items_valid = false;
+	// Explore's globe may have been turned meanwhile, and the sidebar's is the same globe smaller.
+	if (_sidebar) _sidebar->follow_globe_turns();
 	update_media_elements();
 }
 
@@ -551,8 +551,9 @@ bool items_view::is_caption_area(const pointi /*loc*/) const
 // The list's own controls sit at the end of the status bar, where they stay on screen however far
 // the list scrolls: size and filter first, then the type filters and subfolders, then the totals
 // beside the grouping they are not part of. The bar starts under the sidebar with one toolbar: the
-// Options cog, beside the overview of the collection Options opens on; Tools and Playback options, as
-// icons; then Open, labelled with what is selected, where a file browser's status bar says it.
+// Options cog, beside the overview of the collection Options opens on; Tools, Playback options and the
+// session's Recent changes, as icons; then Open, labelled with what is selected, where a file browser's
+// status bar says it.
 view_bars items_view::bars() const
 {
 	return {
@@ -565,6 +566,7 @@ view_bars items_view::bars() const
 				commands::options,
 				commands::menu_tools,
 				commands::playback_menu,
+				commands::menu_recent_changes,
 				commands::menu_open_status,
 			},
 	};
@@ -585,7 +587,7 @@ namespace
 		return chip;
 	}
 
-	// locations.md 7.3: a collapsed row still has to say what it is and how much it holds, or the
+	// docs/locations.md#the-places-row: a collapsed row still has to say what it is and how much it holds, or the
 	// user cannot tell whether opening it is worth the height it will take.
 	view_element_ptr make_row_header(const std::string_view title, const uint32_t count, std::function<void()> expand)
 	{
@@ -597,7 +599,7 @@ namespace
 	}
 }
 
-// locations.md 7.3: the breakdown row is the only optional row, and it collapses to a one-line
+// docs/locations.md#the-places-row: the breakdown row is the only optional row, and it collapses to a one-line
 // header when it would otherwise bury the items the user came to see. It never holds a captured
 // control while it is asked to collapse.
 void items_view::apply_control_row_budget(render::measure_context& mc, const int width, const int budget)
@@ -609,7 +611,7 @@ void items_view::apply_control_row_budget(render::measure_context& mc, const int
 	_breakdown_row.collapsed(natural_height > budget && !_breakdown_expanded);
 }
 
-// locations.md 7.2: the top places inside the current results. Hidden when the grouping is
+// docs/locations.md#the-places-row: the top places inside the current results. Hidden when the grouping is
 // already by location, because the group headers already say this.
 // A related search answers about one item, so the view says which item and how that item stands
 // against the collection. That explanation used to be reachable only by hovering a badge, where it
@@ -742,7 +744,7 @@ void items_view::items_changed(const bool path_changed)
 		elements.emplace_back(std::move(related_row));
 	}
 
-	// locations.md 7.3: the breakdown strip sits above the timeline, so the rows read from
+	// docs/locations.md#the-places-row: the breakdown strip sits above the timeline, so the rows read from
 	// "where within this" down to "when within this".
 	if (auto breakdown_row = build_location_breakdown_row())
 	{
@@ -799,8 +801,8 @@ void items_view::items_changed(const bool path_changed)
 
 		if (!browsing_folder && !has_filtered_out)
 		{
-			// locations.md 3.7: a location query that finds nothing must explain itself and offer
-			// the next action. That moment is where trust in the search is won or lost.
+			// docs/design.md#system-states-and-consistency: a location query that finds nothing must explain itself
+			// and offer the next action. That moment is where trust in the search is won or lost.
 			if (const auto* const place_term = _state.search().single_place_term())
 			{
 				const auto typed = place_term->text;
@@ -978,8 +980,8 @@ public:
 	}
 };
 
-// design.md L5: Escape peels one layer. With a rectangle on the picture it clears it, and with text
-// selected in the panel's document it clears that; without either it falls through to the unwind
+// docs/design.md#selection-and-viewing: Escape peels one layer. With a rectangle on the picture it clears it, and
+// with text selected in the panel's document it clears that; without either it falls through to the unwind
 // ladder view_state::escape owns, so there is one order rather than two.
 bool items_view::escape()
 {
@@ -1290,7 +1292,7 @@ recti items_view::keyboard_bounds() const
 	return focus && is_visible(focus) ? focus->bounds.offset(-_items_scroller.scroll_offset()) : recti{};
 }
 
-// zoom.md 11: the pointer chooses the surface and the modifier chooses which of that surface's axes
+// docs/zoom.md#the-wheel: the pointer chooses the surface and the modifier chooses which of that surface's axes
 // moves. The modifier never changes meaning with position -- only what it acts on -- which is what
 // the old chain could not say: a bare Ctrl test sat between two region tests, so Ctrl resized
 // thumbnails everywhere except over the preview pane, where it silently did nothing.
@@ -1367,7 +1369,7 @@ bool items_view::media_wheel(const pointi loc, const platform::wheel_notch notch
 		return true;
 	}
 
-	// zoom.md 11: Ctrl over a fitted image is not an entry into zoom mode. It is consumed rather than
+	// docs/zoom.md#the-wheel: Ctrl over a fitted image is not an entry into zoom mode. It is consumed rather than
 	// left to fall through, so the cheapest possible input cannot reach a neighbouring surface's scale.
 	if (notch.keys.control) return true;
 	if (!notch.is_vertical()) return false;
@@ -1612,6 +1614,7 @@ void items_view::render(render::draw_context& dc, const view_controller_ptr /*co
 		const auto items_offset = -_items_scroller.scroll_offset();
 		const auto logical_view_bounds = calc_logical_items_bounds();
 
+		update_selection_marks();
 		_items_scroller.draw_scroll(dc);
 		_media_scroller.draw_scroll(dc);
 
@@ -1777,74 +1780,42 @@ bool items_view::is_visible(const df::item_element_ptr& i) const
 	return false;
 }
 
-void items_view::update_item_scroller_sections()
+// The selection is marked on the scroll bar, as the strip's is, so an item scrolled out of sight can still be found.
+// Worked out again only when the selection or the layout changes, since a selection can be the whole collection.
+void items_view::update_selection_marks()
 {
-	std::vector<view_scroller_section> sections;
-	const auto& groups = _state.groups();
+	const auto generation = _state.selection_generation();
+	if (!_selection_marks_stale && generation == _marked_selection) return;
+	_selection_marks_stale = false;
+	_marked_selection = generation;
 
-	if (!groups.empty())
+	std::vector<int> centres;
+
+	if (!_state.selected_items().empty())
 	{
-		// A band this short cannot be seen or aimed at. It keeps its space, which folds into the
-		// band that follows it; a band too short for its label just goes unlabelled when drawn.
-		constexpr auto min_section_height = 8;
+		const auto top = _items_scroller.client_bounds().top;
 
-		std::string_view run_text = groups.front()->scroll_text;
-		auto run_icon = groups.front()->icon;
-		auto run_top = groups.front()->bounds.top;
-
-		// A band that swallowed several short runs is named by whichever of them fills most of it.
-		// Naming it after the run that happens to end at the boundary let a single-item group
-		// caption a stretch of the list it barely appears in.
-		auto band_top = 0;
-		auto caption_text = run_text;
-		auto caption_icon = run_icon;
-		auto caption_height = 0;
-
-		const auto close_run = [&](const int run_bottom)
+		for (const auto& g : _state.groups())
 		{
-			const auto height = run_bottom - run_top;
-
-			if (height > caption_height)
+			for (const auto& i : g->items())
 			{
-				caption_height = height;
-				caption_text = run_text;
-				caption_icon = run_icon;
+				if (i->is_selected()) centres.push_back(i->bounds.center().y - top);
 			}
-		};
-
-		for (const auto& group : groups)
-		{
-			const std::string_view text = group->scroll_text;
-			const auto icon = group->icon;
-			const auto y = group->bounds.top;
-
-			if (core::icmp(run_text, text) != 0 || run_icon != icon)
-			{
-				close_run(y);
-				run_text = text;
-				run_icon = icon;
-				run_top = y;
-
-				// band_top only advances on a kept section, so this measures the painted band.
-				if (_items_scroller.logical_to_scrollbar_pos(y - band_top) > min_section_height)
-				{
-					sections.emplace_back(std::string(caption_text), caption_icon, y);
-					band_top = y;
-					caption_height = 0;
-				}
-			}
-		}
-
-		const auto list_bottom = groups.back()->bounds.bottom;
-		close_run(list_bottom);
-
-		if (_items_scroller.logical_to_scrollbar_pos(list_bottom - band_top) > min_section_height)
-		{
-			sections.emplace_back(std::string(caption_text), caption_icon, list_bottom);
 		}
 	}
 
-	_items_scroller.sections(std::move(sections));
+	_items_scroller.marks(std::move(centres), ui::style::colors.view_selected_background);
+}
+
+// The bands of the scroll bar are named after the groups, as libdesktop folds runs too short to see into the band
+// that follows.
+void items_view::update_item_scroller_sections()
+{
+	const auto& groups = _state.groups();
+	std::vector<ui::scroller_run> runs;
+	runs.reserve(groups.size());
+	for (const auto& group : groups) runs.push_back({group->scroll_text, group->icon, group->bounds.top});
+	_items_scroller.sections_from_runs(runs, groups.empty() ? 0 : groups.back()->bounds.bottom);
 }
 
 int layout_stacked(const std::vector<view_element_ptr>& elements, const std::vector<recti>& slots,
@@ -2025,7 +1996,7 @@ void items_view::layout(render::measure_context& mc, const sizei extent)
 			auto avail_item_bounds = calc_items_bounds();
 			avail_item_bounds.right -= scroll_padding;
 
-			// locations.md 7.3: the optional rows are budgeted against the height actually
+			// docs/locations.md#the-places-row: the optional rows are budgeted against the height actually
 			// available, so a tall window shows everything and a short one degrades gracefully.
 			apply_control_row_budget(mc, avail_item_bounds.width(), avail_item_bounds.height() / 4);
 
@@ -2049,6 +2020,7 @@ void items_view::layout(render::measure_context& mc, const sizei extent)
 		}
 
 		update_item_scroller_sections();
+		_selection_marks_stale = true;
 
 		const auto item_anchor_element = std::dynamic_pointer_cast<df::item_element>(item_anchor.element);
 		const auto item_anchor_is_current = item_anchor_element && _state.display_items().contains(item_anchor_element);
@@ -3486,7 +3458,15 @@ void items_view::reset_media_scroll()
 	_media_scroller.scroll_offset(_host, 0, 0);
 }
 
-void items_view::line_up(const bool toggle_selection, const bool extend_selection) const
+// The keys reaching an item, as they reach an entry of any list: Ctrl alone moves the focus to it, and otherwise it is
+// selected as a click with the same keys selects it.
+void items_view::key_to(const df::item_element_ptr& i, const bool control, const bool shift) const
+{
+	if (control && !shift) _state.move_focus(i);
+	else _state.select(_host, i, control, shift, false);
+}
+
+void items_view::line_up(const bool control, const bool shift) const
 {
 	const auto focus = _state.focus_item();
 
@@ -3504,16 +3484,17 @@ void items_view::line_up(const bool toggle_selection, const bool extend_selectio
 			if (found)
 			{
 				_state.stop_slideshow();
-				_state.select(_host, found, toggle_selection, extend_selection, false);
+				key_to(found, control, shift);
 				return;
 			}
 		}
 	}
 
-	_state.select_next(_host, false, toggle_selection, extend_selection);
+	if (control && !shift) _state.focus_next(false);
+	else _state.select_next(_host, false, control, shift);
 }
 
-void items_view::line_down(const bool toggle_selection, const bool extend_selection) const
+void items_view::line_down(const bool control, const bool shift) const
 {
 	const auto focus = _state.focus_item();
 
@@ -3531,13 +3512,14 @@ void items_view::line_down(const bool toggle_selection, const bool extend_select
 			if (found)
 			{
 				_state.stop_slideshow();
-				_state.select(_host, found, toggle_selection, extend_selection, false);
+				key_to(found, control, shift);
 				return;
 			}
 		}
 	}
 
-	_state.select_next(_host, true, toggle_selection, extend_selection);
+	if (control && !shift) _state.focus_next(true);
+	else _state.select_next(_host, true, control, shift);
 }
 
 void items_view::items_scroll_popup(view_hover_element& hover, const pointi loc) const
@@ -3559,7 +3541,7 @@ void items_view::items_scroll_popup(view_hover_element& hover, const pointi loc)
 			hover.elements = elements;
 			hover.window_bounds = recti(left, top, right, top + 16);
 			hover.active_bounds = recti(left, loc.y - 1, right, loc.y + 1);
-			hover.active_delay = 50;
+			hover.active_delay = bubble_delay::scrollbar_entry;
 			hover.horizontal = true;
 			hover.preferred_size = 200;
 		}

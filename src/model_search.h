@@ -19,6 +19,15 @@
 struct search_part;
 class location_cache;
 
+namespace faces
+{
+	struct overview;
+	struct roster;
+	struct picture_person;
+	struct time_span;
+	std::shared_ptr<const overview> active_overview();
+}
+
 namespace df
 {
 	enum class copy_grade : uint32_t;
@@ -83,7 +92,7 @@ namespace df
 		date,
 		location,
 		has_location,
-		// locations.md 3.5: a built-in location class, spelled with `@` and taking no argument.
+		// docs/locations.md#location-search: a built-in location class, spelled with `@` and taking no argument.
 		remote,
 		area,
 		duplicate,
@@ -98,6 +107,10 @@ namespace df
 		// What an item is by its type or by what its file says of itself - `@raw`, `@hdr`, `@portrait` - an
 		// item_feature in int_val, taking no argument.
 		feature,
+		// docs/faces.md#8-searching: `@face`, a picture with a face found in it, and `face:IMG_1234.jpg:2`, a picture
+		// with a face resembling the one the term spells, in text. Both answer from face search's store.
+		face_found,
+		face,
 	};
 
 	// A kind of item a `@` word asks for, read from its file type or its record and never stored as itself:
@@ -195,7 +208,7 @@ namespace df
 		country,
 	};
 
-	// locations.md 3.5: every way to scope a term to a location, and the level each constrains to.
+	// docs/locations.md#location-search: every way to scope a term to a location, and the level each constrains to.
 	// `loc:` and `near:` take a centre - a place name or a coordinate - and an optional radius; the
 	// others name a place, region or country. Completing, tokenizing, coalescing, parsing and
 	// formatting a query all read this one table. The first entry for a level is the spelling a
@@ -297,7 +310,9 @@ namespace df
 	// (last whitespace-delimited) token of a search query so the value part of a scoped
 	// term can be completed from the matching vocabulary: "#"/"tag:" -> tag names,
 	// "@" -> media groups, "with:"/"without:" -> property scopes, and the location
-	// scopes -> gazetteer places (locations.md 3.4).
+	// scopes -> gazetteer places (docs/locations.md#location-search).
+	std::string quote_term_value(std::string_view text);
+
 	enum class search_scope_kind
 	{
 		none,
@@ -306,6 +321,8 @@ namespace df
 		with,
 		without,
 		location,
+		// person: or people:, completed from the names the collection holds (docs/faces.md#23-searching-for-people).
+		person,
 	};
 
 	struct search_scope_completion
@@ -314,6 +331,7 @@ namespace df
 		std::string lead;          // text before the active token, including trailing separator
 		std::string value;         // fragment typed after the scope prefix (may be empty)
 		bool tag_as_scope = false; // true when written as "tag:" rather than "#"
+		bool confirmed_person = false;
 
 		// Specificity the typed location scope constrains its completions to.
 		location_level level = location_level::any;
@@ -344,6 +362,9 @@ namespace df
 				           : std::string(candidate);
 			case search_scope_kind::with: return std::format("with:{}", candidate);
 			case search_scope_kind::without: return std::format("without:{}", candidate);
+			// docs/faces.md#8-searching: a name chosen is the whole name, which is written quoted.
+			case search_scope_kind::person: return std::format("person:{}{}", quote_term_value(candidate),
+			                                                   confirmed_person ? "!" : "");
 			case search_scope_kind::group:
 			case search_scope_kind::location:
 			default: return std::string(candidate);
@@ -355,14 +376,28 @@ namespace df
 	{
 		search_scope_completion result;
 
-		const auto last_space = query.find_last_of(" \t");
-		result.lead = last_space == std::string_view::npos ? std::string{}
-		                                                   : std::string(query.substr(0, last_space + 1));
-		const auto token = last_space == std::string_view::npos ? query : query.substr(last_space + 1);
+		size_t start = 0;
+		char quote = 0;
+		for (size_t i = 0; i < query.size(); ++i)
+		{
+			const char c = query[i];
+			if (quote)
+			{
+				if (c == quote)
+				{
+					if (i + 1 < query.size() && query[i + 1] == quote) ++i;
+					else quote = 0;
+				}
+			}
+			else if (c == '"' || c == '\'') quote = c;
+			else if (core::is_white_space(c)) start = i + 1;
+		}
+		result.lead = query.substr(0, start);
+		const auto token = query.substr(start);
 
 		if (token.empty()) return result;
 
-		// locations.md 3.5: every location scope completes from the same vocabulary; only the
+		// docs/locations.md#location-search: every location scope completes from the same vocabulary; only the
 		// level it constrains to differs.
 		for (const auto& scope : location_scopes)
 		{
@@ -402,6 +437,23 @@ namespace df
 		{
 			result.kind = search_scope_kind::with;
 			result.value = std::string(token.substr(5));
+		}
+		else if (core::starts(token, "person:") || core::starts(token, "people:") ||
+		         (!quote && token.size() > 1 && token.back() == '!' && token.find(':') == token.npos &&
+		          !core::is_path(token)))
+		{
+			// A name being typed may have opened a quote it has not closed.
+			result.kind = search_scope_kind::person;
+			auto value = token.find(':') == token.npos ? token : token.substr(7);
+			result.confirmed_person = !quote && value.ends_with('!');
+			if (result.confirmed_person) value.remove_suffix(1);
+			if (!value.empty() && (value.front() == '"' || value.front() == '\''))
+			{
+				const auto delimiter = value.front();
+				value.remove_prefix(1);
+				if (value.ends_with(delimiter)) value.remove_suffix(1);
+			}
+			result.value = std::string(value);
 		}
 
 		return result;
@@ -510,6 +562,10 @@ namespace df
 		std::string text;
 		std::string _nfc_text;
 		bool _is_wildcard = false;
+		// docs/faces.md#8-searching: a person: term typed unquoted finds a name by the start of any of its words. Quoted,
+		// or made by a link, it finds the whole name.
+		bool by_word_start = false;
+		bool confirmed_person = false;
 		int int_val = 0;
 		uint64_t int64_val = 0;
 		double float_val = 0.0;
@@ -642,11 +698,12 @@ namespace df
 		friend bool operator==(const search_term& lhs, const search_term& rhs)
 		{
 			return lhs.type == rhs.type && lhs.modifiers == rhs.modifiers && lhs.key == rhs.key &&
-			       lhs.text == rhs.text && lhs.int_val == rhs.int_val && lhs.int64_val == rhs.int64_val &&
-			       equiv(lhs.float_val, rhs.float_val) && lhs.coord_val == rhs.coord_val &&
-			       lhs.location_cell == rhs.location_cell && lhs.location_cell_span == rhs.location_cell_span &&
-			       lhs.level == rhs.level && lhs.xy_val == rhs.xy_val && lhs.fg_val == rhs.fg_val &&
-			       lhs.date_val == rhs.date_val;
+			       lhs.text == rhs.text && lhs.by_word_start == rhs.by_word_start &&
+			       lhs.confirmed_person == rhs.confirmed_person && lhs.int_val == rhs.int_val &&
+			       lhs.int64_val == rhs.int64_val && equiv(lhs.float_val, rhs.float_val) &&
+			       lhs.coord_val == rhs.coord_val && lhs.location_cell == rhs.location_cell &&
+			       lhs.location_cell_span == rhs.location_cell_span && lhs.level == rhs.level &&
+			       lhs.xy_val == rhs.xy_val && lhs.fg_val == rhs.fg_val && lhs.date_val == rhs.date_val;
 		}
 
 		friend bool operator!=(const search_term& lhs, const search_term& rhs) { return !(lhs == rhs); }
@@ -663,6 +720,9 @@ namespace df
 			if (rhs.text < lhs.text) return false;
 			if (lhs._is_wildcard < rhs._is_wildcard) return true;
 			if (rhs._is_wildcard < lhs._is_wildcard) return false;
+			if (lhs.by_word_start < rhs.by_word_start) return true;
+			if (rhs.by_word_start < lhs.by_word_start) return false;
+			if (lhs.confirmed_person != rhs.confirmed_person) return !lhs.confirmed_person;
 			if (lhs.int_val < rhs.int_val) return true;
 			if (rhs.int_val < lhs.int_val) return false;
 			if (lhs.int64_val < rhs.int64_val) return true;
@@ -699,7 +759,7 @@ namespace df
 	bool match_volume_label(std::string_view folder_name, const core::hash_map<char, core::cached>& drive_labels,
 	                        const search_term& term);
 
-	// locations.md 3.1: merges the tokens that follow a location scope into its term when they
+	// docs/locations.md#location-search: merges the tokens that follow a location scope into its term when they
 	// are recognisably part of the place - a country code, a distance, or comma-bound text.
 	std::vector<search_part> coalesce_parts(std::vector<search_part> parts);
 
@@ -797,7 +857,7 @@ namespace df
 
 		const std::vector<search_term>& terms() const { return _terms; }
 
-		// locations.md 4.1: the distance slider controls a search only when exactly one location
+		// docs/locations.md#location-search: the distance slider controls a search only when exactly one location
 		// term names a place. A coordinate term or a second place has no single radius to show.
 		const search_term* single_place_term() const
 		{
@@ -827,8 +887,8 @@ namespace df
 			return *this;
 		}
 
-		// locations.md 3.7: dropping a qualifier -- `London, Canada` becomes `London` -- so a query
-		// that resolved to the wrong namesake is one click from asking about all of them.
+		// docs/design.md#system-states-and-consistency: dropping a qualifier -- `London, Canada` becomes
+		// `London` -- so a query that resolved to the wrong namesake is one click from asking about all of them.
 		search_t& set_place_name(const std::string_view name)
 		{
 			for (auto& t : _terms)
@@ -907,6 +967,9 @@ namespace df
 		}
 
 		bool needs_metadata() const;
+		// docs/faces.md#8-searching: whether what it finds depends on face search - face:, @face, person: and free text,
+		// which find the names the face book gives as they find those files give - so it is run again as that changes.
+		bool reads_faces() const;
 
 		bool has_related() const { return !_related.path.is_empty(); }
 
@@ -1142,7 +1205,7 @@ namespace df
 			return *this;
 		}
 
-		// locations.md 6.3: a timeline node refines the query to its own bounds. Two bracketing
+		// docs/locations.md#visits: a timeline node refines the query to its own bounds. Two bracketing
 		// comparisons express the range, so the query the node runs returns exactly the items the
 		// node counted rather than a coarser month or year around them.
 		search_t& date_range(const core::day_t& from, const core::day_t& to,
@@ -1489,6 +1552,16 @@ namespace df
 	bool text_term_contains(const search_term& term, std::string_view value);
 	bool text_term_same(const search_term& term, std::string_view value);
 	bool text_term_equals_part(const search_term& term, std::string_view part);
+	// docs/faces.md#8-searching: whether a free-text term finds a person by this name - a wildcard against the whole
+	// name, otherwise by the start of any of its words.
+	bool term_names_person(const search_term& term, std::string_view name);
+	// docs/faces.md#8-searching: where in a video the faces a search found it by are seen - the faces of the people its
+	// person: and plain-text terms name, those like a face: term's face, and every face for @face - as parts of its
+	// timeline, in order and apart. Empty for a picture, or a video the search found by none of its faces.
+	std::vector<faces::time_span> face_spans_found(const search_t& search, core::file_path path);
+	// docs/faces.md#8-searching: where in a name a word begins with `query`, compared as contains_term compares text -
+	// "zac" begins Zac Walker and Zachary, "walker" and "zac w" begin Zac Walker, "ac" neither - or npos.
+	size_t find_name_word(std::string_view name, std::string_view query);
 
 	// The form two texts share exactly when term matching calls them equal - NFC normalised, then each
 	// code point lower-cased as core::icmp compares it - written four bytes a code point so that no two
@@ -1541,12 +1614,11 @@ namespace df
 		struct resolved_place
 		{
 			gps_coordinate position;
-			// The reach locations.md 2.5 grants this record, or zero when the name resolved to a
-			// region or country, which has extent rather than a centre.
-			double attribution_km = 0.0;
+			// Compare city identities rather than labels shared by places with the same name.
+			uint32_t id = 0;
 		};
 
-		// Resolved once per search, never per item (locations.md §3.3).
+		// Resolved once per search, never per item (docs/locations.md#location-search).
 		core::hash_map<std::string, resolved_place, core::ihash, core::ieq> _resolved_centres;
 
 		struct attributed_location
@@ -1554,23 +1626,31 @@ namespace df
 			core::cached place;
 			core::cached state;
 			core::cached country;
-			// The reach locations.md 2.5 grants the record that named this coordinate, and so how far
-			// a more significant place may stand over it.
-			double reach_km = 0.0;
+			uint32_t enclosing_city = 0;
 			location_attribution attribution = location_attribution::none;
 		};
 
 		// Attribution answers at kilometre scale, so one lookup serves every item in a cell.
 		mutable std::map<attribution_cell, attributed_location> _attributed;
+		mutable gps_search_names _gps_names;
+
+		// docs/faces.md#8-searching: whom the overview says each picture's faces are, as they stood when the
+		// search began, so one search reads one answer and a person: term looks a picture up without copying it.
+		std::shared_ptr<const faces::overview> _face_people;
+		std::shared_ptr<const faces::roster> _face_roster;
 
 		attributed_location attributed(gps_coordinate coord) const;
+		// The names face search gives the picture's faces, or null where it gives none.
+		std::span<const faces::picture_person> face_people_of(core::cached folder_name, core::cached name) const;
+		core::cached matching_person(core::cached folder, core::cached file, const prop::item_metadata* md,
+		                             const search_term& term) const;
 
 	public:
 		search_matcher(const search_t& s, const uint32_t now_days = core::utc_now().to_days(),
-		               const location_cache* locations = nullptr) :
+		               const location_cache* locations = nullptr, std::shared_ptr<const faces::roster> roster = {}) :
 			_search(s), _required_presence(s.calc_required_presence()), _now_days(now_days), _locations(locations),
-			has_terms(s.has_terms()), need_metadata(s.needs_metadata()), can_match_folder(_search.can_match_folder()),
-			has_related(s.has_related())
+			_face_people(faces::active_overview()), _face_roster(std::move(roster)), has_terms(s.has_terms()), need_metadata(s.needs_metadata()),
+			can_match_folder(_search.can_match_folder()), has_related(s.has_related())
 		{
 			if (s.has_volume_term())
 			{
@@ -1600,12 +1680,10 @@ namespace df
 			return found != _resolved_centres.cend() ? found->second.position : gps_coordinate{};
 		}
 
-		// locations.md 2.5/3.2: how far the named place itself reaches, so `loc:London` answers with
-		// what the gazetteer would call London rather than with whatever unnamed dot is nearest.
-		double resolved_reach_km(const std::string& name) const
+		uint32_t resolved_place_id(const std::string& name) const
 		{
 			const auto found = _resolved_centres.find(name);
-			return found != _resolved_centres.cend() ? found->second.attribution_km : 0.0;
+			return found != _resolved_centres.cend() ? found->second.id : 0;
 		}
 
 		const bool has_terms = false;
@@ -1630,6 +1708,13 @@ namespace df
 		                              const prop::item_metadata* md) const;
 		// A positive free-text term holding `**` matches every item in a folder its path matches.
 		bool text_term_matches_folder(const search_term& term, core::cached folder_name) const;
+		// docs/faces.md#8-searching: each picture whose faces the face book names someone a free-text term finds, as
+		// match_term finds them, so the search index answers the face book's names as a scan does.
+		void for_each_face_named(const search_term& term, const core::cancel_token& token,
+		                         const std::function<void(core::file_path)>& found) const;
+		bool file_name_allowed(core::cached folder, core::cached file, std::string_view person) const;
+		const std::shared_ptr<const faces::overview>& face_people() const { return _face_people; }
+		std::string_view canonical_person(std::string_view name) const;
 		// Whether a date term's date compares true against one date key, today being the matcher's today.
 		bool date_key_matches(const search_term& term, core::date_t key) const;
 
@@ -1642,4 +1727,8 @@ namespace df
 		search_result match_item(core::file_path path, const index_file_item& file) const;
 		search_result match_folder(core::cached folder_name, core::cached name) const;
 	};
+
+	// docs/faces.md#8-searching: the search for one face, by its picture's file name and its position there, made as a
+	// term rather than parsed from text, so a name holding brackets, commas or quotes is searched for as it is.
+	search_t search_for_face(std::string_view file, int position);
 }

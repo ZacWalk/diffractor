@@ -5,7 +5,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: locations.md 6.2 -- the visit derivation. Filter, tally places, cluster, name, segment,
+// Purpose: docs/locations.md#visits -- the visit derivation. Filter, tally places, cluster, name, segment,
 // score, classify, select, publish. Every step is bounded by the result count and none of it
 // touches UI state.
 
@@ -86,7 +86,7 @@ namespace
 		gps_coordinate anchor;
 	};
 
-	// locations.md 2.3/3.1: stored text qualifies nothing, so a bare `Richmond` would resolve to
+	// docs/locations.md#location-search: stored text qualifies nothing, so a bare `Richmond` would resolve to
 	// the largest Richmond on earth rather than the one the items are in. The gazetteer record for
 	// the stored parts supplies both the qualified label and the point a radius measures from.
 	// The identity a place name carries. Place alone merges namesakes - a Springfield in Illinois
@@ -176,7 +176,7 @@ namespace
 		}
 	};
 
-	// locations.md 7.2: the strip is a partition, and a chip's count and its click are one promise.
+	// docs/locations.md#the-places-row: the strip is a partition, and a chip's count and its click are one promise.
 	// Exact identities are collapsed through the finite place/state/country predicate subsets. If
 	// a partial chip would return sharper identities, the whole connected set merges to the common
 	// predicate its search can honestly advertise.
@@ -377,8 +377,8 @@ namespace
 		return qualified_name(location_t{0, t.place, t.state, t.country, {}, 0.0, static_cast<uint32_t>(level)});
 	}
 
-	// locations.md 2.1 applied to the strip: the smallest name form that still tells the chips
-	// apart. Two Londons that read `London` twice are one affordance the user cannot choose from.
+	// docs/locations.md#the-places-row: the smallest name form that still tells the chips apart. Two Londons that
+	// read `London` twice are one affordance the user cannot choose from.
 	void qualify_place_names(std::vector<df::visit_place_tally>& tallies)
 	{
 		constexpr location_qualification levels[] = {
@@ -506,7 +506,7 @@ df::visit_timeline df::compute_visits(const visit_request& request, const locati
 		if (has_location) usable.emplace_back(i);
 	}
 
-	// locations.md 7.2: the place breakdown, keyed exactly as the location grouping keys a group,
+	// docs/locations.md#the-places-row: the place breakdown, keyed exactly as the location grouping keys a group,
 	// so every chip runs the query that group header would run and returns precisely what it
 	// counted. It is a partition of the located items, and it is built before the timeline decides
 	// anything, because a result set that yields no visit still has places in it.
@@ -819,7 +819,7 @@ df::visit_timeline df::compute_visits(const visit_request& request, const locati
 		const auto neighbour = cand.gap_before == 0 ? cand.gap_after
 		                                            : (cand.gap_after == 0 ? cand.gap_before
 		                                                                   : std::min(cand.gap_before, cand.gap_after));
-		// locations.md 6.2: normalized by 4G, not G. Segmentation already split on every gap
+		// docs/locations.md#visits: normalized by 4G, not G. Segmentation already split on every gap
 		// larger than G, so normalizing by G would clamp this to 1 for every candidate.
 		const auto separation = neighbour == 0 ? 1.0 : std::min(1.0, neighbour / (threshold * 4.0));
 		const auto rarity = 1.0 - std::min(1.0, cluster_count / std::max(1.0, located));

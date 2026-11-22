@@ -83,7 +83,7 @@ double movie_overlap(const movie_clip& left, const movie_clip& right)
 	return std::max(0.0, std::min({movie_crossfade_seconds, left.duration() / 2, right.duration() / 2}));
 }
 
-movie_timing calc_movie_timing(const std::vector<movie_clip>& clips)
+movie_timing calc_movie_timing(const std::vector<movie_clip>& clips, const movie_kind kind)
 {
 	movie_timing result;
 	result.starts.reserve(clips.size());
@@ -98,6 +98,20 @@ movie_timing calc_movie_timing(const std::vector<movie_clip>& clips)
 	}
 
 	result.duration = std::max(0.0, t);
+	result.whole = result.duration;
+
+	// A Short of one tune that repeats ends where it starts again, unfaded, so YouTube's loop joins it seamlessly;
+	// any other ends by three minutes, fading out there as a movie fades out at its end.
+	if (movie_loops_seamlessly(clips, kind))
+	{
+		result.duration = clips.front().loop_end - clips.front().start;
+		result.fades = false;
+	}
+	else if (kind == movie_kind::youtube_short && result.duration > movie_short_max_seconds)
+	{
+		result.duration = movie_short_max_seconds;
+		result.cut = true;
+	}
 
 	// A caption goes no further than the next text screen, which is a page of its own; it may run on
 	// over clips. Walked backwards, so each item knows where the next screen begins.
@@ -133,6 +147,16 @@ movie_timing calc_movie_timing(const std::vector<movie_clip>& clips)
 
 	std::erase_if(result.captions, [](const movie_text_span& span) { return !span.is_shown(); });
 	return result;
+}
+
+bool movie_loops_seamlessly(const std::vector<movie_clip>& clips, const movie_kind kind)
+{
+	if (kind != movie_kind::youtube_short || clips.size() != 1) return false;
+
+	// From the tune's start to at least where it starts again, played as itself rather than under a sound file.
+	const auto& c = clips.front();
+	return c.is_audio && !c.is_missing && !c.has_sound_file() && c.loop_end > 0 &&
+	       c.loop_end <= movie_short_max_seconds && c.start <= 0.0005 && c.end >= c.loop_end - 0.0005;
 }
 
 movie_frame calc_movie_frame(const std::vector<movie_clip>& clips, const double time)
@@ -208,8 +232,9 @@ movie_frame calc_movie_frame(const std::vector<movie_clip>& clips, const movie_t
 		result.a.sound = std::clamp((ends - at) / movie_sound_release_seconds, 0.0, 1.0);
 	}
 
-	// The movie fades in from black and out to black over the crossfade's length, picture and sound.
-	const auto fade = std::min(movie_crossfade_seconds, timing.duration / 2);
+	// The movie fades in from black and out to black over the crossfade's length, picture and sound - unless it
+	// is a Short that loops seamlessly, whose last frame leads straight back into its first.
+	const auto fade = timing.fades ? std::min(movie_crossfade_seconds, timing.duration / 2) : 0.0;
 
 	if (fade > 0)
 	{
@@ -308,8 +333,65 @@ static size_t best_movie_rate(const double rate)
 	return best;
 }
 
-movie_output derive_movie_output(const std::vector<movie_clip>& clips)
+// Where in movie_short_frame_rates footage at `rate` plays best: with nothing repeated or dropped unevenly, and of
+// the rates that manage that, the nearest its own - 30 fps footage at 30 rather than each frame twice at 60.
+static size_t best_short_rate(const double rate)
 {
+	size_t best = 0;
+
+	for (size_t i = 1; i < movie_short_frame_rates.size(); ++i)
+	{
+		const auto mismatch = movie_rate_mismatch(rate, movie_short_frame_rates[i]);
+		const auto best_mismatch = movie_rate_mismatch(rate, movie_short_frame_rates[best]);
+		const auto nearer = std::abs(movie_short_frame_rates[i] - rate) <
+		                    std::abs(movie_short_frame_rates[best] - rate);
+
+		if (mismatch < best_mismatch - 1e-9 || (std::abs(mismatch - best_mismatch) <= 1e-9 && nearer)) best = i;
+	}
+
+	return best;
+}
+
+static int movie_video_bitrate(const sizei extent, const int frame_rate)
+{
+	const auto bits = static_cast<int64_t>(extent.cx) * extent.cy * frame_rate * movie_bits_per_pixel;
+	return static_cast<int>(
+		std::clamp(bits, static_cast<double>(movie_min_bitrate), static_cast<double>(movie_max_bitrate)));
+}
+
+// A Short is upright HD, at the rate most of what moves in it was made for, by how long each shows; one of photos
+// and text screens alone at a steady 30.
+static movie_output derive_short_output(const std::vector<movie_clip>& clips)
+{
+	movie_output result;
+	result.extent = movie_short_extent;
+
+	std::array<double, movie_short_frame_rates.size()> rate_seconds{};
+	auto moving = false;
+
+	for (const auto& c : clips)
+	{
+		if (c.is_text || c.is_photo || c.frame_rate <= 0) continue;
+		rate_seconds[best_short_rate(c.frame_rate)] += c.duration();
+		moving = true;
+	}
+
+	result.frame_rate = movie_short_still_frame_rate;
+
+	if (moving)
+	{
+		const auto most = std::ranges::max_element(rate_seconds) - rate_seconds.begin();
+		result.frame_rate = movie_short_frame_rates[static_cast<size_t>(most)];
+	}
+
+	result.video_bitrate = movie_video_bitrate(result.extent, result.frame_rate);
+	return result;
+}
+
+movie_output derive_movie_output(const std::vector<movie_clip>& clips, const movie_kind kind)
+{
+	if (kind == movie_kind::youtube_short) return derive_short_output(clips);
+
 	movie_output result;
 
 	// Videos decide the frame, and only fall back to photos when there is no video at all. A
@@ -334,7 +416,9 @@ movie_output derive_movie_output(const std::vector<movie_clip>& clips)
 	for (const auto& c : clips)
 	{
 		if (c.is_text || c.extent.cx <= 0 || c.extent.cy <= 0) continue;
-		if (!c.is_photo && c.frame_rate > 0) rate_seconds[best_movie_rate(c.frame_rate)] += c.duration();
+		// An audio clip's pictures count as a video drawn at a steady 30, whatever they could move at in a Short.
+		const auto rate = c.is_audio ? movie_audio_frame_rate : c.frame_rate;
+		if (!c.is_photo && rate > 0) rate_seconds[best_movie_rate(rate)] += c.duration();
 		if (have_video && c.is_photo) continue;
 
 		auto shape = std::ranges::find_if(shapes, [&c](const shape_time& s)
@@ -371,11 +455,7 @@ movie_output derive_movie_output(const std::vector<movie_clip>& clips)
 	// The rate most of the video was filmed for; a movie with none is made at the first.
 	const auto most_filmed = std::ranges::max_element(rate_seconds) - rate_seconds.begin();
 	result.frame_rate = movie_frame_rates[static_cast<size_t>(most_filmed)];
-
-	const auto bits = static_cast<int64_t>(result.extent.cx) * result.extent.cy * result.frame_rate *
-	                  movie_bits_per_pixel;
-	result.video_bitrate = static_cast<int>(
-		std::clamp(bits, static_cast<double>(movie_min_bitrate), static_cast<double>(movie_max_bitrate)));
+	result.video_bitrate = movie_video_bitrate(result.extent, result.frame_rate);
 
 	return result;
 }
@@ -753,7 +833,17 @@ movie_load_result read_dfv(const std::string_view text, const core::folder_path 
 		const auto op = f[0].quoted || f[0].sound ? std::string{} : core::to_lower(f[0].text);
 		const auto names_sound = std::ranges::any_of(f, [](const dfv_field& field) { return field.sound; });
 
-		if (op == "t")
+		if (op == "short")
+		{
+			if (f.size() != 1)
+			{
+				problem("a YouTube Short is the word short alone on its line");
+				continue;
+			}
+
+			result.kind = movie_kind::youtube_short;
+		}
+		else if (op == "t")
 		{
 			const auto seconds = f.size() >= 2 ? parse_dfv_time(f[1].text) : std::nullopt;
 
@@ -834,7 +924,8 @@ movie_load_result read_dfv(const std::string_view text, const core::folder_path 
 		}
 		else
 		{
-			problem(std::format("{} is not an instruction: a line starts with t, c or s", dfv_field_text(f[0])));
+			problem(std::format("{} is not an instruction: a line starts with t, c or s, or is short",
+			                    dfv_field_text(f[0])));
 		}
 	}
 
@@ -935,13 +1026,17 @@ static std::string dfv_segment_text(const movie_clip& clip)
 	return result;
 }
 
-std::string write_dfv(const std::vector<movie_clip>& clips, const core::folder_path project_folder)
+std::string write_dfv(const std::vector<movie_clip>& clips, const core::folder_path project_folder,
+                      const movie_kind kind)
 {
 	std::string result =
 		"# Diffractor video: one item per line, played in order.\n"
 		"#   t <seconds> '<text>'                                        text on black\n"
 		"#   c <from>-<to>[#track] <file> ['<caption>'] [!<sound file>]  a clip; s instead of c marks one to stabilize\n"
-		"#   A clip's !<sound file> plays in place of its own sound, from the clip's start.\n";
+		"#   A clip's !<sound file> plays in place of its own sound, from the clip's start.\n"
+		"#   A line short makes the movie a YouTube Short: upright, and three minutes at most.\n";
+
+	if (kind == movie_kind::youtube_short) result += "short\n";
 
 	for (const auto& clip : clips)
 	{
@@ -986,7 +1081,7 @@ void movie_project::push_undo()
 	// An edit made after undoing past the clean state replaces the history that led back to it.
 	if (_clean_depth && _undo.size() < *_clean_depth) _clean_depth.reset();
 
-	_undo.emplace_back(undo_entry{_clips, _selected, _current, _anchor});
+	_undo.emplace_back(undo_entry{_clips, _selected, _current, _anchor, _kind});
 
 	if (_undo.size() > max_undo)
 	{
@@ -1026,7 +1121,7 @@ void movie_project::begin_edit(const movie_edit_group group)
 void movie_project::settle_edit()
 {
 	if (_open_group == movie_edit_group::none || _undo.empty()) return;
-	if (_undo.back().clips != _clips) return;
+	if (_undo.back().clips != _clips || _undo.back().kind != _kind) return;
 
 	_undo.pop_back();
 	_open_group = movie_edit_group::none;
@@ -1069,7 +1164,19 @@ void movie_project::select(const size_t index, const bool extend, const bool tog
 {
 	if (index >= _clips.size()) return;
 
-	if (toggle)
+	if (extend)
+	{
+		// The run between the anchor and the clip: in place of the selection, or with Ctrl added to it, as in any list.
+		if (!toggle) _selected.clear();
+
+		for (auto i = std::min(_anchor, index); i <= std::max(_anchor, index); ++i)
+		{
+			if (std::find(_selected.begin(), _selected.end(), i) == _selected.end()) _selected.emplace_back(i);
+		}
+
+		std::sort(_selected.begin(), _selected.end());
+	}
+	else if (toggle)
 	{
 		const auto found = std::find(_selected.begin(), _selected.end(), index);
 
@@ -1086,15 +1193,6 @@ void movie_project::select(const size_t index, const bool extend, const bool tog
 		}
 
 		_anchor = index;
-	}
-	else if (extend)
-	{
-		_selected.clear();
-
-		for (auto i = std::min(_anchor, index); i <= std::max(_anchor, index); ++i)
-		{
-			_selected.emplace_back(i);
-		}
 	}
 	else
 	{
@@ -1318,10 +1416,19 @@ void movie_project::end_edit_group()
 	_open_group = movie_edit_group::none;
 }
 
-void movie_project::reset(std::vector<movie_clip> clips, const core::file_path path)
+void movie_project::kind(const movie_kind kind)
+{
+	if (kind == _kind) return;
+
+	push_undo();
+	_kind = kind;
+}
+
+void movie_project::reset(std::vector<movie_clip> clips, const core::file_path path, const movie_kind kind)
 {
 	_clips = std::move(clips);
 	_path = path;
+	_kind = kind;
 	_undo.clear();
 	mark_clean();
 	++_revision;
@@ -1365,6 +1472,7 @@ void movie_project::undo()
 	_selected = std::move(entry.selected);
 	_current = entry.current;
 	_anchor = entry.anchor;
+	_kind = entry.kind;
 	_modified = !_clean_depth || *_clean_depth != _undo.size();
 	++_revision;
 	++_edit_revision;

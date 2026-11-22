@@ -6,11 +6,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The row list the task views share (Rename, Import, Sync, Convert/Metadata/Date, Tags).
-// list_view lays out the column header and rows, whose columns fit their content and are resized by
-// dragging the divider after them, scrolls by the wheel and the keyboard, and tracks a run's progress
-// and then, in a Status column after the review's own, what it did to each row; view_command_status is
-// the status a run reports through; view_controls_host pairs the list with its controls panel; and
-// the CollisionPolicy control is defined once here for every operation that writes to a destination.
+// review_list lays out its rows under the band of headings every headed table shares - a click on a heading sorts
+// the rows by its column, a second the other way and a third back to the review's own order, and the divider after a
+// column resizes it, the columns fitting their content - scrolls by the wheel, keeps the rows picked out and the
+// keyboard's cursor among them, which the keys move and Copy takes, and tracks a run's progress and then, in a Status
+// column after the review's own, what it did to each row; view_command_status is the status a run reports through;
+// view_controls_host pairs the list with its controls panel; and the CollisionPolicy control is defined once here
+// for every operation that writes to a destination.
 
 #pragma once
 
@@ -19,9 +21,10 @@
 #include "ui_controllers.h"
 #include "ui_elements.h"
 #include "ui_dialog.h"
-#include "libdesktop/ui/text/table_layout.h"
+#include "libdesktop/ui/list_selection.h"
+#include "libdesktop/ui/table_headings.h"
 
-class list_view;
+class review_list;
 class view_controls_host;
 class view_command_status;
 using view_controls_host_ptr = std::shared_ptr<view_controls_host>;
@@ -96,48 +99,16 @@ inline view_element_ptr create_collision_policy_control(const ui::frame_ptr& fra
 	return group;
 }
 
-// A cell's text cut to its column's width, ending in an ellipsis, where it is wider, as a file browser shows a name
-// too long for its column: drawn whole it was clipped mid-character with nothing to say so. Text that fits is as it
-// is, and a character is never split.
-inline std::string fit_cell_text(render::measure_context& mc, const std::string_view text, const int width)
-{
-	constexpr auto unbounded = std::numeric_limits<int>::max() / 4;
-	const auto measure = [&mc](const std::string_view s)
-	{
-		return mc.measure_text(s, render::font_face::dialog, render::text_style::single_line, unbounded).cx;
-	};
-
-	if (text.empty() || measure(text) <= width) return std::string(text);
-
-	constexpr std::string_view ellipsis = "\xE2\x80\xA6";
-	const auto available = width - measure(ellipsis);
-	// The most characters that fit before the ellipsis: as many as `fits` always do, as many as `unfit` never.
-	auto fits = 0;
-	auto unfit = core::utf8_codepoint_count(text);
-
-	while (fits + 1 < unfit)
-	{
-		const auto mid = fits + (unfit - fits) / 2;
-		if (measure(text.substr(0, core::utf8_truncate(text, mid))) <= available) fits = mid;
-		else unfit = mid;
-	}
-
-	auto result = std::string(text.substr(0, core::utf8_truncate(text, fits)));
-	result += ellipsis;
-	return result;
-}
-
-class list_view : public view_base
+class review_list : public view_base
 {
 protected:
-	using this_type = list_view;
+	using this_type = review_list;
 
 	view_state& _state;
 	view_host_ptr _host;
 	sizei _extent;
 	view_scroller _scroller;
 
-	bool _rows_clickable = false;
 	progress_state _progress;
 	bool _showing_results = false;
 	bool _refresh_requested = false;
@@ -155,10 +126,13 @@ protected:
 	int coll_offset = 0;
 	int col_widths[max_col_count] = {};
 
-	recti _col_header_bounds[max_col_count];
-	bool _header_active = false;
-	bool _header_tracking = false;
-	int _header_active_num = 0;
+	// The headings over the columns, the band they are drawn in and each one's cell in it, and what the rows are
+	// sorted by: drawn and answered as every headed table's are.
+	std::vector<ui::table_heading> _headings;
+	std::vector<ui::table_heading_cell> _heading_cells;
+	recti _band_bounds;
+	ui::table_sort _sort;
+	int _pressed_heading = -1;
 
 	// A divider resizes the column before it, as in a file browser's details view. A column dragged
 	// to a width keeps it, in unscaled units so a change of DPI does too, until the view is opened
@@ -179,30 +153,35 @@ protected:
 	// height is held here for the scroll that has to clear it.
 	int _band_height = 0;
 	int _band_margin = 0;
-	// From one row's top to the next one's, which the arrow keys scroll by.
+	// From one row's top to the next one's.
 	int _row_step = 0;
 
 	friend class ui::scroll_controller;
-	friend class ui::clickable_controller;
-	friend class header_controller;
-	friend class column_divider_controller;
+	friend class review_row_controller;
 
 public:
 	struct row_element final : std::enable_shared_from_this<row_element>, view_element
 	{
-		list_view& _view;
+		review_list& _view;
 		std::string _text[max_col_count];
+		// What orders the row by a column whose text does not sort as it should - an action's rank, a count, a
+		// date. A column the review gives keys sorts by them alone, rows without one last; any other by its text.
+		ui::table_sort_key _keys[max_col_count];
 		icon_index _icons[max_col_count] = {};
-		core::color _bg_row;
 		core::color32 _text_color[max_col_count] = {};
-		int _order = 0;
+		// Drawn on the shade every other row is.
+		bool _striped = false;
+		// Picked out, and under the pointer: the review's own selection, which Copy takes, and its hover.
+		bool _selected = false;
+		bool _hovered = false;
 		// This row's index into whatever vector the run reports against - the plan for the batch views,
 		// the dense work list for the others - or -1 when the run never reports this row at all. The
 		// header sort reorders _rows while the run stays in plan order, so display position is not an
 		// identity and nothing may index the run by it.
 		int _work_index = -1;
 		// Where the run's report of this row comes among the rest: every task builds its rows in the
-		// order its run reports them, so review_rows numbers them as they are built.
+		// order its run reports them, so review_rows numbers them as they are built. It is the review's
+		// own order too, which a third click on a heading puts the rows back in.
 		int _result_index = -1;
 
 		// Each cell's text as last drawn, fitted to its column, with the text and width it was fitted to: a row
@@ -216,7 +195,7 @@ public:
 
 		mutable fitted_cell _fitted[max_col_count];
 
-		row_element(list_view& view) noexcept : view_element(view_element_style::can_invoke), _view(view) {}
+		row_element(review_list& view) noexcept : view_element(view_element_style::can_invoke), _view(view) {}
 
 		std::string_view fitted_text(render::measure_context& mc, const int col, const int width) const
 		{
@@ -226,7 +205,7 @@ public:
 			{
 				cell.source = _text[col];
 				cell.width = width;
-				cell.text = fit_cell_text(mc, _text[col], width);
+				cell.text = ui::table_layout::fit_text(mc, _text[col], width);
 			}
 
 			return cell.text;
@@ -234,32 +213,36 @@ public:
 
 		void render(render::draw_context& dc, const pointi element_offset) const override
 		{
-			const auto bg_alpha = dc.colors.alpha * dc.colors.bg_alpha;
 			const auto logical_bounds = bounds.offset(element_offset);
+			if (!dc.clip_bounds().intersects(logical_bounds)) return;
 
-			if (dc.clip_bounds().intersects(logical_bounds))
+			if (_striped) ui::table_layout::draw_row_stripe(dc, logical_bounds);
+
+			if (_selected || _hovered)
 			{
-				dc.draw_rect(logical_bounds, _bg_row.a_min(bg_alpha));
-				dc.draw_rect(logical_bounds, _bg_color);
+				const auto fill = _selected ? ui::selection_fill(_view._view_has_focus, _hovered) : ui::hover_fill();
+				dc.draw_rounded_rect(logical_bounds, fill.aa(dc.colors.alpha), dc.padding1);
+			}
 
-				auto x = logical_bounds.left + _view.coll_offset;
+			dc.draw_rect(logical_bounds, _bg_color);
 
-				for (int i = 0; i < _view.column_count(); i++)
+			auto x = logical_bounds.left + _view.coll_offset;
+
+			for (int i = 0; i < _view.column_count(); i++)
+			{
+				const auto text_color = core::color(_text_color[i] != 0 ? _text_color[i] : dc.colors.foreground,
+				                                    dc.colors.alpha);
+				const recti cell_bounds(x, logical_bounds.top, x + _view.col_widths[i], logical_bounds.bottom);
+				if (_icons[i] != icon_index::none)
 				{
-					const auto text_color = core::color(_text_color[i] != 0 ? _text_color[i] : dc.colors.foreground,
-					                                    dc.colors.alpha);
-					const recti cell_bounds(x, logical_bounds.top, x + _view.col_widths[i], logical_bounds.bottom);
-					if (_icons[i] != icon_index::none)
-					{
-						xdraw_icon(dc, _icons[i], cell_bounds, text_color, {});
-					}
-					else
-					{
-						dc.draw_text(fitted_text(dc, i, cell_bounds.width()), cell_bounds, render::font_face::dialog,
-						             render::text_style::single_line, text_color, {});
-					}
-					x += _view.col_widths[i] + dc.padding2;
+					xdraw_icon(dc, _icons[i], cell_bounds, text_color, {});
 				}
+				else
+				{
+					dc.draw_text(fitted_text(dc, i, cell_bounds.width()), cell_bounds, render::font_face::dialog,
+					             render::text_style::single_line, text_color, {});
+				}
+				x += _view.col_widths[i] + dc.padding2;
 			}
 		}
 
@@ -286,9 +269,13 @@ public:
 	// and strand the highlight on the one it left behind.
 	row_element_ptr _active_row;
 
-	list_view(view_state& state, view_host_ptr host) : _state(state), _host(std::move(host)) {}
+	// The rows picked out, to copy, and where the keyboard is among them, by the rules every list is selected by.
+	ui::list_selection<row_element_ptr> _selection;
+	row_element_ptr _hover_row;
 
-	~list_view() override { _rows.clear(); }
+	review_list(view_state& state, view_host_ptr host) : _state(state), _host(std::move(host)) {}
+
+	~review_list() override { _rows.clear(); }
 
 	progress_state progress() const override { return _progress; }
 
@@ -339,7 +326,7 @@ public:
 	// cancel source straight after begin_processing: anything run in between can pump messages, and
 	// a view abandoned there must not have its next state mistaken for this run's. `hold` lives
 	// until the run reports back - the file handles a run detaches stay detached until then.
-	static std::shared_ptr<view_command_status> make_run_status(const std::shared_ptr<list_view>& view,
+	static std::shared_ptr<view_command_status> make_run_status(const std::shared_ptr<review_list>& view,
 	                                                            size_t generation,
 	                                                            std::shared_ptr<std::atomic_int> cancel_source,
 	                                                            std::string review_status,
@@ -479,11 +466,14 @@ public:
 
 	// The reviewed rows, given in the order the run will report them - every task builds its rows in the
 	// order its run takes them - so what the run reports lands on the row it describes however the list is
-	// sorted meanwhile.
+	// sorted meanwhile. New rows arrive in the order the user sorted the last ones by, and nothing is picked out.
 	void review_rows(std::vector<row_element_ptr> rows)
 	{
 		for (size_t i = 0; i < rows.size(); ++i) rows[i]->_result_index = static_cast<int>(i);
 		_rows = std::move(rows);
+		_selection.clear();
+		_hover_row.reset();
+		apply_sort();
 	}
 
 	// A finished run keeps every row and column of the review it ran, and adds a Status column saying what
@@ -491,9 +481,9 @@ public:
 	// and a row that did nothing is dimmed, so what changed stands out.
 	void show_results(const std::vector<item_status>& statuses)
 	{
-		const auto success_color = core::lighten(ui::style::colors.success_background, 0.55f);
-		const auto fail_color = core::lighten(ui::style::colors.warning_background, 0.55f);
-		const auto muted_color = core::darken(ui::style::colors.view_text, 0.22f);
+		const auto success_color = ui::style::tone_text(ui::style::tone::succeeded);
+		const auto fail_color = ui::style::tone_text(ui::style::tone::failed);
+		const auto muted_color = ui::style::tone_text(ui::style::tone::muted);
 		const auto status_col = col_count;
 
 		for (const auto& row : _rows)
@@ -600,25 +590,60 @@ public:
 		_extent = extent;
 		_state.stop();
 
-		// Each use of the task starts from columns that fit what it lists.
+		// Each use of the task starts from columns that fit what it lists, in the review's own order.
 		_table_columns.reset();
+		_sort = {};
 	}
 
-	// The first heading puts the rows back in the order the review built them, and any other sorts by what its
-	// column says.
-	void sort(int col_num)
+	// What the rows are sorted by, which the heading over it shows.
+	ui::table_sort current_sort() const { return _sort; }
+
+	// A click on the heading over a column: the first sorts the rows by it its own way, the second the other way and
+	// the third puts them back in the review's own order. A heading over arrows alone sorts nothing.
+	void click_heading(const int col)
 	{
-		if (col_num > 0 && col_num < column_count())
+		if (col < 0 || col >= static_cast<int>(_headings.size()) || !_headings[col].sortable) return;
+		sort(ui::next_table_sort(_sort, col, _headings[col].default_ascending));
+	}
+
+	void sort(const ui::table_sort by)
+	{
+		_sort = by;
+		apply_sort();
+		_state.invalidate_view(view_invalid::controller | view_invalid::view_layout);
+	}
+
+	// Orders the rows by the sort: by each row's key for the column where the review gives the column keys, and by
+	// each row's text where it does not, with rows that have nothing after the rest either way; with no sort, in the
+	// order the review built them.
+	void apply_sort()
+	{
+		const auto column = _sort.column;
+
+		if (column < 0 || column >= column_count())
 		{
-			std::ranges::stable_sort(_rows, [col_num](const auto& left, const auto& right)
-			{ return core::icmp(left->_text[col_num], right->_text[col_num]) < 0; });
-		}
-		else
-		{
-			std::ranges::sort(_rows, [](const auto& left, const auto& right) { return left->_order < right->_order; });
+			_sort = {};
+			std::ranges::stable_sort(_rows, {}, &row_element::_result_index);
+			return;
 		}
 
-		_state.invalidate_view(view_invalid::controller | view_invalid::view_layout);
+		const auto keyed_column = std::ranges::any_of(_rows, [column](const auto& row)
+		{ return !row->_keys[column].empty(); });
+		std::vector<std::pair<ui::table_sort_key, row_element_ptr>> keyed;
+		keyed.reserve(_rows.size());
+
+		for (const auto& row : _rows)
+		{
+			const auto& text = row->_text[column];
+			auto key = keyed_column ? row->_keys[column]
+			                        : (text.empty() ? ui::table_sort_key{} : ui::table_sort_key(text));
+			keyed.emplace_back(std::move(key), row);
+		}
+
+		const auto ascending = _sort.ascending;
+		std::ranges::stable_sort(keyed, [ascending](const auto& left, const auto& right)
+		{ return ui::table_sorts_before(&left.first, &right.first, ascending); });
+		for (size_t i = 0; i < keyed.size(); ++i) _rows[i] = std::move(keyed[i].second);
 	}
 
 	void layout(render::measure_context& mc, const sizei extent) override
@@ -633,6 +658,16 @@ public:
 		const auto line_height = mc.text_line_height(render::font_face::dialog);
 		_band_margin = line_height;
 		_band_height = line_height + mc.padding2 * 2;
+		_band_bounds = recti(client_bounds.left, 0, client_bounds.right, _band_height);
+
+		// A heading over arrows alone names nothing and sorts nothing.
+		_headings.clear();
+
+		for (int i = 0; i < columns; i++)
+		{
+			const auto title = titles[i].sv();
+			_headings.push_back({std::string(title), false, !title.empty(), column_first_ascending(i)});
+		}
 
 		auto y_max = 0;
 		std::string_view longest_text[max_col_count];
@@ -663,7 +698,7 @@ public:
 					has_icon[i] = has_icon[i] || r->_icons[i] != icon_index::none;
 				}
 
-				r->_bg_row.a = odd_row ? 0.11f : 0.0f;
+				r->_striped = odd_row;
 				odd_row = !odd_row;
 			}
 
@@ -704,6 +739,20 @@ public:
 			column_x += col_widths[i] + mc.padding2;
 			const auto divider_x = column_x - mc.padding2 / 2;
 			_col_divider_bounds[i] = recti(divider_x - grip, 0, divider_x + grip, _band_height);
+		}
+
+		// Each heading's cell reaches halfway across the gap either side of its column, the first to the band's left
+		// edge and the last to its right; its title stands where the column's values do.
+		_heading_cells.clear();
+		column_x = coll_offset;
+
+		for (int i = 0; i < columns; i++)
+		{
+			const auto left = i == 0 ? _band_bounds.left : column_x - mc.padding2 / 2;
+			const auto right = i + 1 == columns ? _band_bounds.right : column_x + col_widths[i] + mc.padding2 / 2;
+			_heading_cells.push_back(
+				{recti(left, 0, right, _band_height), recti(column_x, 0, column_x + col_widths[i], _band_height)});
+			column_x += col_widths[i] + mc.padding2;
 		}
 
 		_scroller.layout({client_bounds.width(), y_max}, client_bounds, scroll_bounds);
@@ -761,97 +810,23 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, hit_test_context& ctx) override;
 
-	view_element_ptr element_from_location(const int y) const
+	// The row under a point in the view, if any: none over the headings, between rows or past the last.
+	row_element_ptr row_at(const pointi loc) const
 	{
-		view_element_ptr result;
-		const auto offset = _scroller.scroll_offset();
-		int distance = 10000;
-
-		for (const auto& i : _rows)
-		{
-			const auto yy = (i->bounds.top + i->bounds.bottom) / 2;
-			const auto d = abs(yy - y - offset.y);
-
-			if (d < distance)
-			{
-				distance = d;
-				result = i;
-			}
-		}
-
-		return result;
+		if (loc.y < _band_height) return {};
+		const auto at = loc + _scroller.scroll_offset();
+		const auto found = std::ranges::find_if(_rows, [at](const auto& row) { return row->bounds.contains(at); });
+		return found == _rows.end() ? row_element_ptr{} : *found;
 	}
 
-	void render_headers(render::draw_context& dc)
+	// The headings, drawn as every headed table's are, over an opaque band since the rows scroll under it.
+	void render_headings(render::draw_context& dc) const
 	{
-		const auto columns = column_count();
-		const auto titles = column_titles();
-		const auto cy = dc.text_line_height(render::font_face::dialog) + dc.padding2 * 2;
-		const auto bg_alpha = dc.colors.alpha * 0.77f;
-		const auto text_color = core::color(dc.colors.foreground, dc.colors.alpha);
-
-		constexpr int y = 0;
-		auto x = coll_offset;
-
-		const core::color header_bg(core::darken(dc.colors.background, 0.33f), bg_alpha);
-
-		if (!_header_active)
-		{
-			const auto header_bounds = recti(0, y, _extent.cx, y + cy);
-			dc.draw_rect(header_bounds, header_bg);
-		}
-		else
-		{
-			auto xx = x;
-
-			for (int i = 0; i < columns; ++i)
-			{
-				xx += col_widths[i] + dc.padding2;
-			}
-
-			const auto header_bounds_left = recti(0, y, x - dc.padding2, y + cy);
-			const auto header_bounds_right = recti(xx - dc.padding2, y, _extent.cx, y + cy);
-
-			dc.draw_rect(header_bounds_left, header_bg);
-			dc.draw_rect(header_bounds_right, header_bg);
-		}
-
-		for (int i = 0; i < columns; ++i)
-		{
-			const auto cx = col_widths[i];
-			const recti col_header_bounds(x - dc.padding2, y, x + cx, y + cy);
-			const recti col_header_text_bounds(x, y, x + cx, y + cy);
-
-			if (_header_active)
-			{
-				const core::color bg(core::darken(_header_active_num == i ? ui::style::colors.dialog_selected_background
-				                                                          : dc.colors.background,
-				                                  0.33f),
-				                     bg_alpha);
-				dc.draw_rect(col_header_bounds, bg);
-			}
-
-			dc.draw_text(titles[i], col_header_text_bounds, render::font_face::dialog, render::text_style::single_line,
-			             text_color, {});
-
-			_col_header_bounds[i] = col_header_bounds;
-			x += cx + dc.padding2;
-		}
-
-		// The dividers are drawn so the columns read as resizable: faintly, and plainly under the pointer.
-		const auto line_width = std::max(1, core::round(dc.scale_factor));
-
-		for (int i = 0; i < columns - 1; ++i)
-		{
-			const auto& divider = _col_divider_bounds[i];
-			if (divider.is_empty()) continue;
-
-			const auto active = _divider_active == i;
-			const auto width = active ? line_width * 2 : line_width;
-			const auto mid = (divider.left + divider.right) / 2;
-			const recti line(mid - width / 2, y + dc.padding1, mid - width / 2 + width, y + cy - dc.padding1);
-			dc.draw_rect(line, core::color(dc.colors.foreground, dc.colors.alpha * (active ? 0.9f : 0.3f)));
-		}
+		dc.draw_rect(_band_bounds, core::color(dc.colors.background, dc.colors.alpha));
+		const std::span<const recti> dividers(_col_divider_bounds,
+		                                      static_cast<size_t>(std::max(0, column_count() - 1)));
+		ui::draw_table_headings(dc, _band_bounds, _headings, _heading_cells, dividers, _sort, _pressed_heading,
+		                        _divider_active);
 	}
 
 	void render(render::draw_context& rc, view_controller_ptr /*controller*/) override
@@ -865,7 +840,7 @@ public:
 				i->render(rc, offset);
 			}
 
-			render_headers(rc);
+			render_headings(rc);
 			_scroller.draw_scroll(rc);
 		}
 		else
@@ -877,9 +852,7 @@ public:
 
 			if (!message.empty())
 			{
-				const auto text_color = core::color(rc.colors.foreground, rc.colors.alpha);
-				rc.draw_text(message, recti(_extent), render::font_face::dialog, render::text_style::single_line_center,
-				             text_color, {});
+				ui::draw_empty_message(rc, recti(_extent).inflate(-rc.padding2 * 2), message);
 			}
 		}
 	}
@@ -892,27 +865,146 @@ public:
 		return _scroller.can_scroll();
 	}
 
-	// The keys that scroll the review while it has the keyboard: the arrows by a row, Page Up and Page Down by what
-	// shows under the headings, Home and End to either end.
+	// The keys while the review has the keyboard, as any list's: the arrows move the cursor a row, Page Up and Page
+	// Down by what shows under the headings, and Home and End to either end, picking out the row it reaches - Shift
+	// extending what is picked out, Ctrl moving the cursor alone. Ctrl+Space picks out the row the cursor is on or
+	// puts it back, Ctrl+A picks out every row, and Ctrl+C copies those picked out. Anything else is the window's.
 	bool key_down(const char32_t key, const platform::key_state keys) override
 	{
-		if (keys.control || keys.alt) return false;
+		if (keys.alt || _rows.empty() || _progress.active) return false;
 
-		const auto page = std::max(_row_step, _scroller.client_bounds().height() - _band_height - _row_step);
-		const auto y = _scroller.scroll_offset().y;
-		int to;
+		if (keys.control && !keys.shift)
+		{
+			if (key == 'C') return copy_rows();
 
-		if (key == platform::keys::UP) to = y - _row_step;
-		else if (key == platform::keys::DOWN) to = y + _row_step;
-		else if (key == platform::keys::PRIOR) to = y - page;
-		else if (key == platform::keys::NEXT) to = y + page;
-		else if (key == platform::keys::HOME) to = 0;
-		else if (key == platform::keys::END) to = std::numeric_limits<int>::max();
-		else return false;
+			if (key == 'A')
+			{
+				_selection.select_all(_rows);
+				selection_changed();
+				return true;
+			}
 
-		_scroller.scroll_offset(_host, 0, to);
-		_state.invalidate_view(view_invalid::controller);
+			if (key == platform::keys::SPACE)
+			{
+				_selection.toggle_cursor();
+				selection_changed();
+				return true;
+			}
+		}
+
+		const auto page = std::max(1, (_scroller.client_bounds().height() - _band_height) / std::max(1, _row_step) - 1);
+		const auto to = ui::step_list_cursor(cursor_index(), static_cast<int>(_rows.size()), key, page, false);
+		if (to < 0) return false;
+
+		const auto& row = _rows[static_cast<size_t>(to)];
+		_selection.move_to(row, keys.control, keys.shift, _rows);
+		selection_changed();
+		scroll_to_row(row);
 		return true;
+	}
+
+	// A press on a row picks it out as a click does in any list: alone, toggled with Ctrl, or as the range from the
+	// anchor with Shift, which Ctrl adds to what is picked out already.
+	void click_row(const row_element_ptr& row, const bool control, const bool shift)
+	{
+		_selection.click(row, control, shift, _rows);
+		selection_changed();
+	}
+
+	void hover_row(const row_element_ptr& row)
+	{
+		if (_hover_row == row) return;
+		if (_hover_row) _hover_row->_hovered = false;
+		_hover_row = row;
+		if (_hover_row) _hover_row->_hovered = true;
+		_state.invalidate_view(view_invalid::view_redraw);
+	}
+
+	void selection_changed()
+	{
+		for (const auto& row : _rows) row->_selected = _selection.is_selected(row);
+		_state.invalidate_view(view_invalid::view_redraw);
+	}
+
+	int cursor_index() const
+	{
+		const auto& cursor = _selection.cursor();
+		if (!cursor) return -1;
+		const auto found = std::ranges::find(_rows, *cursor);
+		return found == _rows.end() ? -1 : static_cast<int>(found - _rows.begin());
+	}
+
+	// Scrolls so the row shows clear of the headings, the first row as far up as the list goes.
+	void scroll_to_row(const row_element_ptr& row)
+	{
+		if (_rows.empty()) return;
+		const auto above = _rows.front()->bounds.top;
+		const auto client_height = _scroller.client_bounds().height();
+		const auto y = _scroller.scroll_offset().y;
+
+		if (row->bounds.top - above < y) _scroller.scroll_offset(_host, 0, row->bounds.top - above);
+		else if (row->bounds.bottom > y + client_height)
+			_scroller.scroll_offset(_host, 0, row->bounds.bottom - client_height);
+
+		_state.invalidate_view(view_invalid::controller);
+	}
+
+	// The rows picked out, as text: a line a row in the order shown, its columns' text parted by tabs - the columns of
+	// arrows left out - so it pastes into a spreadsheet a cell at a time.
+	std::string selected_rows_text() const
+	{
+		std::string text;
+		const auto columns = column_count();
+
+		for (const auto& row : _selection.selected_in(_rows))
+		{
+			std::string line;
+			auto first = true;
+
+			for (int c = 0; c < columns; ++c)
+			{
+				if (c < static_cast<int>(_headings.size()) && _headings[c].title.empty()) continue;
+				if (!first) line += '\t';
+				line += row->_text[c];
+				first = false;
+			}
+
+			if (!text.empty()) text += "\r\n";
+			text += line;
+		}
+
+		return text;
+	}
+
+	bool copy_rows() const
+	{
+		const auto text = selected_rows_text();
+		if (text.empty()) return false;
+		platform::set_clipboard(text);
+		return true;
+	}
+
+	// The ring goes round the row the cursor is on.
+	recti keyboard_bounds() const override
+	{
+		const auto at = cursor_index();
+		return at < 0 ? recti{} : _rows[static_cast<size_t>(at)]->bounds.offset(-_scroller.scroll_offset());
+	}
+
+	// Escape lets go of the rows picked out before it closes the task.
+	bool escape() override
+	{
+		if (_selection.empty() && !_selection.cursor()) return false;
+		_selection.clear();
+		selection_changed();
+		return true;
+	}
+
+	// What is picked out is drawn as any list's selection is, dimmer while the keyboard is elsewhere.
+	void focus(const bool has_focus) override
+	{
+		view_base::focus(has_focus);
+		_state.invalidate_view(view_invalid::view_redraw);
 	}
 
 	virtual text_t empty_message() { return {}; }
@@ -921,6 +1013,10 @@ public:
 	{
 		return std::array<text_t, max_col_count>{text_t{}, text_t{}, text_t{}, text_t{}};
 	};
+
+	// The way a first click on a column's heading sorts it: names from the start, a date or a count latest or largest
+	// first.
+	virtual bool column_first_ascending(const int /*col*/) const { return true; }
 };
 
 class view_command_status final : public df::status_i, public std::enable_shared_from_this<view_command_status>
@@ -1017,11 +1113,11 @@ private:
 	}
 };
 
-inline std::shared_ptr<view_command_status> list_view::make_run_status(const std::shared_ptr<list_view>& view,
-                                                                       const size_t generation,
-                                                                       std::shared_ptr<std::atomic_int> cancel_source,
-                                                                       std::string review_status,
-                                                                       std::shared_ptr<void> hold)
+inline std::shared_ptr<view_command_status> review_list::make_run_status(const std::shared_ptr<review_list>& view,
+                                                                         const size_t generation,
+                                                                         std::shared_ptr<std::atomic_int> cancel_source,
+                                                                         std::string review_status,
+                                                                         std::shared_ptr<void> hold)
 {
 	return std::make_shared<view_command_status>(view->_state._async, std::move(cancel_source),
 	                                             [view, generation](const size_t index)
@@ -1054,6 +1150,7 @@ public:
 	// up by its scroll.
 	recti _bounds;
 	std::vector<view_element_ptr> _controls;
+	std::vector<std::weak_ptr<view_element>> _disabled_for_run;
 	core::color _clr = core::color(ui::style::colors.dialog_text);
 	int _layout_height = 0;
 	int _layout_width = 0;
@@ -1160,11 +1257,25 @@ public:
 	{
 		auto changed = false;
 
-		for (const auto& c : _controls)
+		if (enable)
 		{
-			if (c->is_enabled() == enable) continue;
-			c->enable(enable);
-			changed = true;
+			// Restore only the controls the run disabled; selection-dependent actions own their own state.
+			for (const auto& weak : _disabled_for_run)
+			{
+				if (const auto c = weak.lock()) c->enable(true);
+			}
+			changed = !_disabled_for_run.empty();
+			_disabled_for_run.clear();
+		}
+		else
+		{
+			for (const auto& c : _controls)
+			{
+				if (!c->is_enabled()) continue;
+				c->enable(false);
+				_disabled_for_run.emplace_back(c);
+				changed = true;
+			}
 		}
 
 		if (changed) frame()->invalidate(_bounds);
@@ -1289,146 +1400,73 @@ public:
 	}
 };
 
-class header_controller final : public view_controller
+// A row under the pointer: lit while the pointer is over it, and picked out by a press - alone, toggled with Ctrl,
+// or as the range from the anchor with Shift - as an entry is wherever a list is selected from.
+class review_row_controller final : public view_controller
 {
-public:
-	list_view& _parent;
-	int _col_num;
-
-	header_controller(const view_host_ptr& host, list_view& parent, const recti bounds, const int col_num) :
-		view_controller(host, bounds), _parent(parent), _col_num(col_num)
-	{
-		_parent._header_active = true;
-		_parent._header_active_num = _col_num;
-	}
-
-	~header_controller() override
-	{
-		if (_parent._header_tracking)
-		{
-			escape();
-		}
-
-		_parent._header_active = false;
-	}
-
-	void draw(render::draw_context& /*rc*/) override {}
-
-	platform::cursor cursor() const override { return platform::cursor::link; }
-
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
-	{
-		_last_loc = loc;
-		_parent._header_tracking = true;
-		_host->frame()->invalidate();
-	}
-
-	void on_mouse_move(const pointi loc) override { _last_loc = loc; }
-
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
-	{
-		_last_loc = loc;
-
-		// A press that escape abandoned, or that was released away from the header it started on,
-		// is not a click on that header. Sorting regardless re-ordered the whole list on a gesture
-		// the user had already taken back.
-		const auto was_tracking = _parent._header_tracking;
-		_parent._header_tracking = false;
-
-		if (was_tracking && _bounds.contains(loc))
-		{
-			_parent.sort(_col_num);
-		}
-
-		_host->frame()->invalidate();
-	}
-
-	bool escape() override
-	{
-		if (!_parent._header_tracking) return false;
-		_parent._header_tracking = false;
-		return true;
-	}
-
-	void popup_from_location(view_hover_element& /*hover*/) override {}
-};
-
-// Drags a column divider, which resizes the column before it as in a file browser's details view: the
-// columns before it stay put and the divider stays under the pointer, while the last column takes up the
-// room it gives back or makes the room it takes. Only a drag that moves sizes anything, Escape takes the
-// drag back, and a double-click fits the column to its content.
-class column_divider_controller final : public view_controller
-{
-	list_view& _parent;
-	int _col = 0;
-	ui::table_layout::resize_gesture _drag;
+	review_list& _list;
+	review_list::row_element_ptr _row;
 
 public:
-	column_divider_controller(const view_host_ptr& host, list_view& parent, const recti bounds, const int col) :
-		view_controller(host, bounds), _parent(parent), _col(col)
+	review_row_controller(const view_host_ptr& host, review_list& list, review_list::row_element_ptr row,
+	                      const recti bounds) : view_controller(host, bounds), _list(list), _row(std::move(row))
 	{
-		_parent._divider_active = _col;
-		_host->frame()->invalidate();
+		_list.hover_row(_row);
 	}
 
-	~column_divider_controller() override
+	~review_row_controller() override
 	{
-		if (_drag.active()) escape();
-		_parent._divider_active = -1;
-		_host->frame()->invalidate();
+		if (_list._hover_row == _row) _list.hover_row(nullptr);
 	}
 
-	platform::cursor cursor() const override { return platform::cursor::left_right; }
-
-	void on_mouse_left_button_down(const pointi loc, const platform::key_state /*keys*/) override
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
 	{
-		_drag.begin(_parent._table_columns, _col, loc.x);
+		view_controller::on_mouse_left_button_down(loc, keys);
+		_list.click_row(_row, keys.control, keys.shift);
 	}
 
-	void on_mouse_move(const pointi loc) override
+	void on_mouse_leave() override
 	{
-		if (_drag.update(_parent._table_columns, loc.x)) _parent._state.invalidate_view(view_invalid::view_layout);
-	}
-
-	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
-	{
-		on_mouse_move(loc);
-		_drag.finish();
-	}
-
-	void on_mouse_left_button_double_click(const pointi /*loc*/, const platform::key_state /*keys*/) override
-	{
-		_drag.finish();
-		_parent.fit_column(_col);
-	}
-
-	bool escape() override
-	{
-		if (!_drag.cancel(_parent._table_columns)) return false;
-		_parent._state.invalidate_view(view_invalid::view_layout);
-		return true;
+		if (_list._hover_row == _row) _list.hover_row(nullptr);
 	}
 };
 
-inline view_controller_ptr list_view::controller_from_location(const view_host_ptr& host, const pointi loc,
-                                                               hit_test_context& ctx)
+inline view_controller_ptr review_list::controller_from_location(const view_host_ptr& host, const pointi loc,
+                                                                 hit_test_context& ctx)
 {
 	if (_progress.active) return nullptr;
 
-	// A divider sits over the edges of the headers either side of it, so it is found first.
+	// A divider sits over the edges of the headings either side of it, so it is found first.
 	for (int i = 0; i < column_count() - 1 && !_rows.empty(); ++i)
 	{
 		if (ctx.occluded(_col_divider_bounds[i]))
 		{
-			return std::make_shared<column_divider_controller>(host, *this, _col_divider_bounds[i], i);
+			const auto changed = [this]
+			{
+				_state.invalidate_view(view_invalid::view_layout);
+			};
+			const auto active = [this, i](const bool held)
+			{
+				_divider_active = held ? i : -1;
+			};
+			auto actions = ui::column_divider_actions(_table_columns, i, changed, active);
+			return std::make_shared<ui::table_divider_controller>(host, _col_divider_bounds[i], std::move(actions));
 		}
 	}
 
-	for (int i = 0; i < column_count(); ++i)
+	for (int i = 0; i < static_cast<int>(_heading_cells.size()) && !_rows.empty(); ++i)
 	{
-		if (ctx.occluded(_col_header_bounds[i]))
+		if (_headings[i].sortable && ctx.occluded(_heading_cells[i].bounds))
 		{
-			return std::make_shared<header_controller>(host, *this, _col_header_bounds[i], i);
+			const auto pressed = [this, i](const bool down)
+			{
+				_pressed_heading = down ? i : -1;
+			};
+			const auto click = [this, i]
+			{
+				click_heading(i);
+			};
+			return std::make_shared<ui::table_heading_controller>(host, _heading_cells[i].bounds, pressed, click);
 		}
 	}
 
@@ -1437,15 +1475,10 @@ inline view_controller_ptr list_view::controller_from_location(const view_host_p
 		return std::make_shared<scroll_controller>(host, _scroller, _scroller.scroll_bounds());
 	}
 
-	if (_rows_clickable)
+	if (const auto row = row_at(loc))
 	{
-		const auto test = element_from_location(loc.y);
-
-		if (test)
-		{
-			const auto test_offset = -_scroller.scroll_offset();
-			return std::make_shared<clickable_controller>(host, test, test_offset);
-		}
+		const auto bounds = row->bounds.offset(-_scroller.scroll_offset());
+		if (ctx.occluded(bounds)) return std::make_shared<review_row_controller>(host, *this, row, bounds);
 	}
 
 	return nullptr;

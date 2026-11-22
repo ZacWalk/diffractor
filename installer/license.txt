@@ -9,6 +9,8 @@ This program also includes libraries licensed under the GNU Lesser General Publi
 
 It also includes libaom, the Alliance for Open Media's AV1 encoder, which writes AVIF files, under the BSD 2-Clause licence and the Alliance for Open Media Patent License 1.0. Their texts are installed beside the program as LICENSE.libaom.txt and PATENTS.libaom.txt.
 
+Face search runs two networks on Diffractor's own libmug: libfacedetection's face detector, Shiqi Yu's, with its network weights, under the BSD 3-Clause licence, installed beside the program as LICENSE.libfacedetection.txt; and the SFace face recognition model from the OpenCV Zoo, under the Apache License 2.0, installed beside the program as LICENSE.sface.txt. The model's weights are stored at 8 and 4 bits.
+
 Diffractor includes other third-party libraries, each under its own licence and the copyright of its authors. Their terms are recorded with the source code.
 
 Diffractor is the trading name of Zachariah David Walker (Zac Walker), a sole trader registered in the Czech Republic under number 87852969, who holds the copyright in the Diffractor source code.

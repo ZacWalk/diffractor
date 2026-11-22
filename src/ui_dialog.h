@@ -21,8 +21,6 @@
 
 namespace ui
 {
-	bool browse_for_term(view_state& vs, const frame_ptr& parent, std::string& result);
-
 	std::vector<recti> layout_collage(recti draw_bounds, const std::vector<sizei>& dimensions);
 
 	static int default_control_height(render::measure_context& mc, const int lines = 1)
@@ -112,6 +110,8 @@ namespace ui
 		bool auto_select_first = true;
 		bool folder_select_button = false;
 		uint32_t max_predictions = 20u;
+		// How many results a search control's list is tall enough for, every one whole; 0 for sixteen lines.
+		uint32_t rows_shown = 0;
 
 		enum class select_type
 		{
@@ -1031,72 +1031,6 @@ namespace ui
 				}
 
 				if (_changed) _changed(_text);
-				_edit->focus();
-			}
-		}
-	};
-
-	class term_picker_control final :
-		public labelled_edit_element,
-		public std::enable_shared_from_this<term_picker_control>
-	{
-		const frame_ptr& _parent;
-		view_state& _state;
-
-		std::string& _val;
-		toolbar_ptr _tb;
-
-	public:
-		term_picker_control(view_state& state, const frame_ptr& h, const std::string_view label, std::string& v) :
-			labelled_edit_element(label), _parent(h), _state(state), _val(v)
-		{
-			edit_styles edit_style;
-			_edit = ui::make_edit(edit_style, v, [this](const std::string_view text) { _val = text; });
-
-			const auto c = std::make_shared<command>();
-			c->icon = icon_index::add;
-			c->invoke = [this]
-			{
-				browse_for_term();
-			};
-
-			toolbar_styles styles;
-			_tb = ui::make_toolbar(styles, {c});
-		}
-
-		void dispatch_event(const view_element_event& event) override
-		{
-			if (event.type == view_element_event_type::populate)
-			{
-				_edit->window_text(_val);
-			}
-		}
-
-		void visit_children(const std::function<void(const view_element_ptr&)>& visit) const override
-		{
-			visit(_edit);
-			visit(_tb);
-		}
-
-		void layout(render::measure_context& mc, const recti bounds_in) override
-		{
-			bounds = bounds_in;
-			layout_edit_and_toolbar(mc, _tb);
-		}
-
-		void auto_completes(const std::vector<std::string>& texts) const { _edit->auto_completes(texts); }
-
-		void browse_for_term() const
-		{
-			std::string term;
-
-			if (ui::browse_for_term(_state, _parent, term))
-			{
-				const auto original_len = static_cast<int>(_val.size());
-				if (!_val.empty()) _val += " ";
-				_val += term;
-				_edit->window_text(_val);
-				_edit->select(original_len, -1);
 				_edit->focus();
 			}
 		}
@@ -2584,6 +2518,16 @@ namespace ui
 		}
 	};
 
+	inline auto save_discard_cancel(std::function<void()> save, std::function<void()> discard,
+	                                std::function<void()> cancel, const bool save_is_default = false)
+	{
+		return std::make_shared<button_row>(
+			std::vector<control_ptr>{make_button(tt.button_save, std::move(save), save_is_default),
+			                         make_button(tt.button_dont_save, std::move(discard)),
+			                         make_button(tt.button_cancel, std::move(cancel), !save_is_default)},
+			button_row_fit::wrap);
+	}
+
 	class ok_cancel_control_analyze final :
 		public view_element,
 		public std::enable_shared_from_this<ok_cancel_control_analyze>
@@ -3111,7 +3055,12 @@ namespace ui
 		{
 			_edit_line_height = mc.text_line_height(render::font_face::title) + 16;
 			const auto line_height = mc.text_line_height(render::font_face::dialog);
-			return {cx, line_height * 16 + _edit_line_height + mc.padding2};
+			// As the list lays its rows out: each a line and padding1 tall, with padding2 above and below them.
+			const auto list_height = _completes->rows_shown
+			                             ? static_cast<int>(_completes->rows_shown) * (line_height + mc.padding1) +
+			                                   mc.padding2 * 2
+			                             : line_height * 16;
+			return {cx, list_height + _edit_line_height + mc.padding2};
 		}
 
 		void layout(render::measure_context& mc, const recti bounds_in) override
@@ -3239,7 +3188,15 @@ public:
 
 	size_t body_end() const
 	{
-		return std::max(header_end(), _controls.size() - std::min(_pinned_footer, _controls.size()));
+		auto footer = _pinned_footer;
+		if (!footer && !_controls.empty() && dynamic_cast<const ui::button_row*>(_controls.back().get()))
+		{
+			footer = _controls.size() >= 2 &&
+			                 dynamic_cast<const divider_element*>(_controls[_controls.size() - 2].get())
+			             ? 2
+			             : 1;
+		}
+		return std::max(header_end(), _controls.size() - std::min(footer, _controls.size()));
 	}
 
 	bool is_split() const { return header_end() > 0 || body_end() < _controls.size(); }

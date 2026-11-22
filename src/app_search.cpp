@@ -8,7 +8,8 @@
 // Purpose: The address box. Search editing, focus, Enter, Cancel and accepting a prediction, and
 // the auto-complete that ranks history, recent folders, tags, index vocabulary and scoped values
 // (tag:, with:, ...) on the auto-complete worker, counting what each finds through the search index,
-// before publishing them to the prediction list.
+// before publishing them to the prediction list. Matching items supply next-term refinements;
+// person rows can receive a cached thumbnail crop after publication.
 
 #include "pch.h"
 
@@ -16,6 +17,7 @@
 
 #include "model_location.h"
 #include "model_index.h"
+#include "model_faces_search.h"
 #include "model.h"
 #include "model_db.h"
 
@@ -35,11 +37,14 @@ class search_auto_complete final :
 	view_state& _state;
 	// Writes accepted text back into the native address bar.
 	std::function<void(std::string)> _set_text;
+	std::function<void()> _repaint;
+	std::weak_ptr<const faces::overview> _portrait_overview;
+	core::hash_map<uint32_t, core::const_surface_ptr> _portraits;
 	core::string_counts _known;
 	ui::auto_complete_match_ptr _selected;
 	std::atomic_uint64_t _search_generation = 0;
 	// Raised by each keystroke on the UI thread, which stops the counting a superseded pass is doing.
-	std::atomic_int _count_version = 0;
+	std::shared_ptr<std::atomic_int> _count_version = std::make_shared<std::atomic_int>(0);
 
 	// Long enough for the search index to count a keystroke's predictions, short enough that a
 	// collection it cannot answer never holds up the list.
@@ -51,12 +56,13 @@ public:
 	void clear() override
 	{
 		++_search_generation;
+		++*_count_version;
 		_known.clear();
 		_selected.reset();
 	}
 
-	search_auto_complete(view_state& s, std::function<void(std::string)> set_text) :
-		_state(s), _set_text(std::move(set_text))
+	search_auto_complete(view_state& s, std::function<void(std::string)> set_text, std::function<void()> repaint) :
+		_state(s), _set_text(std::move(set_text)), _repaint(std::move(repaint))
 	{
 		resize_to_show_results = true;
 		auto_select_first = true;
@@ -138,7 +144,7 @@ public:
 	// the search index is asked, within a budget, and a newer keystroke stops the pass, so a prediction
 	// left uncounted keeps its place rather than waiting on a scan. Answers false for a superseded pass.
 	bool count_predictions(ui::auto_complete_results& found, const uint64_t search_generation, const bool rank,
-	                       const core::cancel_token& token)
+	                       const core::cancel_token& token, search_counter& counter)
 	{
 		// Likeliest first, so the budget is spent where it decides the most, and each text counted once.
 		std::ranges::stable_sort(found, [](const auto& a, const auto& b) { return a->weight > b->weight; });
@@ -146,7 +152,6 @@ public:
 		core::hash_set<std::string, core::ihash, core::ieq> seen;
 		std::erase_if(found, [&seen](const auto& candidate) { return !seen.emplace(candidate->edit_text()).second; });
 
-		search_counter counter(_state.item_index);
 		const auto deadline = core::now_us() + prediction_count_budget_us;
 
 		for (const auto& match : found)
@@ -182,12 +187,32 @@ public:
 	// "with:ex" suggests property scopes. Runs on the auto_complete worker thread. Returns
 	// true if it produced scope-specific suggestions (which are ranked above generic matches).
 	static constexpr int scope_weight = 20;
+
+	void add_person_completions(const df::search_scope_completion& scope, ui::auto_complete_results& found,
+	                            const size_t limit)
+	{
+		for (const auto& person : _state.item_index.auto_complete_people(scope.value, limit))
+		{
+			const auto text = scope.format(person.text);
+			constexpr auto offset = "person:\""sv.size();
+			auto highlights = person.highlights;
+			for (auto& h : highlights) h.offset += static_cast<uint32_t>(offset);
+			// The face book can know a name before the next overview is ready to count its pictures.
+			auto row = std::make_shared<text_match>(*this, text, scope.lead, highlights,
+			                                        scope_weight + std::min(person.occurrences, 20), icon_index::person);
+			row->person_name = person.text;
+			if (!found.empty() && core::icmp(found.front()->edit_text(), row->edit_text()) == 0)
+			{
+				if (const auto literal = std::dynamic_pointer_cast<text_match>(found.front()))
+					literal->person_name = person.text;
+			}
+			found.emplace_back(std::move(row));
+		}
+	}
 	static constexpr int literal_query_weight = 1000;
 
-	bool add_scope_completions(const std::string& query, ui::auto_complete_results& found)
+	bool add_scope_completions(const df::search_scope_completion& scope, ui::auto_complete_results& found)
 	{
-		const auto scope = df::classify_search_scope(query);
-
 		if (scope.kind == df::search_scope_kind::none) return false;
 		if (scope.kind == df::search_scope_kind::tag && !scope.lead.empty())
 		{
@@ -220,7 +245,7 @@ public:
 		}
 		else if (scope.kind == df::search_scope_kind::location)
 		{
-			// locations.md 3.4: a location scope completes from the gazetteer, and the candidate
+			// docs/locations.md#location-search: a location scope completes from the gazetteer, and the candidate
 			// is already the canonical term so committing it runs the search it displays.
 			for (const auto& loc : _state.item_index.auto_complete_locations(scope.value, max_predictions, scope.level))
 			{
@@ -229,6 +254,12 @@ public:
 				                                    scope_weight + std::min(loc.occurrences, 20),
 				                                    icon_index::location));
 			}
+		}
+		else if (scope.kind == df::search_scope_kind::person)
+		{
+			// docs/faces.md#8-searching: the names the collection holds, most pictures first. The highlights are
+			// moved past the scope the committed text leads with.
+			add_person_completions(scope, found, found.size() < max_predictions ? max_predictions - found.size() : 0);
 		}
 		else
 		{
@@ -246,12 +277,108 @@ public:
 		return !found.empty();
 	}
 
+	struct portrait_job
+	{
+		uint32_t face;
+		core::file_path path;
+		rectd area;
+		std::weak_ptr<text_match> row;
+		core::const_image_ptr thumb;
+		core::const_surface_ptr tile;
+	};
+
+	// Resolve the representative on the completion worker. The popup is published before any SQLite
+	// or decode work, and a missing cached thumbnail never triggers a read of the original picture.
+	static std::vector<portrait_job> portrait_jobs(const faces::overview_ptr& overview,
+	                                              const ui::auto_complete_results& found)
+	{
+		std::vector<portrait_job> jobs;
+		if (!overview || !overview->store) return jobs;
+		for (const auto& match : found)
+		{
+			const auto row = std::dynamic_pointer_cast<text_match>(match);
+			if (!row || row->person_name.empty()) continue;
+			const auto* person = overview->find_person(row->person_name);
+			if (!person || person->samples.empty()) continue;
+			// Cut from a picture's cached thumbnail, which a face found in a video is not on.
+			const auto sample = std::ranges::find_if(person->samples, [&overview](const uint32_t f)
+			{ return !overview->store->run_of_face(f).video; });
+			if (sample == person->samples.end()) continue;
+			const auto face = *sample;
+			jobs.push_back({face, overview->store->run_of_face(face).path, overview->store->entry(face).bounds(), row,
+			                {}, {}});
+			if (jobs.size() == 5) break;
+		}
+		return jobs;
+	}
+
+	void load_portraits(const faces::overview_ptr& overview, std::vector<portrait_job> jobs, const uint64_t generation)
+	{
+		if (overview != _state.item_index.faces().current_overview()) return;
+		if (_portrait_overview.lock() != overview)
+		{
+			_portraits.clear();
+			_portrait_overview = overview;
+		}
+		std::erase_if(jobs, [&](const auto& j)
+		{
+			const auto cached = _portraits.find(j.face);
+			if (cached == _portraits.end()) return false;
+			if (const auto row = j.row.lock()) row->portrait = cached->second;
+			return true;
+		});
+		if (jobs.empty()) return;
+
+		auto& async = _state._async;
+		async.queue_database([&async, weak = weak_from_this(), version = _count_version,
+		                      token = core::cancel_token::current(*_count_version), generation,
+		                      jobs = std::move(jobs)](const database& db) mutable
+		{
+			for (auto& j : jobs)
+			{
+				if (token.is_cancelled()) return;
+				j.thumb = db.load_thumbnail(j.path).thumb;
+			}
+			async.queue_async(async_queue::thumbnail_decode,
+			                  [&async, weak, version, token, generation, jobs = std::move(jobs)]() mutable
+			{
+				files ff;
+				for (auto& j : jobs)
+				{
+					if (token.is_cancelled()) return;
+					if (is_valid(j.thumb))
+						j.tile = faces::cut_tile(ff.image_to_surface(j.thumb, {256, 256}, false, token,
+						                                            decode_intent::thumbnail), j.area, 40);
+				}
+				async.queue_ui([weak, generation, jobs = std::move(jobs)]
+				{
+					const auto self = weak.lock();
+					if (!self || self->_search_generation != generation ||
+					    self->_portrait_overview.lock() != self->_state.item_index.faces().current_overview()) return;
+					bool changed = false;
+					for (const auto& j : jobs)
+					{
+						if (!j.tile) continue;
+						if (self->_portraits.size() >= 32) self->_portraits.erase(self->_portraits.begin());
+						self->_portraits[j.face] = j.tile;
+						if (const auto row = j.row.lock())
+						{
+							row->portrait = j.tile;
+							changed = true;
+						}
+					}
+					if (changed && self->_repaint) self->_repaint();
+				});
+			});
+		});
+	}
+
 	void search(const std::string& query, std::function<void(const ui::auto_complete_results&)> complete) override
 	{
 		const auto search_generation = ++_search_generation;
 		const auto known = std::make_shared<const core::string_counts>(_known);
 		// Taken here, on the UI thread, so this keystroke stops any counting the last one is still doing.
-		const core::cancel_token count_token(_count_version);
+		const core::cancel_token count_token(*_count_version);
 
 		// The active search and the recent-search list are UI-thread owned and are mutated by
 		// view_state::open while a prediction is still running, so snapshot them here.
@@ -264,7 +391,9 @@ public:
 		                          [this, keep_alive = shared_from_this(), known, recents, current_search_text, query,
 		                           complete, search_generation, count_token]
 		{
+			if (_search_generation != search_generation || count_token.is_cancelled()) return;
 			ui::auto_complete_results found;
+			search_counter counter(_state.item_index);
 
 			const auto query_parts = core::split(query, true);
 			const auto trimmed_query = core::trim(query);
@@ -303,7 +432,24 @@ public:
 			}
 			else
 			{
-				scoped = add_scope_completions(query, found);
+				const auto scope = df::classify_search_scope(query);
+				scoped = add_scope_completions(scope, found);
+				if (!core::trim(scope.lead).empty() && !core::is_path(trimmed_query))
+				{
+					const auto base = df::search_t::parse_without_probing(scope.lead);
+					for (const auto& word : counter.refinements(base, std::string_view(query).substr(scope.lead.size()),
+					                                            count_token))
+						found.emplace_back(vocabulary_match(word.text, scope.lead, {}, 40, search_icon(word.text)));
+					const auto fragment = std::string_view(query).substr(scope.lead.size());
+					if (!scoped && !fragment.empty() && !core::is_white_space(fragment.front()) &&
+					    fragment.find_first_of(":-!\"'") == fragment.npos)
+					{
+						auto person = scope;
+						person.kind = df::search_scope_kind::person;
+						person.value = fragment;
+						add_person_completions(person, found, 4);
+					}
+				}
 
 				if (found.size() < max_predictions && core::is_path(core::trim(query)))
 				{
@@ -377,14 +523,19 @@ public:
 					}
 				}
 
-				// locations.md 3.5: a bare place name is the most guessable spelling and the most
-				// misleading one, because a plain text search only sees stored place fields. The
-				// completion offers the resolved `loc:` term instead, and a multi-word name such as
+				// docs/locations.md#location-search: a bare place name is the most guessable spelling and the most
+				// broadest one, because a plain text search also sees names, faces and metadata. The
+				// completion offers the narrower `loc:` term too, and a multi-word name such as
 				// "new york" has to be offered too or the vocabulary is unreachable for half the
 				// places that need it.
 				if (!scoped && !trimmed_query.empty() && trimmed_query.front() != '#' && trimmed_query.front() != '@' &&
 				    !core::is_path(trimmed_query))
 				{
+					df::search_scope_completion person;
+					person.kind = df::search_scope_kind::person;
+					person.value = trimmed_query;
+					add_person_completions(person, found, 5);
+
 					for (const auto& location : _state.item_index.auto_complete_locations(trimmed_query, 5))
 					{
 						found.emplace_back(vocabulary_match(location.text, std::string{}, location.highlights,
@@ -486,15 +637,20 @@ public:
 			// Recent searches keep their order: how recent a search is, is why it is offered.
 			const auto showing_recents = query_parts.empty() || core::icmp(query, current_search_text) == 0;
 
-			if (!count_predictions(found, search_generation, !showing_recents, count_token))
+			if (!count_predictions(found, search_generation, !showing_recents, count_token, counter))
 			{
 				return;
 			}
 
 			if (found.size() > max_predictions) found.resize(max_predictions);
-			_state.queue_ui([keep_alive, complete, found, search_generation]
+			const auto overview = _state.item_index.faces().current_overview();
+			auto jobs = portrait_jobs(overview, found);
+			_state.queue_ui([keep_alive, complete, found, search_generation, overview, jobs = std::move(jobs)]() mutable
 			{
-				if (keep_alive->_search_generation == search_generation) complete(found);
+				if (keep_alive->_search_generation != search_generation) return;
+				complete(found);
+				if (keep_alive->_search_generation == search_generation)
+					keep_alive->load_portraits(overview, std::move(jobs), search_generation);
 			});
 		});
 	}
@@ -529,9 +685,10 @@ public:
 };
 
 std::shared_ptr<ui::complete_strategy_t> make_search_auto_complete(view_state& state,
-                                                                   std::function<void(std::string)> set_text)
+                                                                   std::function<void(std::string)> set_text,
+                                                                   std::function<void()> repaint)
 {
-	return std::make_shared<search_auto_complete>(state, std::move(set_text));
+	return std::make_shared<search_auto_complete>(state, std::move(set_text), std::move(repaint));
 }
 
 void app_frame::hide_search_predictions()
@@ -633,5 +790,6 @@ void app_frame::preview_search_prediction(const std::string& text)
 void app_frame::init_search()
 {
 	_search_completes = make_search_auto_complete(_state,
-	                                              [this](const std::string& text) { preview_search_prediction(text); });
+		[this](const std::string& text) { preview_search_prediction(text); },
+		[this] { if (_search_predictions_frame) _search_predictions_frame->frame()->invalidate(); });
 }

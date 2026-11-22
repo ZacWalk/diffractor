@@ -4,15 +4,18 @@ Movie mixer assembles an ordered list of photos, videos, audio files and screens
 video. It provides ordering, trims, how long a photo or a screen shows, a caption on any clip, a sound file
 a project can name to play in place of a clip's own sound, preview, a plain-text project file a person or
 an agent can write, rendering, and a command line that renders without a window. Every pair of neighbouring
-items crossfades and the movie fades in from black and out to it, with nothing to set. It does not modify,
-move or delete source media.
+items crossfades and the movie fades in from black and out to it, with nothing to set. A project may instead be
+a [YouTube Short](#youtube-shorts): upright and three minutes at most, its words clear of what YouTube lays over
+it. It
+does not modify, move or delete source media.
 
 ## 1. Behaviour contract
 
 Movie receives photos, videos and audio files from the complete visibly selected set in listing order. The
-timeline then becomes an independent ordered document. Rendering writes one MP4 destination and Save
-project writes one `.dfv` project; source media remains unchanged. Failed or cancelled writes preserve
-an existing destination, and timeline edits are undoable during the session.
+timeline then becomes an independent ordered document. Rendering writes one MP4 destination - or, for a Short
+asked to, one MP4 per item into a chosen folder - and Save project writes one `.dfv` project; source media remains
+unchanged. Failed or cancelled writes preserve an existing destination, and timeline edits are undoable during the
+session.
 
 ## 2. Entry and document lifecycle
 
@@ -57,16 +60,22 @@ block near either end.
 
 Selection, focus and playback are separate:
 
-- Filled tiles are selected and receive timeline commands.
-- One outlined tile is focused and supplies the item controls.
+- Filled tiles are selected and receive timeline commands, filled as a selection is in every list.
+- One ringed tile is focused and supplies the item controls: the ring that shows where the keyboard is.
 - A bar at the tile foot shows the playhead, under the item playing from its own start: during a
   crossfade, the incoming one.
 
 Plain click selects and focuses one item. Ctrl+click toggles membership without allowing an empty
-selection. Shift+click selects from the anchor. Pressing an already selected tile moves focus without
+selection. Shift+click selects from the anchor, and Ctrl+Shift+click adds that run to the selection.
+Pressing an already selected tile moves focus without
 collapsing the selected block, so dragging moves the complete selection. A block keeps its internal
 order and focus, and a no-op drop creates no undo entry. Escape during a drag drops nothing: the block,
 a trim handle or the scrubber returns to where it was pressed, and Movie stays open.
+
+The keys move along the timeline as along any list. Left and Right step a clip - while the movie plays,
+the transport's skip - Page Up and Page Down a strip's width of clips, and Home and End to either end;
+Shift takes in the clips from the anchor and Ctrl with Shift adds them, Ctrl moves the focus alone, and
+Ctrl+Space puts the focused clip in the selection or takes it out. Space plays, as it does media everywhere.
 
 Files dropped on the timeline insert at the displayed boundary; files dropped elsewhere append. While
 files dragged from another application are over the strip, the boundary they would insert at is
@@ -80,8 +89,9 @@ began is no edit, and typing in another item's text starts a step of its own.
 
 ## 4. Preview and item controls
 
-The preview and renderer use the same timeline timing and composition decision. Frames are fitted,
-never stretched or cropped, and unused canvas area is black. Every source is used upright: a photo's
+The preview and renderer use the same timeline timing and composition decision. Frames are fitted into the
+movie's frame, never stretched or cropped, and unused canvas area is black, or in a Short the picture's own
+[backdrop](#youtube-shorts). Every source is used upright: a photo's
 Exif orientation and a video's rotation are applied where its frame is made, so the strip, preview,
 output dimensions and rendered file agree. A crossfade holds both contributing items and mixes them
 with the same weights it gives their sound, except where [Sound](#sound) keeps one up.
@@ -96,9 +106,11 @@ Starting movie playback or clip playback stops the other, and a clip whose sourc
 stops the clip player rather than leaving it playing a still picture.
 
 The panel's description adds how many lines of an opened project could not be read and how many clips
-have lost their source. Its Movie section states the output: the derived dimensions, frame rate,
-length and approximate size. The focused item's section names it, gives its place in the movie and
-where it starts, and offers what that kind of item has:
+have lost their source. Its Movie section offers YouTube Short, which makes the movie a [Short](#youtube-shorts)
+and is undone as any edit is, and states the output: the derived dimensions, frame rate, length and approximate
+size, and for a Short whether it fades out at three minutes or ends where its tune starts again. The focused
+item's section names it, gives its place in the movie, where it starts and the shape it is drawn in, and offers
+what that kind of item has:
 
 - A video, or an audio file: in and out points, a two-handle range scrubber, retained-region playback,
   endpoint frames, an audio-level track and Reset.
@@ -138,10 +150,12 @@ falls behind the picture restarts at the playhead. A seek discards queued sound 
 ### Audio clips
 
 An audio file has no picture of its own, so its clip shows the file as Diffractor plays it, on a
-landscape 1920 x 1080 frame at 30 fps under the file's title and who made it: a SID tune's or a
+landscape 1920 x 1080 frame, or an upright 1080 x 1920 one in a Short, at the movie's frame rate under the file's
+title and who made it: a SID tune's or a
 tracker module's monitor, following the music, or the visualizer's bars beside the file's cover art,
 as large as the frame holds. The monitor is laid out for the frame by the stack's own rules, so a SID
-monitor has the width to stand its output over its filter beside the register grid, and it shows
+monitor on a landscape frame has the width to stand its output over its filter beside the register grid, and
+in a Short it stacks its voices beside the grid ([below](#youtube-shorts)); either way it shows
 nothing to press: no tune selector, mute, solo or Follow. A tracker's pattern scrolls smoothly through
 its bar in step with the sound. The frames are drawn by the software renderer, the same for
 the strip, the preview and the render on any machine, so the glass Direct3D gives the bars in the
@@ -154,12 +168,13 @@ ordinary player.
 
 ## 5. Text, crossfades and sound
 
-Movie has no settings. Every rule below is fixed, so a project means the same movie wherever it is
-rendered.
+Movie has one setting, [YouTube Short](#youtube-shorts), which the project keeps. Every rule below is fixed, so a
+project means the same movie wherever it is rendered.
 
 ### Text screens and captions
 
-A text screen is its words on black, for its own length: five seconds when it is added. A movie
+A text screen is its words on near black - a tenth of the way from black to white, dark enough to read as black
+while the shadow under the words still shows, faintly - for its own length: five seconds when it is added. A movie
 usually opens and closes on one, and can have one anywhere between. A screen with no words is black.
 
 A caption belongs to a clip. It appears once the crossfade bringing its clip in has finished, so the
@@ -170,8 +185,10 @@ the clips after it until the next caption begins, a text screen begins or the mo
 captions never show at once and none shows over a screen. A caption fades in and out over half a
 second, or a third of its length when that is shorter. An item holds at most 2,000 bytes of text.
 
-Text is white Segoe UI with a dark edge, wrapped within 84% of the frame's width and sized to the
-frame's shorter side, so a portrait movie's text reads as well as a landscape one's. A screen's words
+Text is white Segoe UI over a soft black shadow - a copy of its letters blurred wide behind them and cast in no
+direction, so the words stand off a bright picture without an edge drawn round them - wrapped within 84% of the
+frame's width and sized to the frame's shorter side, so a portrait movie's text reads as well as a landscape one's.
+The shadow spreads with the text's size, so it is the same at any frame size. A screen's words
 are bold, a twelfth of that side, and centred in the frame. A caption is a twentieth, centred across the
 foot of the frame, 6% above its bottom edge. Text too large for 84% of the frame's width and 90% of its
 height is set smaller until it fits, so no line is cut off. A caption is drawn over the pictures and
@@ -230,6 +247,8 @@ Each line is one of:
 - `c <part> <file> ['<caption>'] [!<sound file>]`: a clip of the file, with its caption if it has one, and the
   sound file it plays in place of its own sound if it names one.
 - `s <part> <file> ['<caption>'] [!<sound file>]`: the same clip, marked to be stabilized.
+- `short`: the word alone on its line, which makes the movie a [YouTube Short](#youtube-shorts). Save writes it
+  after the comments at the top.
 
 Blank lines and lines starting with `#` are comments. Spaces around a line are ignored, the letter may
 be either case, and a UTF-8 byte order mark and Windows line ends are accepted.
@@ -297,6 +316,10 @@ Output is derived without asking for codec settings:
   frames repeated or dropped unevenly. A video's rate is the one its frames come at: a phone's
   variable-rate video declares 60 or 120 while its frames average 30, and counts as 30. An audio clip
   counts as 30 fps, and a movie of photos and text screens alone is made at 30.
+- A [Short](#youtube-shorts) is 1080 x 1920 whatever its sources, at 60, 50, 30, 25 or 24 fps: the rate most of
+  what moves in it plays best at, by how long each item shows. A video counts for the rate its footage divides
+  into evenly, nearest its own; a PAL SID tune and a tracker module for 50, as their pictures move; an NTSC tune
+  for 60; and another audio file for 30. A Short of photos and text screens alone is made at 30.
 - Audio is 48 kHz stereo, and video bitrate follows output size and rate. An audio track is written
   whenever the timeline holds a video, an audio file or a clip with a sound file, whether or not any of
   those videos carries sound.
@@ -323,6 +346,36 @@ do, holds its last frame to its end, because that frame is the nearest one the s
 finalization; the staged file replaces the destination only after successful completion. A failure
 is reported as a translated reason; the encoder's own diagnostic text goes to the log.
 
+### YouTube Shorts
+
+YouTube takes a vertical or square video of three minutes or less as a Short. The Movie section's YouTube Short
+check makes the movie one, and the project keeps it, as `short` in its [file](#6-project-files). A Short:
+
+- is upright HD, at the frame rate [above](#7-rendering);
+- ends by 2:59.5, half a second inside YouTube's limit so the encoder's rounding cannot carry it over, fading out
+  there as a movie fades out at its end. The panel says how long its items run when they run longer, and nothing
+  after the cut is rendered;
+- of one SID tune that repeats within that, played as itself from its start to at least where it starts again,
+  ends there, with no fade in or out, so YouTube's loop joins it seamlessly; the panel says so;
+- stands a picture of another shape whole in the middle of the frame, over a blurred, darkened copy of itself
+  that fills it, rather than between black bars;
+- draws an audio clip upright, filling the frame inside a margin of 2.5% of its width - the file's title and byline
+  30% larger than a movie's, where they fit its width, and a SID tune's monitor as large as the frame's height holds,
+  its voices stacked, all one width, beside the register grid, which stands as tall as them with a column for each
+  voice, and its output and filter across the frame below them - and YouTube lays its title, channel, progress bar
+  and buttons over that picture as it does over a video's;
+- keeps the movie's own words clear of those: wrapped within 76% of the frame's width, away from the buttons down
+  its right edge; a caption 23% above its bottom edge, over the bottom fifth where YouTube's title, channel and
+  progress bar are; and a screen's words centred in its upper four fifths.
+
+With more than one item that is not a text screen, the panel offers Render each item as its own Short. It asks for
+a folder and renders each of those items alone, with its caption, as a Short into it - a SID tune that repeats as
+a seamless loop - one after another, and leaves the text screens out. Each is named for what it plays: a SID
+tune's title and author from its header, with the tune's number where the file holds several, or a file's title
+and artist tags, as `Title - Author.mp4`; a file with no title keeps its own name. A name already in the folder,
+or made earlier in the run, gains ` (2)`, ` (3)` and so on, so nothing is overwritten. A run cancelled or failed
+part way keeps the Shorts it made, says how many, and names the one it failed on.
+
 ## 8. Ownership and limits
 
 Timeline and view state are UI-thread-owned. Workers consume detached paths and clip snapshots and
@@ -336,11 +389,12 @@ shares and one thread at a time draws; a SID tune's render is shared by every re
 pictures and sound, and its reads are its own to serialise.
 
 Movie intentionally has one video track, one crossfade for every join and one fade at each end, text
-only as screens on black and a caption on each clip, in one style with no animation but its fade, no
+only as screens on near black and a caption on each clip, in one style with no animation but its fade, no
 music or narration track under several clips - an audio file is a clip of its own, with its picture, and
 a clip's sound file plays only while that clip shows - no sound file set from the panel, no speed
-control, no per-clip volume, no pan-and-zoom, no color grading, no stabilization yet, no settings, no
-redo, no output larger than HD or faster than 30 fps, and no HEVC or AV1 output. Rendering is
+control, no per-clip volume, no pan-and-zoom, no color grading, no stabilization yet, no setting but YouTube
+Short, no redo, no output larger than HD, nothing faster than 30 fps but a Short, which goes to 60, and no HEVC or
+AV1 output. Rendering is
 unavailable where the platform reports no movie writer.
 
 ## 9. Checking and rendering without the window
@@ -352,7 +406,8 @@ projects are the `.dfv` files directly inside it. In a session the work runs on 
 the window; no source or project is ever modified.
 
 `movie_check` reads each project and probes its sources and sound files, and writes nothing. It reports each line that could not be read, with its number and why; how many videos, photos,
-audio files and text screens the movie holds, how long it is and the output it would make; where each
+audio files and text screens the movie holds, how long it is and the output it would make, and whether it is a
+YouTube Short - one whose items run past three minutes with a warning that it is cut there; where each
 text screen starts; how many clips carry a caption and how many are marked to stabilize; which sources
 and sound files are missing or unreadable; each clip whose part starts at or past the end of its source,
 so plays nothing; and each sound file longer than its clip, which the clip cuts short.

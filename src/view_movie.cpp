@@ -15,19 +15,19 @@
 
 #include "app_commands.h"
 #include "app_text.h"
+#include "app_util.h"
 #include "av_format.h"
 #include "av_sid.h"
 #include "files.h"
 #include "model_index.h"
 #include "ui_elements.h"
 #include "view_movie_audio.h"
+#include "libdesktop/ui/list_selection.h"
 
 namespace
 {
 	constexpr int timeline_tile_cx = 96;
 	constexpr int timeline_tile_cy = 72;
-	// How fast a block dragged against either end of the strip carries it along.
-	constexpr double edge_scroll_tiles_per_second = 6.0;
 	// One frame, larger than the two ends it replaced, because judging a cut from a thumbnail is the
 	// thing this control exists to stop.
 	constexpr int trim_frame_cy = 120;
@@ -50,6 +50,10 @@ namespace
 	// Peak audio levels measured across a source. One bar per 20 ms of a ten-minute clip is finer
 	// than any track can draw; this is enough that a spoken word is still a visible bump.
 	constexpr int audio_peak_buckets = 1024;
+
+	// The size of the frame a Short's backdrop is made from while a video plays in the preview: the backdrop is
+	// a sixteenth of the frame's size, so more would be decoded for nothing.
+	constexpr int movie_backdrop_source_dim = 256;
 
 	// How far a preview session may sit from the position the movie wants before it is seeked. A
 	// session already walking towards that position arrives sooner than a seek would, and one that
@@ -203,10 +207,13 @@ struct movie_frame_key
 	int max_dim = 0;
 	// The tune of a SID file, which is a source of its own.
 	int song = 0;
+	// An audio clip's picture drawn upright, as a Short shows it, rather than landscape.
+	bool upright = false;
 
 	bool operator==(const movie_frame_key& other) const
 	{
-		return time_ms == other.time_ms && max_dim == other.max_dim && song == other.song && path == other.path;
+		return time_ms == other.time_ms && max_dim == other.max_dim && song == other.song && upright == other.upright &&
+		       path == other.path;
 	}
 };
 
@@ -217,7 +224,7 @@ struct movie_frame_key_hash
 	size_t operator()(const movie_frame_key& k) const noexcept
 	{
 		return core::ihash{}(k.path) ^ (static_cast<size_t>(k.time_ms) * 2654435761u) ^ (k.max_dim * 40503u) ^
-		       (static_cast<size_t>(k.song) * 97u);
+		       (static_cast<size_t>(k.song) * 97u) ^ (k.upright ? 0x5bd1e995u : 0u);
 	}
 };
 
@@ -228,7 +235,7 @@ class movie_slot_decoders
 {
 public:
 	core::const_surface_ptr frame(const size_t slot, const core::file_path path, const int song, const double time,
-	                              const int max_dim, const double tolerance)
+	                              const int max_dim, const double tolerance, const bool upright)
 	{
 		if (slot >= _decoders.size()) return {};
 
@@ -240,7 +247,7 @@ public:
 			auto& frames = _audio[slot];
 			if (!frames || frames->path() != path || frames->song() != song)
 				frames = std::make_unique<movie_audio_frames>(path, song);
-			return frames->frame(time, {max_dim, max_dim});
+			return frames->frame(time, {max_dim, max_dim}, {}, upright ? movie_short_extent : movie_audio_extent);
 		}
 
 		_audio[slot].reset();
@@ -324,8 +331,10 @@ public:
 	// that until the one asked for arrives, so a preview waiting on a decode holds its picture
 	// instead of blinking to black between frames. `period` is one frame of the clip's source: a slot
 	// shows the frame at the time asked, so it is keyed to the millisecond and decoded to the nearest.
+	// `upright` draws an audio clip as a Short shows it.
 	core::const_surface_ptr slot_frame(const size_t slot, const core::file_path path, const int song,
-	                                   const bool is_photo, const double time, const int max_dim, const double period)
+	                                   const bool is_photo, const double time, const int max_dim, const double period,
+	                                   const bool upright = false)
 	{
 		if (slot >= _slots.size() || path.is_empty() || max_dim <= 0) return {};
 
@@ -359,7 +368,8 @@ public:
 			return state.surface;
 		}
 
-		const movie_frame_key key{path, static_cast<int>(std::lround(time * 1000)), max_dim, song};
+		const movie_frame_key key{path, static_cast<int>(std::lround(time * 1000)), max_dim, song,
+		                          upright && is_movie_audio(path)};
 
 		if (state.shown == key && is_valid(state.surface)) return state.surface;
 
@@ -549,7 +559,7 @@ private:
 			auto surface = req.slot == no_slot
 			                   ? decode(req.key, req.is_photo)
 			                   : decoders->frame(req.slot, req.key.path, req.key.song, req.key.time_ms / 1000.0,
-			                                     req.key.max_dim, req.tolerance);
+			                                     req.key.max_dim, req.tolerance, req.key.upright);
 
 			s.queue_ui([weak, req, generation, surface = std::move(surface)]() mutable
 			{
@@ -714,6 +724,7 @@ public:
 		_tile_cx = core::round(timeline_tile_cx * mc.scale_factor);
 		_tile_cy = core::round(timeline_tile_cy * mc.scale_factor);
 		_pad = mc.padding2;
+		_scale = mc.scale_factor;
 		_scrollbar_cy = scrollbar_row_cy(mc);
 
 		if (_pending_reveal)
@@ -754,10 +765,11 @@ public:
 				const auto is_selected = project.is_selected(i);
 
 				// Selection is the set a command acts on; focus is the one the panel describes. They
-				// are drawn differently because they are different facts.
-				dc.draw_rect(tile, core::color(is_selected ? ui::style::colors.dialog_selected_background
-				                                           : ui::style::colors.dialog_background,
-				                               dc.colors.alpha * (dragging && is_selected ? 0.5f : 1.0f)));
+				// are drawn differently because they are different facts: the selection as every list's is,
+				// muted while the keyboard is elsewhere, and dimmed while it is dragged.
+				const auto tile_alpha = dc.colors.alpha * (dragging && is_selected ? 0.5f : 1.0f);
+				dc.draw_rect(tile, is_selected ? ui::selection_fill(dc.frame_has_focus).aa(tile_alpha)
+				                               : core::color(ui::style::colors.dialog_background, tile_alpha));
 
 				draw_thumbnail(dc, clip, i, tile.inflate(-dc.padding1));
 
@@ -778,10 +790,9 @@ public:
 
 				if (is_focus)
 				{
-					// Focus is one clip and the selection is a set, so focus is an outline over the
-					// selected fill rather than another fill.
-					dc.draw_border(tile.inflate(-dc.padding1), tile, core::color(dc.colors.foreground, dc.colors.alpha),
-					               core::color(dc.colors.foreground, 0.0f));
+					// Focus is one clip and the selection is a set, so focus is the keyboard's ring round the
+					// selected fill rather than another fill: the ring that marks where the keyboard is everywhere.
+					draw_keyboard_ring(dc, tile);
 				}
 
 				if (static_cast<int>(i) == playing_index)
@@ -809,14 +820,30 @@ public:
 			}
 		}
 
-		// The same track and thumb the selector strip draws, so a strip that runs off the side reads
-		// the same way in every view.
+		// The same track, thumb and marks the selector strip draws, so a strip that runs off the side reads the same
+		// way in every view: each selected clip is marked where the thumb's centre is while it is in the middle.
 		if (can_scroll())
 		{
 			const auto track = scrollbar_bounds().offset(element_offset);
 			const auto thumb = scrollbar_thumb_bounds().offset(element_offset);
 			dc.draw_rounded_rect(track, core::color(dc.colors.foreground, dc.colors.alpha * 0.15f), track.height() / 2);
 			dc.draw_rounded_rect(thumb, core::color(dc.colors.foreground, dc.colors.alpha * 0.55f), thumb.height() / 2);
+
+			std::vector<int> centres;
+			for (size_t i = 0; i < project.size(); ++i)
+			{
+				if (project.is_selected(i))
+					centres.push_back(_pad + static_cast<int>(i) * (_tile_cx + _pad) + _tile_cx / 2);
+			}
+
+			const auto row = scrollbar_row().offset(element_offset);
+			const auto mark_clr = core::color(ui::style::colors.view_selected_background, dc.colors.alpha);
+			for (const auto& mark :
+			     ui::scroll_mark_bounds({track.left, row.top, track.right, row.bottom}, thumb.width(), bounds.width(),
+			                            content_width(), centres, std::max(2, _scrollbar_cy / 5), true))
+			{
+				dc.draw_rect(mark, mark_clr);
+			}
 		}
 
 		prune_textures();
@@ -843,6 +870,9 @@ public:
 		const auto tile = tile_bounds(project.current(), bounds);
 		return tile.intersects(bounds) ? tile.intersection(bounds) : recti{};
 	}
+
+	// How many clips the strip shows at once: what Page Up and Page Down step by.
+	int clips_in_view() const { return std::max(1, bounds.width() / std::max(1, _tile_cx + _pad)); }
 
 	// The region a controller made for `loc` should claim. It has to be the tile, not the strip: the
 	// framework only rebuilds a controller once the pointer leaves its bounds, so a controller that
@@ -960,35 +990,19 @@ public:
 		_drag_to = drop_index(loc);
 	}
 
-	// One step of the carry. Called on every pointer move and on the idle tick, so a pointer resting
-	// at an edge keeps the strip moving. Timed rather than counted, so the speed does not depend on
-	// how often either arrives. Answers whether the strip moved.
+	// One step of the carry, at the pace a drag held at either end carries every list: faster the nearer the end,
+	// timed rather than counted. Called on every pointer move and on the idle tick, so a pointer resting at an edge
+	// keeps the strip moving. Answers whether the strip moved.
 	bool edge_scroll()
 	{
-		const auto zone = std::max(1, _tile_cx / 2);
-		const auto into_left = bounds.left + zone - _drag_loc.x;
-		const auto into_right = _drag_loc.x - (bounds.right - zone);
-		const auto depth = into_left > 0 ? -std::min(into_left, zone) : into_right > 0 ? std::min(into_right, zone) : 0;
-
-		if (!is_dragging() || depth == 0)
+		if (!is_dragging())
 		{
-			_edge_scroll_tick = 0;
-			_edge_scroll_carry = 0;
+			_edge_scroll.reset();
 			return false;
 		}
 
-		const auto now = core::tick_count();
-		// Bounded, so a stall between two steps does not throw the strip to its end.
-		const auto elapsed = _edge_scroll_tick == 0 ? 0.0 : std::min(0.25, (now - _edge_scroll_tick) / 1000.0);
-		_edge_scroll_tick = now;
-
-		// Up to six tiles a second at the very edge, slower nearer the middle. The part of a pixel a
-		// step falls short by is carried to the next, or a pointer that reports often near the
-		// zone's inner edge would round every step to nothing and the strip would never move.
-		const auto speed = edge_scroll_tiles_per_second * (_tile_cx + _pad) * depth / zone;
-		const auto travel = speed * elapsed + _edge_scroll_carry;
-		const auto step = static_cast<int>(travel);
-		_edge_scroll_carry = travel - step;
+		const auto step = _edge_scroll.step(_drag_loc.x, bounds.left, bounds.right, _scale);
+		if (step == 0) return false;
 
 		const auto before = _scroll;
 		set_scroll(_scroll + step);
@@ -1002,8 +1016,7 @@ public:
 	void end_drag()
 	{
 		_drag_from = _drag_to = -1;
-		_edge_scroll_tick = 0;
-		_edge_scroll_carry = 0;
+		_edge_scroll.reset();
 	}
 
 	void dispatch_event(const view_element_event& event) override
@@ -1065,12 +1078,12 @@ private:
 	void draw_thumbnail(render::draw_context& dc, const movie_clip& clip, const size_t /*index*/,
 	                    const recti target) const
 	{
-		// A text screen is its words on black, as the movie shows it, small enough for the tile. One with no
-		// words yet says what it is, dimmed, so it is not mistaken for a gap.
+		// A text screen is its words on near black, as the movie shows it, small enough for the tile. One with no
+		// words yet is black, as the movie shows it too, and says what it is, dimmed, so it is not mistaken for a gap.
 		if (clip.is_text)
 		{
-			dc.draw_rect(target, core::color(0, dc.colors.alpha));
 			const auto empty = clip.text.empty();
+			dc.draw_rect(target, core::color(empty ? 0u : movie_screen_background & 0xFFFFFFu, dc.colors.alpha));
 			dc.draw_text(empty ? tt.movie_screen_title.sv() : std::string_view(clip.text), target.inflate(-dc.padding1),
 			             render::font_face::dialog, render::text_style::multiline_center,
 			             core::color(1.0f, 1.0f, 1.0f, dc.colors.alpha * (empty ? 0.45f : 1.0f)), {});
@@ -1140,10 +1153,10 @@ private:
 	int _tile_cy = timeline_tile_cy;
 	int _pad = 6;
 	int _scrollbar_cy = 10;
+	double _scale = 1.0;
 	std::optional<size_t> _pending_reveal;
 	pointi _drag_loc;
-	int64_t _edge_scroll_tick = 0;
-	double _edge_scroll_carry = 0;
+	ui::edge_scroll _edge_scroll;
 	mutable std::vector<movie_frame_key> _drawn;
 	mutable core::hash_map<movie_frame_key, std::pair<core::const_surface_ptr, render::texture_ptr>,
 	                       movie_frame_key_hash>
@@ -1547,7 +1560,9 @@ namespace
 			// that is only passing over it. A render works from the timeline as it stood when it began, so
 			// nothing moves under it.
 			if (!_held || _index < 0 || _view->progress().active) return;
-			if (_strip->_drag_from < 0 && std::abs(loc.x - _start_loc.x) < drag_threshold) return;
+
+			// The distance every press goes before it is a drag, measured along the strip, the only way a block moves.
+			if (_strip->_drag_from < 0 && !ui::is_drag(_start_loc, {loc.x, _start_loc.y})) return;
 
 			_collapse_on_release = false;
 			_strip->_drag_from = _index;
@@ -1585,9 +1600,6 @@ namespace
 		}
 
 	private:
-		// Far enough that a click with a shaky hand is still a click.
-		static constexpr int drag_threshold = 6;
-
 		movie_view* _view;
 		std::shared_ptr<movie_timeline_element> _strip;
 		int _index;
@@ -1964,6 +1976,7 @@ private:
 		const auto chip_h = line + px(6);
 		const auto chip_w = std::max(px(30), line * 2);
 		const auto gap = px(4);
+		const auto pitch = std::max(1, chip_w + gap);
 		const auto label_w = mc.measure_text(tt.prop_name_track, render::font_face::dialog,
 		                                     render::text_style::single_line, r.width())
 		                         .cx +
@@ -1971,14 +1984,14 @@ private:
 
 		p.label = recti(r.left, r.top, r.left + label_w, r.top + chip_h);
 		const auto left = p.label.right + gap;
-		const auto per_row = std::max(1, (r.right - left + gap) / (chip_w + gap));
+		const auto per_row = std::max(1, (r.right - left + gap) / pitch);
 		const auto rows = (songs + per_row - 1) / per_row;
 
 		if (rows <= 3)
 		{
 			for (auto i = 0; i < songs; ++i)
 			{
-				const auto x = left + (i % per_row) * (chip_w + gap);
+				const auto x = left + (i % per_row) * pitch;
 				const auto y = r.top + (i / per_row) * (chip_h + gap);
 				p.chips.emplace_back(x, y, x + chip_w, y + chip_h);
 			}
@@ -2006,6 +2019,7 @@ private:
 
 void movie_view_state::read_from_project()
 {
+	youtube_short = project.kind() == movie_kind::youtube_short;
 	const auto* const clip = project.current_clip();
 
 	if (!clip)
@@ -2038,9 +2052,14 @@ void movie_view_controls::create_controls()
 		_view->end_edit_group();
 	};
 
-	_info = create_view_info_element(tt.movie_info);
+	_info = std::make_shared<view_info_element>(icon_index::video, tt.movie_title, tt.movie_info);
 	_movie_title = std::make_shared<ui::title_control>(icon_index::video, tt.movie_settings_title);
+	_short_check = std::make_shared<ui::check_control>(_frame, tt.movie_short, _movie_state.youtube_short, false, false,
+	                                                   [this](bool) { _view->short_changed(); });
 	_output_text = std::make_shared<text_element>(std::string_view{}, render::text_style::multiline);
+	_shorts_button = ui::make_button(icon_index::video, tt.movie_render_shorts, {}, [this] { _view->render_shorts(); });
+	_shorts_buttons = std::make_shared<ui::button_row>(std::vector<ui::control_ptr>{_shorts_button},
+	                                                   ui::button_row_fit::wrap);
 
 	_clip_divider = std::make_shared<divider_element>();
 	_clip_title = std::make_shared<ui::title_control>(icon_index::edit, tt.movie_clip_title);
@@ -2059,8 +2078,8 @@ void movie_view_controls::create_controls()
 	                                                       false, [this](bool) { _view->stabilize_changed(); });
 
 	_controls = {
-		_info, _movie_title, _output_text, _clip_divider, _clip_title, _clip_text,
-		_trim, _song,        _hold_slider, _text_label,   _text_edit,  _stabilize_check,
+		_info,      _movie_title, _short_check, _output_text, _shorts_buttons, _clip_divider, _clip_title,
+		_clip_text, _trim,        _song,        _hold_slider, _text_label,     _text_edit,    _stabilize_check,
 	};
 
 	_clr = core::color(ui::style::colors.dialog_text);
@@ -2077,8 +2096,7 @@ bool movie_view_controls::update_for_document()
 
 	// Text that gains or loses lines changes the panel's height as surely as a control appearing does.
 	auto text_changed = false;
-	const auto show_text =
-		[&text_changed](const std::shared_ptr<text_element>& element, std::string& shown, const std::string& text)
+	const auto show_text = [&text_changed](const auto& element, std::string& shown, const std::string& text)
 	{
 		if (shown != text) text_changed = true;
 		shown = text;
@@ -2092,6 +2110,20 @@ bool movie_view_controls::update_for_document()
 
 	auto output_text = str_format(tt.movie_output_fmt.sv(), output.extent.cx, output.extent.cy, output.frame_rate,
 	                              format_clock(timing.duration));
+
+	// A Short says what becomes of a timeline longer than one may be, and of a tune it ends where it starts again.
+	const auto is_short = project.kind() == movie_kind::youtube_short;
+
+	if (is_short && timing.cut)
+	{
+		output_text += "\n";
+		output_text += str_format(tt.movie_short_cut_fmt.sv(), format_clock(timing.whole));
+	}
+	else if (movie_loops_seamlessly(project.clips(), project.kind()))
+	{
+		output_text += "\n";
+		output_text += tt.movie_short_loops.sv();
+	}
 
 	// The size the render will produce, from the bitrates it will use. A unit and a number need no
 	// translating, and a user choosing a destination needs the order of magnitude before they run.
@@ -2144,6 +2176,10 @@ bool movie_view_controls::update_for_document()
 	_clip_divider->is_visible(has_clip);
 	_clip_title->is_visible(has_clip);
 	_clip_text->is_visible(has_clip);
+	// One Short per item only means something for a Short of more than one.
+	_shorts_buttons->is_visible(
+		is_short && std::ranges::count_if(project.clips(), [](const movie_clip& c) { return !c.is_text; }) > 1);
+	_shorts_button->enable(_view->can_render_shorts());
 	// Shown for a photo too, where it is only the frame: the panel and the preview must never
 	// disagree about whether there is a picture to see. A text screen's picture is the preview.
 	_trim->is_visible(has_clip && !is_text);
@@ -2170,11 +2206,14 @@ bool movie_view_controls::update_for_document()
 		                    : str_format(tt.movie_clip_fmt.sv(), clip->path.name().sv(), index, count, starts);
 
 		// Two numbers and an x need no translating, and the panel has to say what shape the source
-		// is before the output line can be read as a consequence of it.
-		if (clip->extent.cx > 0 && clip->extent.cy > 0)
+		// is before the output line can be read as a consequence of it. An audio file's pictures are
+		// drawn in the shape of what holds them, so in a Short they are upright too.
+		const auto shape = clip->is_audio && is_short ? output.extent : clip->extent;
+
+		if (shape.cx > 0 && shape.cy > 0)
 		{
 			text += "\n";
-			text += prop::format_dimensions(clip->extent);
+			text += prop::format_dimensions(shape);
 		}
 
 		show_text(_clip_text, _shown_clip_text, text);
@@ -2217,6 +2256,7 @@ void movie_view_controls::show_item_values() const
 	// puts the item's words in only where they differ, so a probe landing while someone types leaves the
 	// caret where it is.
 	_stabilize_check->show_bound_value();
+	_short_check->show_bound_value();
 }
 
 void movie_view_controls::options_changed()
@@ -2466,6 +2506,17 @@ recti movie_view::calc_preview_target(const sizei source) const
 	return recti(fitted).offset(_preview_bounds.center() - recti(fitted).center());
 }
 
+// A picture is fitted into the movie's frame, as the render fits it into the output: one of another shape stands
+// between black bars, or in a Short on its backdrop, rather than across the whole preview.
+recti movie_view::calc_preview_picture(const sizei source) const
+{
+	const auto frame = calc_preview_target(_movie_state.project.output().extent);
+	if (source.cx <= 0 || source.cy <= 0 || frame.is_empty()) return {};
+
+	const auto fitted = core::scale_dimensions(source, frame.extent(), false);
+	return recti(fitted).offset(frame.center() - recti(fitted).center());
+}
+
 // Text is laid out on the movie's own frame, fitted into the preview as the render's frame would be,
 // so it wraps and sits where the render puts it. It is drawn at the preview's size rather than the
 // output's: a 4K caption shrunk to a window costs a hundred times the drawing for nothing seen.
@@ -2482,11 +2533,12 @@ void movie_view::draw_preview_caption(render::draw_context& dc, const movie_fram
 
 	auto& layer = _caption_layer;
 
-	if (layer.text != text || layer.frame != frame.extent())
+	if (layer.text != text || layer.frame != frame.extent() || layer.kind != project.kind())
 	{
 		layer.text = text;
 		layer.frame = frame.extent();
-		layer.drawn = draw_movie_text(text, movie_text_kind::caption, frame.extent());
+		layer.kind = project.kind();
+		layer.drawn = draw_movie_text(text, movie_text_kind::caption, frame.extent(), project.kind());
 		layer.texture.reset();
 	}
 
@@ -2515,11 +2567,12 @@ render::texture_ptr movie_view::preview_screen_texture(render::draw_context& dc,
 	if (frame.cx <= 0 || frame.cy <= 0) return {};
 
 	const auto stamp = ++_screens_drawn;
+	const auto kind = _movie_state.project.kind();
 	auto* oldest = &_screens.front();
 
 	for (auto& screen : _screens)
 	{
-		if (screen.surface && screen.text == clip.text && screen.frame == frame)
+		if (screen.surface && screen.text == clip.text && screen.frame == frame && screen.kind == kind)
 		{
 			screen.drawn = stamp;
 
@@ -2541,8 +2594,9 @@ render::texture_ptr movie_view::preview_screen_texture(render::draw_context& dc,
 	*oldest = {};
 	oldest->text = clip.text;
 	oldest->frame = frame;
+	oldest->kind = kind;
 	oldest->drawn = stamp;
-	oldest->surface = draw_movie_screen(clip.text, frame);
+	oldest->surface = draw_movie_screen(clip.text, frame, kind);
 	if (!oldest->surface) return {};
 
 	oldest->texture = dc.create_texture();
@@ -2552,6 +2606,37 @@ render::texture_ptr movie_view::preview_screen_texture(render::draw_context& dc,
 	}
 
 	return oldest->texture;
+}
+
+bool movie_view::draw_preview_backdrop(render::draw_context& dc, const size_t which,
+                                       const core::const_surface_ptr& source, const float alpha) const
+{
+	if (which >= _backdrops.size() || !is_valid(source)) return false;
+
+	const auto& project = _movie_state.project;
+	const auto frame = calc_preview_target(project.output().extent);
+	if (frame.is_empty()) return false;
+
+	auto& backdrop = _backdrops[which];
+
+	if (backdrop.source != source || !backdrop.texture)
+	{
+		backdrop.source = source;
+		backdrop.texture.reset();
+
+		if (const auto made = make_movie_backdrop(source, project.output().extent))
+		{
+			backdrop.texture = dc.create_texture();
+			if (backdrop.texture && backdrop.texture->update(made) == render::texture_update_result::failed)
+				backdrop.texture.reset();
+		}
+	}
+
+	if (!backdrop.texture) return false;
+
+	dc.draw_texture(backdrop.texture, frame, recti({}, backdrop.texture->dimensions()), alpha,
+	                render::texture_sampler::bilinear);
+	return true;
 }
 
 void movie_view::render(render::draw_context& dc, view_controller_ptr /*controller*/)
@@ -2594,6 +2679,9 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr /*controll
 		}
 
 		const auto max_dim = std::max(_preview_bounds.width(), _preview_bounds.height());
+		// A Short draws its audio clips upright, and puts a picture of another shape whole over a backdrop of itself.
+		const auto is_short = project.kind() == movie_kind::youtube_short;
+		const auto movie_frame = calc_preview_target(project.output().extent);
 
 		// Slots are bound to clips, not to the frame's a and b positions -- preview_slot_for owns
 		// why. The cache slot below stays positional, because it is only a stand-in.
@@ -2610,15 +2698,14 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr /*controll
 
 			const auto& clip = project.clips()[source.index];
 
-			// A text screen is drawn whole, its words on black, over the frame the movie's picture fills.
+			// A text screen is drawn whole, its words on near black, over the frame the movie's picture fills.
 			if (clip.is_text)
 			{
-				const auto target = calc_preview_target(project.output().extent);
-				const auto screen_texture = preview_screen_texture(dc, clip, target.extent());
+				const auto screen_texture = preview_screen_texture(dc, clip, movie_frame.extent());
 				if (!screen_texture) return {};
 
-				dc.draw_texture(screen_texture, target, dc.colors.alpha * weight);
-				return target;
+				dc.draw_texture(screen_texture, movie_frame, dc.colors.alpha * weight);
+				return movie_frame;
 			}
 
 			// A video comes off a session the player is reading ahead for; a photo is one frame
@@ -2646,12 +2733,26 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr /*controll
 							                        ? clip.extent
 							                        : upright_movie_extent(preview.texture->dimensions(),
 							                                               preview.texture->_orientation);
-							const auto target = calc_preview_target(extent);
+
+							// The session's picture is on the GPU, so its backdrop is made from a small frame
+							// of the same clip, taken a second at a time while it plays.
+							auto covered = recti{};
+
+							if (is_short && movie_needs_backdrop(extent, project.output().extent))
+							{
+								const auto small = _sources->fetch(clip.path, clip.song, false,
+								                                   std::floor(source.source_time),
+								                                   movie_backdrop_source_dim);
+								if (draw_preview_backdrop(dc, cache_slot, small, dc.colors.alpha * weight))
+									covered = movie_frame;
+							}
+
+							const auto target = calc_preview_picture(extent);
 							dc.draw_texture(preview.texture,
 							                upright_movie_destination(target, preview.texture->_orientation),
 							                recti({}, preview.texture->dimensions()), dc.colors.alpha * weight,
 							                render::texture_sampler::bilinear);
-							return target;
+							return covered.is_empty() ? target : covered;
 						}
 					}
 				}
@@ -2660,7 +2761,7 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr /*controll
 			// Until the session has a picture -- while it opens, and for a photo or an audio file, which have
 			// none to decode -- the frame cache stands in, so the preview never goes blank waiting for a decoder.
 			const auto surface = _sources->slot_frame(cache_slot, clip.path, clip.song, clip.is_photo,
-			                                          source.source_time, max_dim, movie_frame_period(clip));
+			                                          source.source_time, max_dim, movie_frame_period(clip), is_short);
 			if (!is_valid(surface)) return {};
 
 			// One texture per slot, updated in place. A fresh texture per frame is a GPU allocation
@@ -2672,9 +2773,14 @@ void movie_view::render(render::draw_context& dc, view_controller_ptr /*controll
 				drawn = surface;
 			}
 
-			const auto target = calc_preview_target(surface->dimensions());
+			auto covered = recti{};
+			if (is_short && movie_needs_backdrop(surface->dimensions(), project.output().extent) &&
+			    draw_preview_backdrop(dc, cache_slot, surface, dc.colors.alpha * weight))
+				covered = movie_frame;
+
+			const auto target = calc_preview_picture(surface->dimensions());
 			dc.draw_texture(texture, target, dc.colors.alpha * weight);
-			return target;
+			return covered.is_empty() ? target : covered;
 		};
 
 		const auto has_mix = frame.b.index >= 0 && frame.b.weight > 0;
@@ -2790,6 +2896,15 @@ bool movie_view::mouse_wheel(const pointi loc, const platform::wheel_notch notch
 
 bool movie_view::key_down(const char32_t key, const platform::key_state keys)
 {
+	const auto& project = _movie_state.project;
+
+	// Ctrl+Space puts the focused clip in the selection or takes it out, as it does an entry of any list.
+	if (key == platform::keys::SPACE && keys.control && !keys.shift)
+	{
+		if (!project.is_empty()) select_clip(project.current(), false, true);
+		return true;
+	}
+
 	// The key constants are runtime values, so this cannot be a switch.
 	if (key == ' ')
 	{
@@ -2806,16 +2921,28 @@ bool movie_view::key_down(const char32_t key, const platform::key_state keys)
 		return true;
 	}
 
-	if (key == platform::keys::LEFT)
+	// A plain Left or Right steps a clip, and while the movie plays is the transport's skip.
+	if ((key == platform::keys::LEFT || key == platform::keys::RIGHT) && !keys.control && !keys.shift)
 	{
-		step_clip(false);
+		step_clip(key == platform::keys::RIGHT);
 		return true;
 	}
 
-	if (key == platform::keys::RIGHT)
+	// Otherwise the keys move along the timeline as along any list: Left and Right a clip, Page Up and Page Down a
+	// strip's width of clips, Home and End to either end, Shift taking in the clips from the anchor - and Ctrl with
+	// Shift adding them - and Ctrl moving the focus alone.
+	if (!project.is_empty())
 	{
-		step_clip(true);
-		return true;
+		const auto page = _timeline ? _timeline->clips_in_view() - 1 : 1;
+		const auto to = ui::step_list_cursor(static_cast<int>(project.current()), static_cast<int>(project.size()), key,
+		                                     page, true);
+
+		if (to >= 0)
+		{
+			if (keys.control && !keys.shift) set_focus(static_cast<size_t>(to));
+			else select_clip(static_cast<size_t>(to), keys.shift, keys.control);
+			return true;
+		}
 	}
 
 	if (key == 'Z' && keys.control)
@@ -3868,6 +3995,20 @@ void movie_view::stabilize_changed()
 	changed(false);
 }
 
+void movie_view::short_changed()
+{
+	auto& project = _movie_state.project;
+	const auto kind = _movie_state.youtube_short ? movie_kind::youtube_short : movie_kind::movie;
+	if (project.kind() == kind) return;
+
+	// The frame changes shape, and a Short may be shorter: what was playing was playing another movie.
+	stop_playback();
+	project.kind(kind);
+	for (auto& backdrop : _backdrops) backdrop = {};
+	_movie_state.playhead = std::min(_movie_state.playhead, duration());
+	changed();
+}
+
 void movie_view::end_edit_group()
 {
 	_movie_state.project.end_edit_group();
@@ -4057,14 +4198,17 @@ movie_probe_result probe_movie_source(const core::file_path path, const int song
 	}
 	else if (probe.is_audio)
 	{
-		// No picture of its own: Movie draws one, landscape, at a steady rate, for as long as the file plays.
+		// No picture of its own: Movie draws one, landscape in a movie and upright in a Short, for as long as the
+		// file plays. Its frame rate is the rate its pictures move at, which a Short is made at; and a SID tune that
+		// repeats says where, so a Short of it alone can end there.
 		const auto tunes = movie_audio_songs(path);
 		probe.songs = std::max(1, tunes.count);
 		probe.first_song = tunes.start;
 		probe.duration = movie_audio_seconds(path, song);
+		probe.loop_end = movie_audio_loop_seconds(path, song);
 		probe.found = probe.duration > 0;
 		probe.extent = movie_audio_extent;
-		probe.frame_rate = movie_audio_frame_rate;
+		probe.frame_rate = tunes.picture_rate;
 	}
 	else
 	{
@@ -4244,37 +4388,14 @@ std::vector<platform::file_dialog_filter> movie_project_filters()
 
 namespace
 {
-	std::string read_text_file(const core::file_path path)
-	{
-		const auto file = platform::open_file(path, platform::file_open_mode::read);
-		if (!file) return {};
-
-		const auto size = file->size();
-
-		// A project file is a document, not a stream. A refusal here is better than reading a
-		// gigabyte of something that was never a project.
-		constexpr uint64_t max_project_bytes = 32 * 1024 * 1024;
-		if (size == 0 || size > max_project_bytes) return {};
-
-		std::string result(static_cast<size_t>(size), '\0');
-		const auto read = file->read(std::bit_cast<uint8_t*>(result.data()), size);
-		result.resize(static_cast<size_t>(read));
-		return result;
-	}
+	// A project file is a document, not a stream: a refusal is better than reading a gigabyte of something that was
+	// never a project.
+	constexpr uint64_t max_project_bytes = 32 * 1024 * 1024;
 }
 
 std::string write_movie_project_file(const core::file_path path, const std::string_view text, const bool fail_if_exists)
 {
-	const auto staged = platform::temp_file(".dfv", path.folder());
-	const auto cleanup = core::scope_exit([&staged] { platform::delete_file(staged); });
-
-	if (!platform::blob_save_to_file({std::bit_cast<const uint8_t*>(text.data()), text.size()}, staged))
-	{
-		return "could not write the staged project";
-	}
-
-	const auto moved = fail_if_exists ? platform::move_file(staged, path, true) : platform::replace_file(path, staged);
-	return moved.failed() ? moved.format_error() : std::string{};
+	return save_file_replacing(path, {std::bit_cast<const uint8_t*>(text.data()), text.size()}, fail_if_exists);
 }
 
 void movie_view::load_project(const core::file_path path)
@@ -4299,7 +4420,7 @@ void movie_view::load_project(const core::file_path path)
 
 		try
 		{
-			const auto text = read_text_file(path);
+			const auto text = read_text_file(path, max_project_bytes);
 			if (!text.empty()) loaded = read_dfv(text, path.folder());
 		}
 		catch (const std::exception& e)
@@ -4338,7 +4459,7 @@ void movie_view::load_project(const core::file_path path)
 					current->stop_playback();
 					current->retire_source_state();
 				}
-				current->_movie_state.project.reset(std::move(result->clips), path);
+				current->_movie_state.project.reset(std::move(result->clips), path, result->kind);
 				current->_movie_state.load_problems = static_cast<int>(result->problems.size());
 				current->_probe_retries.clear();
 				current->read_document();
@@ -4396,7 +4517,7 @@ void movie_view::save_project(std::function<void(bool)> complete)
 	}
 
 	const auto revision = _movie_state.project.edit_revision();
-	auto text = write_dfv(_movie_state.project.clips(), path.folder());
+	auto text = write_dfv(_movie_state.project.clips(), path.folder(), _movie_state.project.kind());
 	const auto generation = ++_project_io_generation;
 	const auto weak = weak_from_this();
 	_project_save_complete = std::move(complete);
@@ -4604,7 +4725,7 @@ namespace
 		// of a clip is a step forward and costs no seek - and an audio clip's frames, drawn rather than
 		// decoded, carry its tune or its bars on from the last.
 		core::const_surface_ptr frame(const size_t slot, const movie_clip& clip, const double source_time,
-		                              const sizei max_dim)
+		                              const sizei max_dim, const sizei shape = movie_audio_extent)
 		{
 			if (slot >= _slots.size()) return {};
 
@@ -4612,7 +4733,7 @@ namespace
 			if (state.path != clip.path || state.song != clip.song) open(state, clip, max_dim);
 
 			if (clip.is_photo) return state.photo;
-			if (state.audio_frames) return state.audio_frames->frame(source_time, max_dim, _abandon);
+			if (state.audio_frames) return state.audio_frames->frame(source_time, max_dim, _abandon, shape);
 			if (!state.decoder) return {};
 
 			core::surface_ptr surface;
@@ -4832,6 +4953,32 @@ namespace
 		return recti(fitted).offset(recti(canvas).center() - recti(fitted).center());
 	}
 
+	// A Short's picture of another shape, whole in the middle of the frame over its backdrop scaled up to fill it,
+	// as one opaque picture the size of the frame: a crossfade mixes it as it mixes any other.
+	core::surface_ptr compose_on_backdrop(const core::const_surface_ptr& source, const sizei frame, av_scaler& scaler)
+	{
+		const auto backdrop = make_movie_backdrop(source, frame);
+		core::surface_ptr result;
+		if (!backdrop || !scaler.scale_surface(backdrop, result, frame) || result->dimensions() != frame) return {};
+
+		const auto target = fit_into(source->dimensions(), frame);
+		core::surface_ptr fitted;
+		if (target.width() <= 0 || target.height() <= 0 || !scaler.scale_surface(source, fitted, target.extent()))
+			return {};
+
+		const auto rows = std::min(fitted->dimensions().cy, frame.cy - target.top);
+		const auto columns = std::min(fitted->dimensions().cx, frame.cx - target.left);
+
+		for (auto y = 0; y < rows; ++y)
+		{
+			const auto* const s = std::bit_cast<const uint32_t*>(fitted->pixels_line(y));
+			auto* const d = std::bit_cast<uint32_t*>(result->pixels_line(target.top + y)) + target.left;
+			for (auto x = 0; x < columns; ++x) d[x] = s[x] | 0xff000000u;
+		}
+
+		return result;
+	}
+
 	// Text over the finished picture, at its own straight alpha scaled by how far it has faded in.
 	void blend_text(core::surface& canvas, const movie_text_layer& layer, const double opacity)
 	{
@@ -4901,10 +5048,176 @@ static constexpr double movie_min_text_px = 8.0;
 // take. Text larger than that, such as a screen of credits, is set smaller until it fits, so no line is
 // cut off.
 static constexpr double movie_caption_margin = 0.06;
+// A Short's caption sits this far above the fifth YouTube covers.
+static constexpr double movie_short_caption_gap = 0.03;
 static constexpr double movie_text_width = 0.84;
 static constexpr double movie_text_height = 0.9;
+// Text reads over any picture because a dark shadow lies under it: a black copy of its letters blurred wide and
+// cast in no direction. Its spread is a Gaussian's sigma as a fraction of the text's size, so the shadow is the
+// same at any frame size; one blur of thin strokes leaves them faint, so the blurred letters are darkened by the
+// gain and held below fully black by the opacity.
+static constexpr double movie_shadow_sigma = 0.22;
+static constexpr float movie_shadow_gain = 3.4f;
+static constexpr float movie_shadow_opacity = 0.88f;
 
-movie_text_layer draw_movie_text(const std::string_view text, const movie_text_kind kind, const sizei frame)
+namespace
+{
+	// Three box blurs one after another are a Gaussian to within a few percent, at a cost that does not grow with
+	// its spread: the widths of the three for a Gaussian of sigma.
+	std::array<int, 3> shadow_box_widths(const double sigma)
+	{
+		constexpr auto passes = 3.0;
+		const auto ideal = std::sqrt(12.0 * sigma * sigma / passes + 1.0);
+		auto lower = std::max(1, static_cast<int>(std::floor(ideal)));
+		if (lower % 2 == 0) --lower;
+		const auto upper = lower + 2;
+		const auto narrow = std::lround(
+			(12.0 * sigma * sigma - passes * lower * lower - 4.0 * passes * lower - 3.0 * passes) /
+			(-4.0 * lower - 4.0));
+
+		std::array<int, 3> result{};
+		for (auto i = 0; i < 3; ++i) result[i] = i < narrow ? lower : upper;
+		return result;
+	}
+
+	// One box blur along each row of a plane, nothing beyond its ends.
+	void blur_rows(const std::vector<float>& in, std::vector<float>& out, const int width, const int height,
+	               const int radius)
+	{
+		const auto scale = 1.0f / static_cast<float>(radius * 2 + 1);
+
+		for (auto y = 0; y < height; ++y)
+		{
+			const auto* const row = in.data() + static_cast<size_t>(y) * width;
+			auto* const dst = out.data() + static_cast<size_t>(y) * width;
+			auto sum = 0.0f;
+
+			for (auto x = 0; x < radius && x < width; ++x) sum += row[x];
+
+			for (auto x = 0; x < width; ++x)
+			{
+				if (x + radius < width) sum += row[x + radius];
+				dst[x] = sum * scale;
+				if (x >= radius) sum -= row[x - radius];
+			}
+		}
+	}
+
+	// The same down each column, a row at a time so the plane is read in order.
+	void blur_columns(const std::vector<float>& in, std::vector<float>& out, const int width, const int height,
+	                  const int radius)
+	{
+		const auto scale = 1.0f / static_cast<float>(radius * 2 + 1);
+		std::vector<float> sums(width, 0.0f);
+		const auto row = [&in, width](const int y)
+		{
+			return in.data() + static_cast<size_t>(y) * width;
+		};
+
+		for (auto y = 0; y < radius && y < height; ++y)
+		{
+			const auto* const r = row(y);
+			for (auto x = 0; x < width; ++x) sums[x] += r[x];
+		}
+
+		for (auto y = 0; y < height; ++y)
+		{
+			if (y + radius < height)
+			{
+				const auto* const r = row(y + radius);
+				for (auto x = 0; x < width; ++x) sums[x] += r[x];
+			}
+
+			auto* const dst = out.data() + static_cast<size_t>(y) * width;
+			for (auto x = 0; x < width; ++x) dst[x] = sums[x] * scale;
+
+			if (y >= radius)
+			{
+				const auto* const r = row(y - radius);
+				for (auto x = 0; x < width; ++x) sums[x] -= r[x];
+			}
+		}
+	}
+
+	// The letters laid over their shadow, in a surface large enough for the shadow round them but no further than
+	// the frame they are placed in at `at`, since nothing beyond it is seen. Straight alpha, as the letters are.
+	movie_text_layer shadow_text(const core::surface_ptr& letters, const pointi at, const sizei frame,
+	                             const double font_px)
+	{
+		const auto sigma = std::max(1.0, font_px * movie_shadow_sigma);
+		const auto spread = static_cast<int>(std::ceil(sigma * 3.0));
+		const auto size = letters->dimensions();
+		const auto left = std::clamp(at.x, 0, spread);
+		const auto top = std::clamp(at.y, 0, spread);
+		const auto right = std::clamp(frame.cx - (at.x + size.cx), 0, spread);
+		const auto bottom = std::clamp(frame.cy - (at.y + size.cy), 0, spread);
+		const auto width = size.cx + left + right;
+		const auto height = size.cy + top + bottom;
+
+		std::vector<float> plane(static_cast<size_t>(width) * height, 0.0f);
+
+		for (auto y = 0; y < size.cy; ++y)
+		{
+			const auto* const src = letters->pixels_line(y);
+			auto* const dst = plane.data() + static_cast<size_t>(y + top) * width + left;
+			for (auto x = 0; x < size.cx; ++x) dst[x] = src[static_cast<size_t>(x) * 4 + 3] / 255.0f;
+		}
+
+		std::vector<float> across(plane.size());
+
+		for (const auto box : shadow_box_widths(sigma))
+		{
+			const auto radius = box / 2;
+			blur_rows(plane, across, width, height, radius);
+			blur_columns(across, plane, width, height, radius);
+		}
+
+		auto surface = std::make_shared<core::surface>();
+		if (!surface->alloc(width, height, core::texture_format::ARGB, core::orientation::top_left))
+		{
+			// Too large for the shadow's memory: the letters alone still read on most pictures.
+			return {letters, at, recti(size)};
+		}
+
+		for (auto y = 0; y < height; ++y)
+		{
+			auto* const dst = surface->pixels_line(y);
+			const auto* const shadow = plane.data() + static_cast<size_t>(y) * width;
+			const auto letter_y = y - top;
+			const auto* const src = letter_y >= 0 && letter_y < size.cy ? letters->pixels_line(letter_y) : nullptr;
+
+			for (auto x = 0; x < width; ++x)
+			{
+				const auto s = std::min(1.0f, shadow[x] * movie_shadow_gain) * movie_shadow_opacity;
+				const auto letter_x = x - left;
+				const auto* const letter = src && letter_x >= 0 && letter_x < size.cx
+				                               ? src + static_cast<size_t>(letter_x) * 4
+				                               : nullptr;
+				const auto t = letter ? letter[3] / 255.0f : 0.0f;
+
+				// Straight alpha, the letters over a black shadow: a = t + s(1 - t), each colour the letters' share.
+				const auto a = t + s * (1.0f - t);
+				auto* const p = dst + static_cast<size_t>(x) * 4;
+
+				if (a <= 0.0f)
+				{
+					p[0] = p[1] = p[2] = p[3] = 0;
+					continue;
+				}
+
+				const auto share = t / a;
+				for (auto c = 0; c < 3; ++c)
+					p[c] = letter ? static_cast<uint8_t>(std::lround(letter[c] * share)) : uint8_t{0};
+				p[3] = static_cast<uint8_t>(std::clamp(std::lround(a * 255.0f), 0L, 255L));
+			}
+		}
+
+		return {std::move(surface), {at.x - left, at.y - top}, recti(pointi{left, top}, size)};
+	}
+}
+
+movie_text_layer draw_movie_text(const std::string_view text, const movie_text_kind kind, const sizei frame,
+                                 const movie_kind movie)
 {
 	movie_text_layer result;
 	if (text.find_first_not_of(" \t\r\n") == std::string_view::npos || kind == movie_text_kind::none || frame.cx <= 0 ||
@@ -4913,37 +5226,45 @@ movie_text_layer draw_movie_text(const std::string_view text, const movie_text_k
 		return result;
 	}
 
+	// A Short's text keeps clear of what YouTube lays over it: within the width its buttons leave free, and above
+	// the fifth along its foot - a caption just above it, and a screen's words in the middle of what is left.
+	const auto is_short = movie == movie_kind::youtube_short;
+	const auto width = is_short ? 1.0 - 2.0 * movie_short_side_reserve : movie_text_width;
+	const auto usable_cy = is_short ? static_cast<int>(frame.cy * (1.0 - movie_short_bottom_reserve)) : frame.cy;
+	const auto caption_margin = is_short ? movie_short_bottom_reserve + movie_short_caption_gap : movie_caption_margin;
+
 	const auto is_caption = kind == movie_text_kind::caption;
 	const auto side = std::min(frame.cx, frame.cy);
-	const auto room_cx = std::max(1, static_cast<int>(frame.cx * movie_text_width));
-	const auto room_cy = std::max(1, static_cast<int>(frame.cy * movie_text_height));
+	const auto room_cx = std::max(1, static_cast<int>(frame.cx * width));
+	const auto room_cy = std::max(1, static_cast<int>(usable_cy * movie_text_height));
 	auto font_px = std::max(movie_min_text_px, side * (is_caption ? movie_caption_text_size : movie_screen_text_size));
 
 	render::styled_text spec;
 	spec.runs.push_back({std::string(text), !is_caption, false, 0xFFFFFFFFu});
 	spec.font_family = "Segoe UI";
-	spec.outline_color = 0xE0000000u;
+	// The shadow laid under the letters is what sets them off a picture, so the text engine draws them bare.
+	spec.outline_px = 0.0f;
 	spec.alignment = 1;
 	spec.wrap_width = room_cx;
+
+	core::surface_ptr letters;
 
 	// A smaller size wraps into fewer lines, so each attempt is measured again rather than scaled once. Text
 	// laid out larger than any surface may be comes back as nothing, and is set smaller and tried again.
 	for (auto attempt = 0; attempt < 8; ++attempt)
 	{
 		spec.font_px = static_cast<float>(font_px);
-		spec.outline_px = static_cast<float>(std::max(1.5, font_px / 16.0));
-		result.surface = render::render_styled_text(spec);
+		letters = render::render_styled_text(spec);
 
-		if (!result.surface)
+		if (!letters)
 		{
 			if (font_px <= movie_min_text_px) return result;
 			font_px = std::max(movie_min_text_px, font_px / 2);
 			continue;
 		}
 
-		// Wrapped lines reach the wrap width plus their outline, so only a word too long to wrap
-		// makes text too wide.
-		const auto size = result.surface->dimensions();
+		// Wrapped lines reach the wrap width, so only a word too long to wrap makes text too wide.
+		const auto size = letters->dimensions();
 		if (size.cy <= room_cy && size.cx <= frame.cx) break;
 
 		// A word the text engine does not break - Pango keeps whole words, where DirectWrite breaks one
@@ -4956,30 +5277,167 @@ movie_text_layer draw_movie_text(const std::string_view text, const movie_text_k
 		font_px = std::max(floor, font_px * std::min(fit, 1.0) * 0.98);
 	}
 
-	if (!result.surface) return result;
+	if (!letters) return result;
 
-	const auto size = result.surface->dimensions();
-	const auto top = is_caption ? frame.cy - static_cast<int>(std::lround(frame.cy * movie_caption_margin)) - size.cy
-	                            : (frame.cy - size.cy) / 2;
-	result.at = {std::max(0, (frame.cx - size.cx) / 2), std::max(0, top)};
-	return result;
+	// Placed by the letters, so the shadow round them moves nothing.
+	const auto size = letters->dimensions();
+	const auto top = is_caption ? frame.cy - static_cast<int>(std::lround(frame.cy * caption_margin)) - size.cy
+	                            : (usable_cy - size.cy) / 2;
+	const pointi at{std::max(0, (frame.cx - size.cx) / 2), std::max(0, top)};
+	return shadow_text(letters, at, frame, font_px);
 }
 
-core::surface_ptr draw_movie_screen(const std::string_view text, const sizei frame)
+core::surface_ptr draw_movie_screen(const std::string_view text, const sizei frame, const movie_kind movie)
 {
 	if (frame.cx <= 0 || frame.cy <= 0) return {};
 
 	auto screen = std::make_shared<core::surface>();
 	if (!screen->alloc(frame, core::texture_format::RGB)) return {};
 
-	// Opaque black, so the screen covers what it crossfades with exactly as a photo would.
+	// Opaque, so the screen covers what it crossfades with exactly as a photo would. Words stand on near black - a
+	// tenth of the way to white - so the shadow under them shows, faintly; a screen with no words is black.
+	const auto has_words = text.find_first_not_of(" \t\r\n") != std::string_view::npos;
+	const auto background = has_words ? movie_screen_background : 0xff000000u;
+
 	for (auto y = 0; y < frame.cy; ++y)
 	{
-		std::fill_n(std::bit_cast<uint32_t*>(screen->pixels_line(y)), frame.cx, 0xff000000u);
+		std::fill_n(std::bit_cast<uint32_t*>(screen->pixels_line(y)), frame.cx, background);
 	}
 
-	blend_text(*screen, draw_movie_text(text, movie_text_kind::screen, frame), 1.0);
+	blend_text(*screen, draw_movie_text(text, movie_text_kind::screen, frame, movie), 1.0);
 	return screen;
+}
+
+// A backdrop is a sixteenth of its frame's size: averaging the source down to it is most of the blur, a little more
+// smooths what is left, and drawing it scaled up smooths it again. Dark, so the picture over it is what is seen.
+static constexpr int movie_backdrop_scale = 16;
+static constexpr int movie_backdrop_blur_radius = 2;
+static constexpr float movie_backdrop_brightness = 0.45f;
+
+bool movie_needs_backdrop(const sizei source, const sizei frame)
+{
+	if (source.cx <= 0 || source.cy <= 0 || frame.cx <= 0 || frame.cy <= 0) return false;
+
+	const auto fitted = core::scale_dimensions(source, frame, false);
+	return fitted.cx < frame.cx - 1 || fitted.cy < frame.cy - 1;
+}
+
+core::surface_ptr make_movie_backdrop(const core::const_surface_ptr& source, const sizei frame)
+{
+	if (!is_valid(source) || frame.cx <= 0 || frame.cy <= 0) return {};
+	if (source->format() != core::texture_format::RGB && source->format() != core::texture_format::ARGB) return {};
+
+	const auto src = source->dimensions();
+	const sizei small{std::max(4, frame.cx / movie_backdrop_scale), std::max(4, frame.cy / movie_backdrop_scale)};
+
+	// The middle of the source in the frame's shape, so it covers the frame rather than sitting inside it.
+	const auto cover = std::max(static_cast<double>(small.cx) / src.cx, static_cast<double>(small.cy) / src.cy);
+	const auto crop_cx = small.cx / cover;
+	const auto crop_cy = small.cy / cover;
+	const auto left = (src.cx - crop_cx) / 2;
+	const auto top = (src.cy - crop_cy) / 2;
+
+	const auto plane_size = static_cast<size_t>(small.cx) * small.cy;
+	std::array<std::vector<float>, 3> planes;
+	for (auto& p : planes) p.assign(plane_size, 0.0f);
+
+	for (auto y = 0; y < small.cy; ++y)
+	{
+		const auto y0 = std::clamp(static_cast<int>(top + y * crop_cy / small.cy), 0, src.cy - 1);
+		const auto y1 = std::clamp(static_cast<int>(top + (y + 1) * crop_cy / small.cy), y0 + 1, src.cy);
+
+		for (auto x = 0; x < small.cx; ++x)
+		{
+			const auto x0 = std::clamp(static_cast<int>(left + x * crop_cx / small.cx), 0, src.cx - 1);
+			const auto x1 = std::clamp(static_cast<int>(left + (x + 1) * crop_cx / small.cx), x0 + 1, src.cx);
+			std::array<uint64_t, 3> sum{};
+
+			for (auto sy = y0; sy < y1; ++sy)
+			{
+				const auto* const row = source->pixels_line(sy) + static_cast<size_t>(x0) * 4;
+				for (auto sx = 0; sx < x1 - x0; ++sx)
+					for (auto c = 0; c < 3; ++c) sum[c] += row[static_cast<size_t>(sx) * 4 + c];
+			}
+
+			const auto count = static_cast<float>((y1 - y0) * (x1 - x0));
+			const auto at = static_cast<size_t>(y) * small.cx + x;
+			for (auto c = 0; c < 3; ++c) planes[c][at] = static_cast<float>(sum[c]) / count;
+		}
+	}
+
+	std::vector<float> across(plane_size);
+
+	for (auto& p : planes)
+	{
+		blur_rows(p, across, small.cx, small.cy, movie_backdrop_blur_radius);
+		blur_columns(across, p, small.cx, small.cy, movie_backdrop_blur_radius);
+	}
+
+	auto result = std::make_shared<core::surface>();
+	if (!result->alloc(small, core::texture_format::RGB)) return {};
+
+	for (auto y = 0; y < small.cy; ++y)
+	{
+		auto* const d = result->pixels_line(y);
+
+		for (auto x = 0; x < small.cx; ++x)
+		{
+			const auto at = static_cast<size_t>(y) * small.cx + x;
+			for (auto c = 0; c < 3; ++c)
+			{
+				d[static_cast<size_t>(x) * 4 + c] = static_cast<uint8_t>(
+					std::clamp(planes[c][at] * movie_backdrop_brightness, 0.0f, 255.0f));
+			}
+			d[static_cast<size_t>(x) * 4 + 3] = 0xff;
+		}
+	}
+
+	return result;
+}
+
+std::string movie_short_name(const movie_clip& clip)
+{
+	std::string title;
+	std::string by;
+	const auto* const type = files::file_type_from_name(clip.path);
+
+	if (type && type->has_trait(file_traits::sid_tune))
+	{
+		const auto head = platform::blob_head_from_file(clip.path, 0x80);
+		const auto texts = read_sid_header_texts({head.data(), head.size()});
+		title = texts.title;
+		by = texts.author;
+		// Each of a SID file's tunes is a Short of its own.
+		if (clip.songs > 1 && clip.song > 0 && !title.empty()) title += std::format(" #{}", clip.song);
+	}
+	else if (!clip.is_text)
+	{
+		files ff;
+		const auto scanned = ff.scan_file(clip.path, false, type);
+
+		if (scanned.success)
+		{
+			if (const auto md = scanned.to_props())
+			{
+				title = md->title.str();
+				by = !md->artist.is_empty() ? std::string(md->artist.sv()) : std::string(md->album_artist.sv());
+			}
+		}
+	}
+
+	if (title.empty()) return std::string(clip.path.file_name_without_extension());
+
+	auto name = by.empty() ? title : std::format("{} - {}", title, by);
+
+	// Only what any file system takes: a character it refuses becomes a space, and a name ends on neither.
+	for (auto& c : name)
+	{
+		if (std::string_view("\\/:*?\"<>|").find(c) != std::string_view::npos || static_cast<unsigned char>(c) < 0x20)
+			c = ' ';
+	}
+
+	while (!name.empty() && (name.back() == ' ' || name.back() == '.')) name.pop_back();
+	return name.empty() ? std::string(clip.path.file_name_without_extension()) : name;
 }
 
 movie_render_result render_movie_to_file(const movie_render_request& request, const std::function<void(double)>& report,
@@ -4993,9 +5451,13 @@ movie_render_result render_movie_to_file(const movie_render_request& request, co
 	// that failed.
 	auto clips = request.clips;
 	for (auto& clip : clips) clip.sound_checked_at = -1;
-	const auto timing = calc_movie_timing(clips);
+	const auto timing = calc_movie_timing(clips, request.kind);
 	const auto frame_rate = std::max(1, request.output.frame_rate);
 	const auto sample_rate = std::max(8000, request.output.sample_rate);
+	// A Short's audio clips are drawn upright in its frame, and a picture of another shape sits whole over a
+	// backdrop of itself rather than between black bars.
+	const auto is_short = request.kind == movie_kind::youtube_short;
+	const auto audio_shape = is_short ? request.output.extent : movie_audio_extent;
 
 	if (timing.duration <= 0 || request.output.extent.cx <= 0 || request.output.extent.cy <= 0)
 	{
@@ -5051,6 +5513,16 @@ movie_render_result render_movie_to_file(const movie_render_request& request, co
 	std::vector<int16_t> chunk;
 	render_text_cache caption_text;
 	std::array<render_screen_cache, render_slot_count> screens;
+
+	// A picture made whole over its backdrop, kept for as long as its source is the same one - a photo's for as
+	// long as it shows - and made again for each new frame of a video.
+	struct backdropped
+	{
+		core::const_surface_ptr source;
+		core::surface_ptr picture;
+	};
+
+	std::array<backdropped, render_slot_count> backdropped_pictures;
 
 	const auto frames = std::ceil(timing.duration * frame_rate);
 
@@ -5108,7 +5580,7 @@ movie_render_result render_movie_to_file(const movie_render_request& request, co
 
 			auto& free = screens[0].index == other ? screens[1] : screens[0];
 			free.index = index;
-			free.surface = draw_movie_screen(clips[index].text, request.output.extent);
+			free.surface = draw_movie_screen(clips[index].text, request.output.extent, request.kind);
 			return free.surface;
 		};
 
@@ -5133,8 +5605,23 @@ movie_render_result render_movie_to_file(const movie_render_request& request, co
 			// turned source is stored the other way round, so an output-shaped limit would decode it at
 			// a fraction of the size it is drawn and stretch it back up.
 			const auto decode_side = std::max(request.output.extent.cx, request.output.extent.cy);
-			const auto surface = sources.frame(slot, clip, source.source_time, {decode_side, decode_side});
+			const auto surface = sources.frame(slot, clip, source.source_time, {decode_side, decode_side}, audio_shape);
 			if (!is_valid(surface)) return false;
+
+			if (is_short && movie_needs_backdrop(surface->dimensions(), request.output.extent))
+			{
+				auto& made = backdropped_pictures[slot];
+
+				if (made.source != surface)
+				{
+					made.source = surface;
+					made.picture = compose_on_backdrop(surface, request.output.extent, scaler);
+				}
+
+				if (!made.picture) return false;
+				add_weighted(*canvas, *made.picture, {}, source.weight);
+				return true;
+			}
 
 			const auto target = fit_into(surface->dimensions(), request.output.extent);
 			if (target.width() <= 0 || target.height() <= 0) return false;
@@ -5174,7 +5661,7 @@ movie_render_result render_movie_to_file(const movie_render_request& request, co
 			{
 				caption_text.index = frame.caption.index;
 				caption_text.layer = draw_movie_text(clips[frame.caption.index].text, movie_text_kind::caption,
-				                                     request.output.extent);
+				                                     request.output.extent, request.kind);
 			}
 
 			blend_text(*canvas, caption_text.layer, frame.caption.opacity);
@@ -5296,6 +5783,7 @@ void movie_view::render_movie()
 	movie_render_request request;
 	request.clips = project.clips();
 	request.output = project.output();
+	request.kind = project.kind();
 	request.path = path;
 
 	++_render_generation;
@@ -5345,8 +5833,11 @@ void movie_view::render_movie()
 			result.reason = movie_render_error::undecodable;
 		}
 
-		s.queue_ui([weak, generation, result, name = request.path.name()]
+		s.queue_ui([&s, weak, generation, result, path = request.path, name = request.path.name()]
 		{
+			// The movie was made whatever became of the view that asked for it.
+			if (result.ok) s.record_change(icon_index::video, tt.command_movie.sv(), {path});
+
 			if (const auto self = weak.lock())
 			{
 				self->render_finished(generation, result.ok, result.cancelled, result.reason, result.message, name);
@@ -5363,6 +5854,23 @@ void movie_view::render_progress(const size_t generation, const int percent)
 	_state.invalidate_view(view_invalid::status);
 }
 
+// Why a render stopped, in the user's words.
+static std::string_view movie_render_reason(const movie_render_error reason, const std::string& message)
+{
+	switch (reason)
+	{
+	case movie_render_error::no_length: return tt.movie_error_no_length.sv();
+	case movie_render_error::no_encoder: return tt.movie_error_no_encoder.sv();
+	case movie_render_error::no_memory: return tt.movie_error_no_memory.sv();
+	case movie_render_error::undecodable: return tt.movie_error_undecodable.sv();
+	case movie_render_error::encoder_failed: return tt.movie_error_encoder_failed.sv();
+	case movie_render_error::output_is_source: return tt.movie_error_output_is_source.sv();
+	case movie_render_error::none: break;
+	}
+
+	return message.empty() ? tt.platform_text.error_unknown.sv() : std::string_view(message);
+}
+
 void movie_view::render_finished(const size_t generation, const bool ok, const bool cancelled,
                                  const movie_render_error reason, const std::string& message, const core::cached name)
 {
@@ -5371,27 +5879,190 @@ void movie_view::render_finished(const size_t generation, const bool ok, const b
 	_progress = {};
 	_render_control.reset();
 
-	const auto why = [reason, &message]() -> std::string_view
-	{
-		switch (reason)
-		{
-		case movie_render_error::no_length: return tt.movie_error_no_length.sv();
-		case movie_render_error::no_encoder: return tt.movie_error_no_encoder.sv();
-		case movie_render_error::no_memory: return tt.movie_error_no_memory.sv();
-		case movie_render_error::undecodable: return tt.movie_error_undecodable.sv();
-		case movie_render_error::encoder_failed: return tt.movie_error_encoder_failed.sv();
-		case movie_render_error::output_is_source: return tt.movie_error_output_is_source.sv();
-		case movie_render_error::none: break;
-		}
-
-		return message.empty() ? tt.platform_text.error_unknown.sv() : std::string_view(message);
-	}();
-
 	_status = cancelled ? std::string(tt.movie_render_cancelled.sv())
 	          : ok      ? str_format(tt.movie_rendered_fmt.sv(), name.sv())
-	                    : str_format(tt.movie_render_failed_fmt.sv(), why);
+	                    : str_format(tt.movie_render_failed_fmt.sv(), movie_render_reason(reason, message));
 
 	_state.invalidate_view(view_invalid::status | view_invalid::command_state | view_invalid::app_layout);
+	if (_controls) _controls->update_for_document();
+}
+
+bool movie_view::can_render_shorts() const
+{
+	const auto& project = _movie_state.project;
+	if (project.kind() != movie_kind::youtube_short || !can_render()) return false;
+	return std::ranges::count_if(project.clips(), [](const movie_clip& c) { return !c.is_text; }) > 1;
+}
+
+void movie_view::render_shorts()
+{
+	if (!can_render_shorts()) return;
+
+	const auto& project = _movie_state.project;
+	auto folder = project.path().is_empty() ? core::folder_path(platform::known_path(platform::known_folder::video))
+	                                        : project.path().folder();
+	if (!platform::browse_for_folder(folder) || folder.is_empty()) return;
+
+	stop_playback();
+
+	// Each clip a Short of its own, its caption with it. A text screen is a page between clips, not a Short.
+	std::vector<movie_clip> items;
+	for (const auto& clip : project.clips())
+		if (!clip.is_text) items.emplace_back(clip);
+
+	++_render_generation;
+	_render_control = std::make_shared<movie_render_control>();
+	_progress = {true, 0, 100};
+	_status = str_format(tt.movie_rendering_shorts_fmt.sv(), 1, items.size());
+	if (_controls) _controls->update_for_document();
+
+	const auto generation = _render_generation;
+	const auto weak = weak_from_this();
+	const auto control = _render_control;
+	const auto token = core::cancel_token(control->cancelled);
+
+	_state.invalidate_view(view_invalid::status | view_invalid::command_state | view_invalid::app_layout);
+
+	_state.queue_async(async_queue::work,
+	                   [weak, items, folder, token, control, generation, &s = _state, function = __FUNCTION__]
+	{
+		auto last_percent = -1;
+
+		const auto report = [&](const size_t index, const size_t count, const double fraction)
+		{
+			const auto percent = std::clamp(static_cast<int>((static_cast<double>(index) + fraction) * 100.0 /
+			                                                 static_cast<double>(count)),
+			                                0, 100);
+			if (percent == last_percent) return;
+			last_percent = percent;
+
+			s.queue_ui([weak, generation, percent, index, count]
+			{
+				if (const auto self = weak.lock()) self->render_shorts_progress(generation, index, count, percent);
+			});
+		};
+
+		movie_shorts_result result;
+
+		try
+		{
+			result = render_movie_shorts(items, folder, report, token);
+		}
+		catch (const std::exception& e)
+		{
+			core::log(function, core::utf8_cast(e.what()));
+			result.last = {};
+			result.last.reason = movie_render_error::undecodable;
+		}
+
+		s.queue_ui([&s, weak, generation, result]
+		{
+			if (!result.made.empty()) s.record_change(icon_index::video, tt.command_movie.sv(), result.made);
+
+			if (const auto self = weak.lock())
+			{
+				self->render_shorts_finished(generation, result.made.size(), result.last.cancelled, result.last.reason,
+				                             result.last.message, result.failed_name);
+			}
+		});
+	});
+}
+
+movie_shorts_result render_movie_shorts(const std::vector<movie_clip>& clips, const core::folder_path folder,
+                                        const std::function<void(size_t, size_t, double)>& report,
+                                        const core::cancel_token& token)
+{
+	movie_shorts_result result;
+	result.last.ok = true;
+
+	std::vector<movie_clip> items;
+	for (const auto& clip : clips)
+		if (!clip.is_text) items.emplace_back(clip);
+
+	for (size_t i = 0; i < items.size(); ++i)
+	{
+		if (token.is_cancelled())
+		{
+			result.last = {};
+			result.last.cancelled = true;
+			break;
+		}
+
+		const std::vector<movie_clip> one{items[i]};
+		movie_render_request request;
+		request.clips = one;
+		request.kind = movie_kind::youtube_short;
+		request.output = derive_movie_output(one, request.kind);
+		request.fail_if_exists = true;
+
+		// Named for what it plays, and never over a file already there or one this run has made.
+		const auto name = movie_short_name(items[i]);
+		request.path = folder.combine_file_ext(name, ".mp4");
+
+		for (auto n = 2;
+		     platform::exists(request.path) || std::ranges::find(result.made, request.path) != result.made.end(); ++n)
+		{
+			request.path = folder.combine_file_ext(std::format("{} ({})", name, n), ".mp4");
+		}
+
+		// A publication claim of its own, as each Short is published apart; the cancel is the run's.
+		result.last = render_movie_to_file(request, [&](const double fraction) { report(i, items.size(), fraction); },
+		                                   token, std::make_shared<movie_render_control>());
+
+		if (!result.last.ok)
+		{
+			if (!result.last.cancelled) result.failed_name = std::string(request.path.name());
+			break;
+		}
+
+		result.made.emplace_back(request.path);
+	}
+
+	return result;
+}
+
+void movie_view::render_shorts_progress(const size_t generation, const size_t index, const size_t count,
+                                        const int percent)
+{
+	if (generation != _render_generation || !_progress.active) return;
+
+	_progress.position = percent;
+	_status = str_format(tt.movie_rendering_shorts_fmt.sv(), index + 1, count);
+	_state.invalidate_view(view_invalid::status);
+}
+
+void movie_view::render_shorts_finished(const size_t generation, const size_t made, const bool cancelled,
+                                        const movie_render_error reason, const std::string& message,
+                                        const std::string& failed_name)
+{
+	if (generation != _render_generation) return;
+
+	if (!cancelled && failed_name.empty())
+	{
+		_progress = {};
+		_render_control.reset();
+		_status = format_plural_text(tt.movie_rendered_shorts_fmt, made);
+		_state.invalidate_view(view_invalid::status | view_invalid::command_state | view_invalid::app_layout);
+		if (_controls) _controls->update_for_document();
+		return;
+	}
+
+	// A run stopped part way keeps the Shorts it made, and says so; the one it stopped on is named.
+	_progress = {};
+	_render_control.reset();
+
+	if (cancelled)
+	{
+		_status = made > 0 ? format_plural_text(tt.movie_shorts_cancelled_fmt, made)
+		                   : std::string(tt.movie_render_cancelled.sv());
+	}
+	else
+	{
+		_status = str_format(tt.movie_short_failed_fmt.sv(), failed_name, movie_render_reason(reason, message));
+	}
+
+	_state.invalidate_view(view_invalid::status | view_invalid::command_state | view_invalid::app_layout);
+	if (_controls) _controls->update_for_document();
 }
 
 void movie_view::cancel_operation()
@@ -5480,20 +6151,17 @@ bool movie_view::confirm_save_or_discard(std::function<void()> after_save)
 		set_margin(
 			std::make_shared<ui::title_control2>(frame, icon_index::video, tt.movie_title, tt.movie_unsaved_prompt)),
 		std::make_shared<divider_element>(),
-		std::make_shared<ui::button_control>(frame, icon_index::save, tt.command_movie_save, std::string_view{},
-	                                         [answer, frame]
+		ui::save_discard_cancel(
+			[answer, frame]
 	{
 		*answer = exit_choice::save;
 		frame->close(false);
-	}),
-		std::make_shared<ui::button_control>(frame, icon_index::del, tt.close_without_saving, std::string_view{},
-	                                         [answer, frame]
+	},
+			[answer, frame]
 	{
 		*answer = exit_choice::discard;
 		frame->close(false);
-	}),
-		std::make_shared<divider_element>(),
-		std::make_shared<ui::close_control>(frame, true, tt.button_cancel),
+	}, [frame] { frame->close(true); }),
 	};
 
 	if (dlg->show_modal(controls, {44}, {44}) != ui::close_result::ok) return false;

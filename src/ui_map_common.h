@@ -5,11 +5,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-// Purpose: Common map tile types, coordinate math, and rendering engine shared
-// by map_view (full view) and map_control (dialog widget). Handles tile
-// fetching (through the SQLite tile store and OSM tile-usage-policy compliance),
-// caching, GPS math, panning, zooming, marker clustering, picked-marker highlight,
-// and crosshair rendering.
+// Purpose: Common map tile types, coordinate math, the tile cache, and the flat map's rendering
+// engine. The tile cache fetches tiles through the SQLite tile store, following the OSM tile usage
+// policy, for the Locate map (map_view) and the Explore globe; the engine handles the flat map's
+// panning, zooming, marker clustering, picked-marker highlight, and crosshair rendering.
 
 #pragma once
 
@@ -83,6 +82,30 @@ inline pointi map_marker_world_cell(const gps_coordinate coordinate, const int z
 {
 	return {static_cast<int>(std::floor(lon_to_tile_x(coordinate.longitude(), zoom) * TILE_SIZE / cell_size)),
 	        static_cast<int>(std::floor(lat_to_tile_y(coordinate.latitude(), zoom) * TILE_SIZE / cell_size))};
+}
+
+// Tiles in the order a map fills in, as map viewers do: nearest the point the view centres on first. Measured
+// across the world rather than in tiles, so the coarse tiles round a globe's rim wait behind the fine ones in
+// its middle; and the shorter way round, so the date line is no wall.
+inline void order_tiles_from(std::vector<map_tile_id>& tiles, const gps_coordinate centre)
+{
+	const auto cx = lon_to_tile_x(centre.longitude(), 0);
+	const auto cy = lat_to_tile_y(centre.latitude(), 0);
+
+	std::vector<std::pair<double, map_tile_id>> keyed;
+	keyed.reserve(tiles.size());
+
+	for (const auto& t : tiles)
+	{
+		const auto size = 1.0 / static_cast<double>(1 << t.z);
+		auto dx = std::abs((t.x + 0.5) * size - cx);
+		dx = std::min(dx, 1.0 - dx);
+		const auto dy = (t.y + 0.5) * size - cy;
+		keyed.emplace_back(dx * dx + dy * dy, t);
+	}
+
+	std::ranges::stable_sort(keyed, {}, &std::pair<double, map_tile_id>::first);
+	for (size_t i = 0; i < keyed.size(); ++i) tiles[i] = keyed[i].second;
 }
 
 inline std::vector<map_tile> get_tiles_for_view(const recti& bounds, const pointi scroll_offset,
@@ -162,78 +185,389 @@ inline std::string tile_user_agent()
 inline constexpr int map_min_zoom = 3;
 inline constexpr int map_max_zoom = 18;
 
-// A latitude/longitude box, used to frame a map on the region that actually holds items
-// instead of an arbitrary default coordinate. Invalid until at least one point is added.
-struct map_box
+// The OSM tile usage policy requires visible licence attribution wherever its tiles are shown:
+// "© OpenStreetMap contributors" in the bottom-right corner, over a translucent backing so it stays
+// legible over any tile.
+inline void draw_map_attribution(render::draw_context& dc, const recti bounds)
 {
-	double min_latitude = 0.0;
-	double min_longitude = 0.0;
-	double max_latitude = 0.0;
-	double max_longitude = 0.0;
-	bool valid = false;
+	constexpr std::string_view attribution = "© OpenStreetMap contributors";
+	constexpr int pad = 4;
 
-	void add(const gps_coordinate coordinate)
+	const auto text_extent = dc.measure_text(attribution, render::font_face::dialog, render::text_style::single_line,
+	                                         bounds.width());
+
+	const int w = text_extent.cx + pad * 2;
+	const int h = text_extent.cy + pad;
+
+	const recti bg_rect(std::max(bounds.left, bounds.right - w), std::max(bounds.top, bounds.bottom - h), bounds.right,
+	                    bounds.bottom);
+	dc.draw_rect(bg_rect, core::color(0.0f, 0.0f, 0.0f, 0.4f));
+
+	const recti text_rect(bg_rect.left + pad, bg_rect.top, bg_rect.right - pad, bg_rect.bottom);
+	dc.draw_text(attribution, text_rect, render::font_face::dialog, render::text_style::single_line,
+	             core::color(1.0f, 1.0f, 1.0f, 0.9f), {});
+}
+
+// Decoded map tiles, keyed by address and fetched as a view shows them: from the tile store when it holds
+// them, otherwise from OpenStreetMap, which the store then keeps. The flat map and the Explore globe each
+// hold one. A tile task that completes after its cache is gone reaches nothing, because every task holds
+// the cache's liveness flag rather than the cache.
+//
+// Only what the view shows now is fetched, the most wanted first. A tile the view has moved away from is let
+// go wherever it waits - for the store, for the network or for its decode - so after a zoom or a turn the tiles
+// on screen never wait behind ones that were. Two tiles download at once, and a tile the store holds is decoded
+// meanwhile by another map worker rather than after them.
+class map_tile_cache
+{
+public:
+	// Fetches a tile the store does not hold: OpenStreetMap's, unless a test stands in for it. Empty when it
+	// could not be had.
+	using downloader = std::function<core::blob(const map_tile_id&)>;
+
+	static constexpr int max_downloads = map_tile_downloads;
+
+	// A tile that could not be had is not asked for again until this has passed, so a server that refuses, or a
+	// network that is down, is not asked again each time the view is drawn.
+	static constexpr int64_t retry_after_ms = 10'000;
+
+private:
+	struct entry
 	{
-		if (!coordinate.is_valid()) return;
+		// Guards everything below: the UI thread shows and evicts, the map workers publish.
+		mutex mutex;
+		core::surface_ptr surface;
+		bool in_view = false;
+		bool requested = false; // a fetch is queued or in flight for this tile
+		// Its place among the tiles the view last showed, the most wanted first.
+		uint32_t rank = 0;
+		// When it may be asked for again, after a fetch that failed (core::now_ms).
+		int64_t retry_ms = 0;
+	};
 
-		if (!valid)
+	using entry_ptr = std::shared_ptr<entry>;
+
+	// The tiles waiting for the network, and how many workers are downloading them. A worker that is free takes
+	// the most wanted tile still shown, and lets go of any the view moved away from.
+	struct download_queue
+	{
+		mutex mutex;
+		std::vector<std::pair<map_tile_id, entry_ptr>> waiting;
+		int running = 0;
+		downloader download = download_from_osm;
+	};
+
+	using download_queue_ptr = std::shared_ptr<download_queue>;
+
+	async_strategy& _async;
+	std::function<void()> _invalidate;
+	size_t _capacity;
+
+	// Set false in the destructor, which runs on the UI thread, the thread every publish lands on.
+	std::shared_ptr<std::atomic_bool> _alive = std::make_shared<std::atomic_bool>(true);
+	download_queue_ptr _downloads = std::make_shared<download_queue>();
+	std::map<map_tile_id, entry_ptr> _entries;
+
+public:
+	map_tile_cache(async_strategy& async, std::function<void()> invalidate, const size_t capacity = 1000) :
+		_async(async), _invalidate(std::move(invalidate)), _capacity(capacity)
+	{
+	}
+
+	~map_tile_cache()
+	{
+		_alive->store(false);
+		clear();
+	}
+
+	map_tile_cache(const map_tile_cache&) = delete;
+	map_tile_cache& operator=(const map_tile_cache&) = delete;
+
+	// For tests, which must not reach the network.
+	void download_with(downloader download)
+	{
+		core::exclusive_lock lock(_downloads->mutex);
+		_downloads->download = std::move(download);
+	}
+
+	// The tiles shown now, the most wanted first. Each is fetched unless it is loaded, already on its way, or
+	// failed a moment ago; every other tile is no longer fetched, and is free to go once the cache holds more
+	// than its capacity.
+	void show(const std::span<const map_tile_id> tiles)
+	{
+		// A tile listed twice keeps its first place.
+		std::unordered_map<map_tile_id, uint32_t> ranks;
+		ranks.reserve(tiles.size());
+		for (const auto& coord : tiles) ranks.try_emplace(coord, static_cast<uint32_t>(ranks.size()));
+
+		for (auto& [coord, e] : _entries)
 		{
-			min_latitude = max_latitude = coordinate.latitude();
-			min_longitude = max_longitude = coordinate.longitude();
-			valid = true;
+			const auto found = ranks.find(coord);
+			core::exclusive_lock lock(e->mutex);
+			e->in_view = found != ranks.end();
+			if (e->in_view) e->rank = found->second;
+		}
+
+		const auto now = core::now_ms();
+
+		// In order, so the store is asked for the most wanted first.
+		for (const auto& coord : tiles)
+		{
+			auto found = _entries.find(coord);
+			if (found == _entries.end()) found = _entries.emplace(coord, std::make_shared<entry>()).first;
+
+			const auto& e = found->second;
+			bool need_fetch = false;
+			{
+				core::exclusive_lock lock(e->mutex);
+				e->in_view = true;
+				e->rank = ranks.find(coord)->second;
+
+				// Not while it is on its way: rapid pans would otherwise pile duplicate requests onto the queues.
+				if (!e->surface && !e->requested && now >= e->retry_ms)
+				{
+					e->requested = true;
+					need_fetch = true;
+				}
+			}
+
+			if (need_fetch) fetch(e, coord);
+		}
+
+		evict();
+	}
+
+	// The decoded tile, or null while it is not loaded. The pointer is copied under the entry's lock,
+	// because a worker may be publishing it at the same moment. Safe from several threads at once while
+	// the UI thread, the only one that changes which tiles are held, waits for them.
+	core::surface_ptr surface(const map_tile_id& coord) const
+	{
+		const auto found = _entries.find(coord);
+		if (found == _entries.end()) return {};
+
+		core::exclusive_lock lock(found->second->mutex);
+		return found->second->surface;
+	}
+
+	// Lets every tile go, with whatever is still on its way for them, wherever it waits.
+	void clear()
+	{
+		for (auto& [coord, e] : _entries)
+		{
+			core::exclusive_lock lock(e->mutex);
+			e->in_view = false;
+		}
+
+		_entries.clear();
+	}
+
+private:
+	void evict()
+	{
+		for (auto it = _entries.begin(); it != _entries.end() && _entries.size() > _capacity;)
+		{
+			bool in_view;
+			{
+				core::exclusive_lock lock(it->second->mutex);
+				in_view = it->second->in_view;
+			}
+
+			if (in_view) ++it;
+			else it = _entries.erase(it);
+		}
+	}
+
+	// Whether a tile on its way is worth its next step. One that is not - out of view, or loaded meanwhile -
+	// has its claim released, so it can be asked for again.
+	static bool still_wanted(entry& e)
+	{
+		core::exclusive_lock lock(e.mutex);
+		if (e.in_view && !e.surface) return true;
+		e.requested = false;
+		return false;
+	}
+
+	// Releases the claim on a tile that could not be had, and keeps it from being asked for again until then.
+	static void failed(entry& e, const int64_t retry_ms)
+	{
+		core::exclusive_lock lock(e.mutex);
+		e.requested = false;
+		e.retry_ms = retry_ms;
+	}
+
+	static uint32_t rank_of(entry& e)
+	{
+		core::exclusive_lock lock(e.mutex);
+		return e.rank;
+	}
+
+	// Decodes and hands the result to the UI, releasing the request claim. Every fetch ends here, in
+	// still_wanted or in failed exactly once, so a tile can always be asked for again.
+	static void publish(async_strategy& async, const entry_ptr& e, const std::function<void()>& invalidate,
+	                    const std::shared_ptr<std::atomic_bool>& alive, const core::blob& data)
+	{
+		// Not decoded for a view that has moved on: the store keeps it for one that comes back.
+		if (!still_wanted(*e)) return;
+
+		files ff;
+		auto surface = ff.image_to_surface(core::cspan(data.data(), data.size()));
+
+		if (!surface)
+		{
+			failed(*e, core::now_ms() + retry_after_ms);
 			return;
 		}
 
-		min_latitude = std::min(min_latitude, coordinate.latitude());
-		max_latitude = std::max(max_latitude, coordinate.latitude());
-		min_longitude = std::min(min_longitude, coordinate.longitude());
-		max_longitude = std::max(max_longitude, coordinate.longitude());
+		bool published = false;
+		{
+			core::exclusive_lock lock(e->mutex);
+			e->requested = false;
+
+			if (!e->surface)
+			{
+				e->surface = std::move(surface);
+				published = e->in_view;
+			}
+		}
+
+		if (published)
+		{
+			async.queue_ui([invalidate, alive]
+			{
+				if (alive->load())
+				{
+					invalidate();
+				}
+			});
+		}
 	}
 
-	gps_coordinate centre() const
+	// One request on this map worker's own connection to the canonical OSM host, with the User-Agent the
+	// usage policy requires.
+	static core::blob download_from_osm(const map_tile_id& coord)
 	{
-		return valid ? gps_coordinate((min_latitude + max_latitude) / 2.0, (min_longitude + max_longitude) / 2.0)
-		             : gps_coordinate{};
+		platform::web_request req;
+		req.path = generate_tile_path(coord);
+		req.headers.emplace_back("User-Agent", tile_user_agent());
+
+		thread_local platform::web_host_ptr s_osm_con;
+		if (!s_osm_con)
+		{
+			s_osm_con = platform::connect_to_host(osm_tile_host);
+		}
+
+		const auto response = send_request(s_osm_con, req);
+		if (response.status_code == 200 && !response.body.empty())
+			return core::blob(response.body.begin(), response.body.end());
+
+		// No response at all: drop the connection, so the next request reconnects rather than reusing a
+		// broken handle forever.
+		if (response.status_code == 0) s_osm_con.reset();
+		return {};
+	}
+
+	static void queue_download(async_strategy& async, const download_queue_ptr& downloads, const map_tile_id coord,
+	                           entry_ptr e, const std::function<void()>& invalidate,
+	                           const std::shared_ptr<std::atomic_bool>& alive)
+	{
+		bool start = false;
+		{
+			core::exclusive_lock lock(downloads->mutex);
+			downloads->waiting.emplace_back(coord, std::move(e));
+
+			if (downloads->running < max_downloads)
+			{
+				++downloads->running;
+				start = true;
+			}
+		}
+
+		if (start)
+		{
+			async.queue_async(async_queue::map_tile, [&async, downloads, invalidate, alive]
+			{ download_waiting(async, downloads, invalidate, alive); });
+		}
+	}
+
+	// A downloading worker: the most wanted tile still shown, then the next, until none waits. Whatever the
+	// view moved away from is let go here, before anything is spent on it.
+	static void download_waiting(async_strategy& async, const download_queue_ptr& downloads,
+	                             const std::function<void()>& invalidate,
+	                             const std::shared_ptr<std::atomic_bool>& alive)
+	{
+		for (;;)
+		{
+			map_tile_id coord{};
+			entry_ptr e;
+			downloader download;
+
+			{
+				core::exclusive_lock lock(downloads->mutex);
+				auto& waiting = downloads->waiting;
+				std::erase_if(waiting, [](const auto& w) { return !still_wanted(*w.second); });
+
+				const auto next = std::ranges::min_element(waiting, {},
+				                                           [](const auto& w) { return rank_of(*w.second); });
+
+				if (next == waiting.end())
+				{
+					--downloads->running;
+					return;
+				}
+
+				coord = next->first;
+				e = std::move(next->second);
+				waiting.erase(next);
+				download = downloads->download;
+			}
+
+			const auto data = std::make_shared<const core::blob>(download(coord));
+
+			if (data->empty())
+			{
+				failed(*e, core::now_ms() + retry_after_ms);
+				continue;
+			}
+
+			async.queue_tile_db([key = map_tile_db_key(coord.z, coord.x, coord.y), data](tile_cache_db& db)
+			{ db.store(key, core::cspan(data->data(), data->size())); });
+
+			publish(async, e, invalidate, alive, *data);
+		}
+	}
+
+	void fetch(const entry_ptr& e, const map_tile_id& coord)
+	{
+		_async.queue_tile_db([&async = _async, coord, e, downloads = _downloads, invalidate = _invalidate,
+		                      alive = _alive](tile_cache_db& db)
+		{
+			if (!still_wanted(*e)) return;
+
+			// Decoding a PNG on this thread would stall every following lookup, and downloading on it would stall
+			// them for a network round trip, so both hand on to the map workers.
+			auto data = std::make_shared<core::blob>(db.load(map_tile_db_key(coord.z, coord.x, coord.y)));
+
+			if (!data->empty())
+			{
+				async.queue_async(async_queue::map_tile, [&async, e, invalidate, alive, data]
+				{ publish(async, e, invalidate, alive, *data); });
+			}
+			else if (!df::network_allowed)
+			{
+				// A session that may not reach the network draws the tiles it has cached, and the world map
+				// where it has none.
+				failed(*e, std::numeric_limits<int64_t>::max());
+			}
+			else
+			{
+				queue_download(async, downloads, coord, e, invalidate, alive);
+			}
+		});
 	}
 };
-
-// The closest zoom at which the whole box still fits in `extent`. A single point has no span,
-// so it fits everywhere and yields the closest zoom; a box wider than the world yields the
-// widest. Half a tile of slack on each side keeps the outermost markers clear of the edge,
-// while never demanding more room than a small map actually has.
-inline int map_fit_zoom(const map_box& box, const sizei extent)
-{
-	if (!box.valid || extent.cx <= 0 || extent.cy <= 0) return map_min_zoom;
-
-	const auto fit_cx = std::max(TILE_SIZE / 2, extent.cx - TILE_SIZE);
-	const auto fit_cy = std::max(TILE_SIZE / 2, extent.cy - TILE_SIZE);
-
-	for (auto z = map_max_zoom; z > map_min_zoom; --z)
-	{
-		const auto cx = (lon_to_tile_x(box.max_longitude, z) - lon_to_tile_x(box.min_longitude, z)) * TILE_SIZE;
-		const auto cy = (lat_to_tile_y(box.min_latitude, z) - lat_to_tile_y(box.max_latitude, z)) * TILE_SIZE;
-
-		if (cx <= fit_cx && cy <= fit_cy) return z;
-	}
-
-	return map_min_zoom;
-}
 
 class map_engine
 {
 public:
-	struct cache_entry
-	{
-		// Guards surface, in_view and requested — these are touched by both the UI
-		// thread (render/fetch_tiles/cleanup) and the map worker thread (fetch_tile).
-		mutex mutex;
-		core::surface_ptr surface;
-		bool in_view = false;
-		bool requested = false; // a fetch task is queued/in-flight for this tile
-	};
-
-	using cache_entry_ptr = std::shared_ptr<cache_entry>;
-
 	// A single aggregated marker (cluster of nearby item locations) in screen space.
 	struct map_cluster
 	{
@@ -268,17 +602,12 @@ private:
 	async_strategy& _async;
 	std::function<void()> _invalidate;
 
-	// Shared with queued tile tasks so a task completing after this engine (and its
-	// owning frame) is destroyed does not invoke the now-dangling invalidate callback.
-	// Set false in the destructor, which runs on the UI thread (same thread as queue_ui).
-	std::shared_ptr<std::atomic_bool> _alive = std::make_shared<std::atomic_bool>(true);
-
 	int _zoom = 16;
 	gps_coordinate _location;
 	pointi _scroll_offset = {0, 0};
 	pointi _temp_drag_offset = {0, 0};
 
-	std::map<map_tile_id, cache_entry_ptr> _tile_cache;
+	map_tile_cache _tiles;
 	// A derived GPU cache rather than logical state, so it is shed on device loss from the const
 	// broadcast the same way an element's texture is.
 	mutable std::map<map_tile_id, render::texture_ptr> _texture_cache;
@@ -291,28 +620,16 @@ private:
 	sizei _cluster_extent;
 	size_t _last_cluster_work = 0;
 
-	// The cluster the user picked, kept as a coordinate so it survives zooming and panning.
-	gps_coordinate _selected;
-	int _selected_count = 0;
-
-	// The centre marker only means something where the centre is the answer.
-	bool _show_crosshair = true;
-
 public:
 	map_engine(async_strategy& async, std::function<void()> invalidate) :
-		_async(async), _invalidate(std::move(invalidate))
+		_async(async), _invalidate(std::move(invalidate)), _tiles(async, _invalidate)
 	{
 	}
 
 	static constexpr int min_zoom = map_min_zoom;
 	static constexpr int max_zoom = map_max_zoom;
 
-	~map_engine()
-	{
-		_alive->store(false);
-		_tile_cache.clear();
-		_texture_cache.clear();
-	}
+	~map_engine() { _texture_cache.clear(); }
 
 	const gps_coordinate& location() const { return _location; }
 	int zoom_level() const { return _zoom; }
@@ -370,16 +687,9 @@ public:
 				continue;
 			}
 
-			// Copy the surface shared_ptr under the entry lock; the worker thread may be
-			// publishing it concurrently (a torn shared_ptr read would corrupt refcounts).
-			core::surface_ptr surf;
-			const auto found_surface = _tile_cache.find(tile.coord);
-
-			if (found_surface != _tile_cache.end())
-			{
-				core::exclusive_lock lock(found_surface->second->mutex);
-				surf = found_surface->second->surface;
-			}
+			// The surface pointer is copied under the entry lock, because a map worker may be publishing it
+			// concurrently.
+			const auto surf = _tiles.surface(tile.coord);
 
 			bool drawn = false;
 
@@ -402,9 +712,8 @@ public:
 		}
 
 		update_clusters_if_needed(extent);
-		render_selection(dc, extent);
 		render_markers(dc, extent);
-		if (_show_crosshair) render_crosshair(dc, extent);
+		render_crosshair(dc, extent);
 		render_attribution(dc, extent);
 	}
 
@@ -425,27 +734,6 @@ public:
 		}
 
 		return false;
-	}
-
-	// Frames the view on a latitude/longitude box: the box centre at the closest zoom that
-	// still shows the whole box. A map that opens on the items is the difference between a
-	// hot spot the user can click and an arbitrary street they have to zoom out of.
-	bool fit_box(const map_box& box, const recti& bounds)
-	{
-		const auto extent = bounds.extent();
-		const auto centre = box.centre();
-
-		if (!box.valid || !centre.is_valid() || extent.cx <= 0 || extent.cy <= 0) return false;
-
-		_zoom = map_fit_zoom(box, extent);
-		_location = centre;
-		_scroll_offset = {0, 0};
-		_temp_drag_offset = {0, 0};
-		_texture_cache.clear();
-		_clusters_dirty = true;
-		fetch_tiles(bounds, _scroll_offset);
-		_invalidate();
-		return true;
 	}
 
 	void pan_start() { _temp_drag_offset = {0, 0}; }
@@ -476,7 +764,7 @@ public:
 
 	void clear_caches()
 	{
-		_tile_cache.clear();
+		_tiles.clear();
 		_texture_cache.clear();
 	}
 
@@ -557,38 +845,6 @@ public:
 	void set_markers(const std::vector<marker>& markers)
 	{
 		set_marker_snapshot(prepare_marker_snapshot(markers, _zoom));
-	}
-
-	// Marks the cluster the user picked. Purely presentational: it shows which bubble the
-	// answer came from after the map has moved on.
-	void set_selected(const gps_coordinate& loc, const int count)
-	{
-		_selected = loc;
-		_selected_count = count;
-		_invalidate();
-	}
-
-	void set_show_crosshair(const bool show)
-	{
-		if (_show_crosshair != show)
-		{
-			_show_crosshair = show;
-			_invalidate();
-		}
-	}
-
-	// The ground radius a cluster bubble covers at the current zoom, in kilometres. Web
-	// Mercator resolves 156543.03392 m/px at the equator for zoom 0, scaled by cos(latitude).
-	//
-	// The whole cell diagonal, not half a cell width: a bubble sits at the weighted average of its
-	// members rather than at the centre of its cell, so a member in the opposite corner is up to a
-	// full diagonal away. Half a width left those members out of the search the bubble opened,
-	// which is the one thing a cluster's radius promises not to do.
-	double cluster_radius_km(const gps_coordinate& at) const
-	{
-		constexpr auto cell_diagonal_px = cluster_cell_px * 1.4142135623730951;
-		const auto meters_per_pixel = 156543.03392 * std::cos(at.latitude() * M_PI / 180.0) / std::pow(2.0, _zoom);
-		return meters_per_pixel * cell_diagonal_px / 1000.0;
 	}
 
 	std::vector<gps_coordinate> visible_cluster_coordinates(const sizei& extent)
@@ -734,21 +990,6 @@ private:
 		}
 	}
 
-	// A halo behind the bubble the user picked. Drawn under the markers so the bubble keeps
-	// its own shape, and anchored to the picked coordinate so it stays put as the map moves.
-	void render_selection(render::draw_context& dc, const sizei& extent) const
-	{
-		if (!_selected.is_valid()) return;
-
-		const auto p = screen_from_gps(_selected, extent);
-		const auto r = cluster_radius(_selected_count) + 7;
-
-		if (p.x < -r || p.y < -r || p.x > extent.cx + r || p.y > extent.cy + r) return;
-
-		const recti glow(p - pointi(r, r), sizei(r * 2, r * 2));
-		dc.draw_rounded_rect(glow, core::color(1.0f, 1.0f, 1.0f, 0.8f), r);
-	}
-
 	void render_markers(render::draw_context& dc, const sizei& /*extent*/) const
 	{
 		for (const auto& c : _clusters)
@@ -770,26 +1011,9 @@ private:
 		}
 	}
 
-	// The OSM tile usage policy requires visible licence attribution on the map.
-	// Draw "© OpenStreetMap contributors" in the bottom-right corner with a
-	// translucent backing so it stays legible over any tile.
 	void render_attribution(render::draw_context& dc, const sizei& extent) const
 	{
-		constexpr std::string_view attribution = "© OpenStreetMap contributors";
-		constexpr int pad = 4;
-
-		const auto text_extent = dc.measure_text(attribution, render::font_face::dialog,
-		                                         render::text_style::single_line, extent.cx);
-
-		const int w = text_extent.cx + pad * 2;
-		const int h = text_extent.cy + pad;
-
-		const recti bg_rect(std::max(0, extent.cx - w), std::max(0, extent.cy - h), extent.cx, extent.cy);
-		dc.draw_rect(bg_rect, core::color(0.0f, 0.0f, 0.0f, 0.4f));
-
-		const recti text_rect(bg_rect.left + pad, bg_rect.top, bg_rect.right - pad, bg_rect.bottom);
-		dc.draw_text(attribution, text_rect, render::font_face::dialog, render::text_style::single_line,
-		             core::color(1.0f, 1.0f, 1.0f, 0.9f), {});
+		draw_map_attribution(dc, recti(extent));
 	}
 
 	// A plain cross, semi-transparent: two unbroken lines whose intersection is the coordinate
@@ -817,205 +1041,28 @@ private:
 		dc.draw_rect(vertical, crosshair_color);
 	}
 
-	// Decodes and hands the result to the UI, then releases the request claim. Every path through
-	// the fetch below ends here exactly once, so a tile can always be asked for again.
-	static void publish_tile(async_strategy& async, const cache_entry_ptr& e, const std::function<void()>& invalidate,
-	                         const std::shared_ptr<std::atomic_bool>& alive, const core::blob& data)
-	{
-		core::surface_ptr surface;
-
-		if (!data.empty())
-		{
-			files ff;
-			surface = ff.image_to_surface(core::cspan(data.data(), data.size()));
-		}
-
-		bool publish = false;
-		{
-			core::exclusive_lock lock(e->mutex);
-			e->requested = false;
-
-			if (surface && e->in_view && !e->surface)
-			{
-				e->surface = std::move(surface);
-				publish = true;
-			}
-		}
-
-		if (publish)
-		{
-			async.queue_ui([invalidate, alive]
-			{
-				if (alive->load())
-				{
-					invalidate();
-				}
-			});
-		}
-	}
-
-	static void download_tile(async_strategy& async, const cache_entry_ptr& e, const std::function<void()>& invalidate,
-	                          const std::shared_ptr<std::atomic_bool>& alive, const map_tile_id& coord,
-	                          const int64_t key)
-	{
-		// A session that may not reach the network draws the tiles it has cached, and leaves the rest blank.
-		if (!df::network_allowed)
-		{
-			publish_tile(async, e, invalidate, alive, {});
-			return;
-		}
-
-		// Fetch from the canonical OSM host with a compliant User-Agent.
-		platform::web_request req;
-		req.path = generate_tile_path(coord);
-		req.headers.emplace_back("User-Agent", tile_user_agent());
-
-		thread_local platform::web_host_ptr s_osm_con;
-		if (!s_osm_con)
-		{
-			s_osm_con = platform::connect_to_host(osm_tile_host);
-		}
-
-		const auto response = send_request(s_osm_con, req);
-		const auto data = std::make_shared<core::blob>();
-
-		if (response.status_code == 200 && !response.body.empty())
-		{
-			data->assign(response.body.begin(), response.body.end());
-
-			async.queue_tile_db([key, data](tile_cache_db& db)
-			{ db.store(key, core::cspan(data->data(), data->size())); });
-		}
-		else
-		{
-			// Hard failure: drop the shared connection so the next task reconnects rather than
-			// reusing a broken handle forever.
-			s_osm_con.reset();
-		}
-
-		publish_tile(async, e, invalidate, alive, *data);
-	}
-
-	void fetch_tile(const cache_entry_ptr& e, const map_tile_id& coord)
-	{
-		// A shared liveness flag keeps every hop safe if this engine is destroyed while the request
-		// is still in the pipeline.
-		const auto key = map_tile_db_key(coord.z, coord.x, coord.y);
-
-		_async.queue_tile_db(
-			[&async = _async, coord, key, e, invalidate = _invalidate, alive = _alive](tile_cache_db& db)
-		{
-			{
-				core::exclusive_lock lock(e->mutex);
-				if (!e->in_view || e->surface)
-				{
-					e->requested = false;
-					return;
-				}
-			}
-
-			// Decoding a PNG on this thread would stall every following lookup, and downloading on
-			// it would stall them for a network round trip, so both hand back to the map workers.
-			auto data = std::make_shared<core::blob>(db.load(key));
-
-			if (!data->empty())
-			{
-				async.queue_async(async_queue::map_tile, [&async, e, invalidate, alive, data]
-				{ publish_tile(async, e, invalidate, alive, *data); });
-				return;
-			}
-
-			async.queue_async(async_queue::map_tile, [&async, coord, key, e, invalidate, alive]
-			{ download_tile(async, e, invalidate, alive, coord, key); });
-		});
-	}
-
 	void fetch_tiles(const recti& bounds, const pointi scroll_offset)
 	{
-		const auto tiles = get_tiles_for_view(bounds, scroll_offset, _location, _zoom);
-		std::unordered_set<map_tile_id> visible_tiles;
-		visible_tiles.reserve(tiles.size());
-		for (const auto& tile : tiles)
+		auto tiles = get_tiles_for_view(bounds, scroll_offset, _location, _zoom);
+
+		// The tile under the centre first, as a map fills in.
+		const auto centre = bounds.center();
+		std::ranges::stable_sort(tiles, {}, [centre](const map_tile& t)
 		{
-			visible_tiles.insert(tile.coord);
-		}
+			const auto dx = t.screen_pos.x + TILE_SIZE / 2 - centre.x;
+			const auto dy = t.screen_pos.y + TILE_SIZE / 2 - centre.y;
+			return dx * dx + dy * dy;
+		});
 
-		// Update visibility and eagerly release GPU textures for tiles that scrolled
-		// out of view so the texture cache does not balloon while panning.
-		for (auto& [coord, entry] : _tile_cache)
-		{
-			const bool vis = visible_tiles.contains(coord);
-			{
-				core::exclusive_lock lock(entry->mutex);
-				entry->in_view = vis;
-			}
-			if (!vis)
-			{
-				_texture_cache.erase(coord);
-			}
-		}
+		std::vector<map_tile_id> visible;
+		visible.reserve(tiles.size());
+		for (const auto& tile : tiles) visible.push_back(tile.coord);
 
-		for (const auto& tile : tiles)
-		{
-			auto found = _tile_cache.find(tile.coord);
+		// Textures for tiles that scrolled out of view are released eagerly, so the texture cache does not
+		// balloon while panning.
+		std::erase_if(_texture_cache, [&visible](const auto& entry)
+		{ return std::ranges::find(visible, entry.first) == visible.end(); });
 
-			if (found == _tile_cache.end())
-			{
-				auto e = std::make_shared<cache_entry>();
-				e->in_view = true;
-				found = _tile_cache.emplace(tile.coord, e).first;
-			}
-
-			const auto& entry = found->second;
-			bool need_fetch = false;
-			{
-				core::exclusive_lock lock(entry->mutex);
-				entry->in_view = true;
-
-				// Only enqueue when there is no surface and no task already in flight,
-				// otherwise rapid mouse-move pans pile up duplicate requests on the
-				// single serial map queue.
-				if (!entry->surface && !entry->requested)
-				{
-					entry->requested = true;
-					need_fetch = true;
-				}
-			}
-
-			if (need_fetch)
-			{
-				fetch_tile(entry, tile.coord);
-			}
-		}
-
-		cleanup_cache();
-	}
-
-	void cleanup_cache()
-	{
-		constexpr size_t max_cache_size = 1000;
-
-		if (_tile_cache.size() > max_cache_size)
-		{
-			auto it = _tile_cache.begin();
-			while (it != _tile_cache.end() && _tile_cache.size() > max_cache_size)
-			{
-				bool vis;
-				{
-					core::exclusive_lock lock(it->second->mutex);
-					vis = it->second->in_view;
-				}
-
-				if (!vis)
-				{
-					_texture_cache.erase(it->first);
-					it = _tile_cache.erase(it);
-				}
-				else
-				{
-					++it;
-				}
-			}
-		}
+		_tiles.show(visible);
 	}
 };

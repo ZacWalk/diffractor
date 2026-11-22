@@ -21,6 +21,16 @@ class location_cache;
 class database;
 class async_strategy;
 
+namespace faces
+{
+	class face_search;
+}
+
+namespace df
+{
+	struct explore_sample;
+}
+
 // The content identity a hash was computed against. A checksum or picture hash describes the bytes
 // that were read, so publishing one against a path alone attaches it to whatever occupies that path
 // when the work finishes. A file replaced while it was being hashed is a different file at the same
@@ -57,6 +67,17 @@ struct phash_result
 
 struct item_db_write
 {
+	// A write of metadata alone that Diffractor made, from the modified time and orientation the file had to those it
+	// has: a face record current at the first is stamped with the second, and turned with the picture where its
+	// orientation alone changed (docs/faces.md#32-the-scan).
+	struct face_restamp
+	{
+		core::date_t from;
+		core::date_t to;
+		core::orientation orientation_from = core::orientation::top_left;
+		core::orientation orientation_to = core::orientation::top_left;
+	};
+
 	core::file_path path;
 	std::optional<prop::item_metadata_ptr> md;
 	std::optional<core::date_t> modified;
@@ -70,6 +91,12 @@ struct item_db_write
 	// The bytes changed, so the stored checksum and picture hash describe content that is gone. The
 	// optional fields above cannot say this: a write that carries no hash keeps the stored one.
 	bool clear_hashes = false;
+	// The picture's face record (docs/faces.md#51-the-face-record), written into its cached record beside its
+	// metadata; empty removes it. Written only while face search is in the session that made it: one turned off or
+	// whose data was deleted since publishes nothing after it, so a delete is never undone by a write queued before.
+	std::optional<std::vector<uint8_t>> faces;
+	uint64_t faces_session = 0;
+	std::optional<face_restamp> restamp_faces;
 
 	item_db_write() noexcept = default;
 	item_db_write(const item_db_write&) = delete;
@@ -140,6 +167,8 @@ struct index_statistic
 
 	int media_item_count = 0;
 	int picture_item_count = 0;
+	// docs/faces.md#31-turning-it-on-and-off: the collection's videos, as face search reads them.
+	int video_item_count = 0;
 	int index_item_count = 0;
 	int indexed_dup_folder_count = 0;
 	int indexed_max_compare_count = 0;
@@ -686,6 +715,9 @@ struct index_metadata_summary
 	tag_companion_counts _tag_companions;
 	prop_text_summary _distinct_labels;
 	prop_num_summary _distinct_ratings;
+	// Whom the collection's pictures name, each once whatever its case, under the spelling most of their
+	// pictures use: docs/faces.md#23-searching-for-people.
+	prop_text_summary _distinct_people;
 };
 
 using index_metadata_summary_const_ptr = std::shared_ptr<const index_metadata_summary>;
@@ -946,6 +978,28 @@ class index_state final : public core::no_copy
 	core::hash_map<core::file_path, int, core::ihash, core::ieq> _write_claims;
 	df::item_set _deferred_modified_scans;
 
+	// docs/faces.md: the store of every picture's faces, the scan that fills it and what is made of it.
+	std::unique_ptr<faces::face_search> _faces;
+
+	// The face records of pictures a write of metadata alone patched in place, which have yet to be stamped with
+	// the file's new time: the folder's next refresh in a scan of the item reads it, and the entry is spent either
+	// way - or lapses unspent - so a later change nobody made here is never taken for the write's.
+	struct pending_face_restamp
+	{
+		core::date_t from;
+		core::orientation orientation_from = core::orientation::top_left;
+		core::orientation orientation_to = core::orientation::top_left;
+		int64_t written_ms = 0;
+	};
+
+	core::mutex _face_restamps_rw;
+	_Guarded_by_(
+		_face_restamps_rw) core::hash_map<core::file_path, pending_face_restamp, core::ihash, core::ieq> _face_restamps;
+	std::atomic_bool _has_face_restamps = false;
+
+	void restamp_face_record(core::file_path path, const pending_face_restamp& pending, core::date_t to);
+	void spend_face_restamps(const df::index_folder_item_ptr& folder, std::span<const core::file_path> paths);
+
 	// Folders whose validation gave up to writers still publishing into them, each with whether its
 	// follow-up must rescan the folder's items and subfolders rather than only revalidate it. Keyed by
 	// folder so a folder that keeps giving up holds one queued follow-up, not one per attempt.
@@ -1056,7 +1110,23 @@ public:
 	using thumbnail_results = std::vector<thumbnail_result>;
 
 	explicit index_state(async_strategy& as, const location_cache& locations);
+	~index_state();
 	const location_cache& locations() const { return _locations; }
+
+	faces::face_search& faces() const { return *_faces; }
+	// Each local collection picture whose file metadata and sidecar are current, folder by folder, and each such video
+	// with a picture stream - whichever of the two are asked for - and whether it is a video: docs/faces.md#32-the-scan.
+	void visit_collection_pictures(
+		bool photos, bool videos,
+		const std::function<void(core::file_path, const df::index_file_item&, bool video)>& visit) const;
+	// A picture's face record, written into its cached record by face search's session `session`; empty removes it.
+	void save_face_record(core::file_path path, std::vector<uint8_t> record, uint64_t session);
+	// Files and folders Diffractor renamed or moved, from where to where, all taken together: what the user told it of
+	// them that is kept by path - the face book's marks, docs/faces.md#62-marks - goes with them. Any thread.
+	void paths_moved(std::span<const std::pair<core::file_path, core::file_path>> files);
+	void paths_moved(std::span<const std::pair<core::folder_path, core::folder_path>> folders);
+	// A quarter of the cores, between one and four, as the thumbnail decodes have.
+	static int face_threads();
 
 	void init_item_index();
 	void reset();
@@ -1241,11 +1311,14 @@ public:
 	// through its still-open, cache-coherent handle. Reuses the cached folder node (no filesystem
 	// refresh) and, when coherent, stamps file_modified == metadata_scanned == known_modified so the
 	// later background rescan is a no-op. This is the SMB read-after-write fix.
+	// metadata_only says the write changed no pixel, so the picture's face record is stamped afresh rather than
+	// read again (docs/faces.md#32-the-scan).
 	void apply_scan_now(const item_scan_request& request, const file_scan_result& sr, bool coherent,
-	                    core::date_t known_modified);
+	                    core::date_t known_modified, bool metadata_only = false);
 	// Applies the scan a write took behind itself, and reports whether the item still needs a forced
 	// background rescan - which it does only when the write produced no scan to apply.
-	bool apply_write_scan(const item_scan_request& request, const file_update_result& result);
+	bool apply_write_scan(const item_scan_request& request, const file_update_result& result,
+	                      bool metadata_only = false);
 	// What files::update needs to produce a scan the index can apply without reopening the file.
 	static rescan_spec make_rescan_spec(const item_scan_request& request, std::string_view xmp_sidecar,
 	                                    bool want_image = false, bool want_handle = false);
@@ -1394,6 +1467,8 @@ public:
 	                                      const core::unique_paths& excluded = {}) const;
 	// Every item in the collection that says both where and when it was taken, in the order taken.
 	std::vector<dated_location> dated_locations() const;
+	// Every item in the collection, as the Explore view reads it.
+	std::vector<df::explore_sample> explore_samples() const;
 
 	df::file_group_histogram file_types() const
 	{
@@ -1433,6 +1508,35 @@ public:
 			summary = _summary._metadata;
 		}
 		return {summary->_distinct_labels.begin(), summary->_distinct_labels.end()};
+	}
+
+	// Whom the collection names, most pictures first, then by name.
+	distinct_results distinct_people() const
+	{
+		index_metadata_summary_const_ptr summary;
+		{
+			core::shared_lock lock(_summary_rw);
+			summary = _summary._metadata;
+		}
+		distinct_results result(summary->_distinct_people.begin(), summary->_distinct_people.end());
+		std::ranges::sort(result, [](const auto& a, const auto& b)
+		{
+			const auto ca = a.second.total_items().count;
+			const auto cb = b.second.total_items().count;
+			return ca != cb ? ca > cb : core::icmp(a.first, b.first) < 0;
+		});
+		return result;
+	}
+
+	df::file_group_histogram person_summary(const std::string_view name) const
+	{
+		index_metadata_summary_const_ptr summary;
+		{
+			core::shared_lock lock(_summary_rw);
+			summary = _summary._metadata;
+		}
+		const auto found = summary->_distinct_people.find(name);
+		return found != summary->_distinct_people.end() ? found->second : df::file_group_histogram{};
 	}
 
 	prop_num_summary distinct_ratings() const
@@ -1485,12 +1589,13 @@ public:
 	std::vector<auto_complete_word> auto_complete_words(std::string_view query, size_t max_results);
 	std::vector<auto_complete_word> auto_complete_tag_companions(const std::vector<std::string>& tags,
 	                                                             std::string_view prefix, size_t max_results) const;
+	// The people whose names start with, or failing that contain, `query`, most pictures first.
+	std::vector<auto_complete_word> auto_complete_people(std::string_view query, size_t max_results) const;
 	size_t tag_companion_entry_count() const;
 	std::vector<auto_complete_word> auto_complete_locations(std::string_view query, size_t max_results,
 	                                                        df::location_level level = df::location_level::any) const;
 	std::vector<auto_complete_folder> auto_complete_folders(std::string_view query, size_t max_results) const;
 	bool rebuild_sorted_words(index_metadata_summary& summary, uint64_t generation = 0) const;
-	std::vector<std::string> auto_complete_text(prop::key_ref key);
 
 private:
 	// The visible plan, shared by the UI thread, which replaces and extends it, and the thumbnailing thread,
@@ -1564,6 +1669,10 @@ public:
 	// The number of items a search finds, or nothing when only scanning many folders, or reading files,
 	// could say: a prediction's count must never cost what running the search costs.
 	std::optional<uint64_t> try_count_items(const df::search_t& search, const core::cancel_token& token);
+
+	// Candidate next terms taken from a bounded sample of clean matching documents.
+	std::vector<index_state::auto_complete_word> refinements(const df::search_t& search, std::string_view prefix,
+	                                                         const core::cancel_token& token);
 
 	// Prepares a current result set for count_kept. Folders are skipped: no search's count holds them.
 	search_kept_items make_kept_items(const std::vector<core::file_path>& paths);

@@ -13,6 +13,7 @@
 
 #include "model_index.h"
 #include "model_index_internal.h"
+#include "model_faces_search.h"
 #include "model_locations.h"
 #include "model_property.h"
 #include "model.h"
@@ -368,7 +369,7 @@ void index_state::update_predictions()
 			// Sharing a capture second is a weak claim on its own. A picture whose neighbours are all
 			// a different shape cannot be a copy of any of them, and refusing it here is a decode
 			// saved rather than a judgement made. A quarter turn transposes the stored extent, so a
-			// transposed neighbour still counts (docs/collections.md section 7.2).
+			// transposed neighbour still counts (docs/collections.md section 7.3).
 			std::vector<size_t> shaped;
 			shaped.reserve(members.size());
 
@@ -617,6 +618,9 @@ void index_state::queue_calc_perceptual_hashes(std::vector<phash_request> reques
 {
 	_async.queue_async(async_queue::crc, [this, requests = std::move(requests)]
 	{
+		const auto permit = _faces->scan_io().start_index();
+		if (!permit) return;
+
 		// Results are published in groups. Hashing a file takes milliseconds, so publishing each one on
 		// its own found both the work queue and the write queue empty every time and woke two threads
 		// per file for a few microseconds of work each.

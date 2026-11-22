@@ -47,6 +47,21 @@ namespace
 
 	constexpr int register_columns = 7;
 	constexpr int register_rows = (sid_register_count + register_columns - 1) / register_columns;
+	// Upright, beside the voices: a column for each voice's seven registers, and the filter's four in rows below them.
+	constexpr int voice_register_count = 7;
+	constexpr int register_voice_columns = 3;
+	constexpr int register_voice_rows = voice_register_count +
+	                                    (sid_register_count - voice_register_count * 3 + register_voice_columns - 1) /
+	                                        register_voice_columns;
+
+	// Where register i sits in its grid, as {column, row}.
+	pointi register_cell(const int i, const bool by_voice)
+	{
+		if (!by_voice) return {i % register_columns, i / register_columns};
+		if (i < voice_register_count * 3) return {i / voice_register_count, i % voice_register_count};
+		const auto rest = i - voice_register_count * 3;
+		return {rest % register_voice_columns, voice_register_count + rest / register_voice_columns};
+	}
 
 	// Frames the register grid's highlight takes to fade: about a tenth of a second, as on turbo8bit.
 	constexpr size_t activity_frames = 6;
@@ -264,7 +279,7 @@ namespace
 
 sid_monitor_layout layout_sid_monitor(const recti bounds, const double scale, const int songs,
                                       render::measure_context& source, const int detail, const int button_text,
-                                      const bool controls)
+                                      const bool controls, const bool upright)
 {
 	music_measure_context mc(source, scale);
 	const auto line_height = source.text_line_height(render::font_face::code);
@@ -347,49 +362,6 @@ sid_monitor_layout layout_sid_monitor(const recti bounds, const double scale, co
 		tunes = add_panel(l.tunes.extent());
 	}
 
-	// The voices sit side by side when there is room, as turbo8bit's grid does, and stack when not. Mute and
-	// solo sit beside the gate and the note when they fit, and below them when not.
-	const auto inner = x1 - x0;
-	const auto min_voice_w = px(l.compact ? 150 : 190);
-	const auto columns = std::clamp((inner + gap) / (min_voice_w + gap), 1, 3);
-	const auto voice_w = (inner - (columns - 1) * gap) / columns;
-	const auto button_h = lh + px(4);
-	const auto button_w = std::max(px(40), button_text + px(12));
-	// The gate badge and a note such as C#-1, in the code font: about four line heights.
-	const auto gate_and_note = lh * 4 + px(20);
-	l.buttons_wrap = controls && gate_and_note + button_w * 2 + px(4) > voice_w - pad * 2;
-	const auto meter_rows = l.compact ? 2 : 3;
-	const auto voice_h = pad * 2 + (lh + px(9)) + (px(36) + px(8)) + meter_rows * (lh + px(6)) + button_h +
-	                     (l.buttons_wrap ? button_h + px(6) : 0);
-	auto voices = std::make_shared<view_elements>(flex_item::stretch);
-	voices->padding(0);
-	voices->margin(0);
-	voices->flex_container.gap = {flex_gap, flex_gap};
-	voices->flex_container.align_items = flex_align::stretch;
-	std::array<view_element_ptr, 3> voice_panels;
-	for (auto& voice : voice_panels)
-	{
-		flex_item_layout item;
-		item.grow = 1;
-		item.basis = l.compact ? 150 : 190;
-		voice = std::make_shared<music_panel_element>(sizei{min_voice_w, voice_h}, true, item);
-		voices->add(voice);
-	}
-	root->add(voices);
-
-	// The output, the filter and the register grid follow, each as wide as the column. Where the column is wide
-	// enough for two of them side by side at full size, as a landscape frame is, the output stands over the filter
-	// beside the register grid, which takes their height - or, without the grid, the two share a row. Drawn smaller
-	// to fit a short space, the monitor keeps the arrangement it has at full size. The flex tree places them, so
-	// only their heights are set here.
-	const auto wide = inner >= core::round(560 * source.scale_factor) * 2 + gap;
-	const auto beside_registers = wide && detail >= 4;
-	const auto paired = wide && detail == 3;
-
-	flex_item_layout half;
-	half.grow = 1;
-	half.basis = 560;
-
 	const auto add_group = [&](view_elements& into, const flex_direction direction, const flex_item_layout& item)
 	{
 		auto group = std::make_shared<view_elements>(item);
@@ -402,6 +374,92 @@ sid_monitor_layout layout_sid_monitor(const recti bounds, const double scale, co
 		into.add(group);
 		return group;
 	};
+
+	// The voices sit side by side when there is room, as turbo8bit's grid does, and stack when not. Upright, as a
+	// Short's frame is, they stack, all one width, beside the register grid, which stands as tall as them and as narrow
+	// as its names allow. Mute and solo sit beside the gate and the note when they fit, and below them when not.
+	const auto inner = x1 - x0;
+	const auto min_voice_w = px(l.compact ? 150 : 190);
+	const auto cell_gap = px(4);
+	const auto cell_h = lh * 2 + px(8);
+	const auto code_width = [&source](const std::string_view s)
+	{
+		return source.measure_text(s, render::font_face::code, render::text_style::single_line, 10000).cx;
+	};
+	l.registers_by_voice = upright && detail >= 4;
+	auto grid_w = 0;
+
+	if (l.registers_by_voice)
+	{
+		auto widest = 0;
+		for (const auto name : register_names) widest = std::max(widest, code_width(name));
+		grid_w = pad * 2 +
+		         std::max((widest + px(16)) * register_voice_columns + cell_gap * (register_voice_columns - 1),
+		                  code_width(tt.sid_register_writes));
+	}
+
+	const auto columns = upright ? 1 : std::clamp((inner + gap) / (min_voice_w + gap), 1, 3);
+	const auto voice_w = upright ? inner - (grid_w > 0 ? grid_w + gap : 0) : (inner - (columns - 1) * gap) / columns;
+	const auto button_h = lh + px(4);
+	const auto button_w = std::max(px(40), button_text + px(12));
+	// The gate badge and a note such as C#-1, in the code font: about four line heights.
+	const auto gate_and_note = lh * 4 + px(20);
+	l.buttons_wrap = controls && gate_and_note + button_w * 2 + px(4) > voice_w - pad * 2;
+	const auto meter_rows = l.compact ? 2 : 3;
+	const auto voice_h = pad * 2 + (lh + px(9)) + (px(36) + px(8)) + meter_rows * (lh + px(6)) + button_h +
+	                     (l.buttons_wrap ? button_h + px(6) : 0);
+	const auto beside_voices = l.registers_by_voice ? add_group(*root, flex_direction::row, flex_item::stretch)
+	                                                : nullptr;
+	std::shared_ptr<view_elements> voices;
+
+	if (upright)
+	{
+		// Beside the grid, the voices take what it leaves of the row.
+		flex_item_layout rest;
+		rest.grow = 1;
+		rest.basis = 0;
+		rest.align_self = flex_align::stretch;
+		voices = add_group(beside_voices ? *beside_voices : *root, flex_direction::column,
+		                   beside_voices ? rest : flex_item::stretch);
+	}
+	else
+	{
+		voices = std::make_shared<view_elements>(flex_item::stretch);
+		voices->padding(0);
+		voices->margin(0);
+		voices->flex_container.gap = {flex_gap, flex_gap};
+		voices->flex_container.align_items = flex_align::stretch;
+		root->add(voices);
+	}
+
+	std::array<view_element_ptr, 3> voice_panels;
+	for (auto& voice : voice_panels)
+	{
+		auto item = flex_item::stretch;
+
+		if (!upright)
+		{
+			item = {};
+			item.grow = 1;
+			item.basis = l.compact ? 150 : 190;
+		}
+
+		voice = std::make_shared<music_panel_element>(sizei{upright ? voice_w : min_voice_w, voice_h}, true, item);
+		voices->add(voice);
+	}
+
+	// The output, the filter and the register grid follow, each as wide as the column. Where the column is wide
+	// enough for two of them side by side at full size, as a landscape frame is, the output stands over the filter
+	// beside the register grid, which takes their height - or, without the grid, the two share a row. Drawn smaller
+	// to fit a short space, the monitor keeps the arrangement it has at full size. The flex tree places them, so
+	// only their heights are set here.
+	const auto wide = !upright && inner >= core::round(560 * source.scale_factor) * 2 + gap;
+	const auto beside_registers = wide && detail >= 4;
+	const auto paired = wide && detail == 3;
+
+	flex_item_layout half;
+	half.grow = 1;
+	half.basis = 560;
 
 	const auto row = beside_registers || paired ? add_group(*root, flex_direction::row, flex_item::stretch) : nullptr;
 	const auto stack = beside_registers ? add_group(*row, flex_direction::column, half) : nullptr;
@@ -432,9 +490,19 @@ sid_monitor_layout layout_sid_monitor(const recti bounds, const double scale, co
 
 	if (detail >= 4)
 	{
-		const auto cell_h = lh * 2 + px(8);
-		registers = add_part(pad * 2 + lh + px(8) + register_rows * cell_h + (register_rows - 1) * px(4),
-		                     beside_registers ? row : nullptr);
+		if (beside_voices)
+		{
+			const auto grid_h = pad * 2 + lh + px(8) + register_voice_rows * cell_h +
+			                    (register_voice_rows - 1) * cell_gap;
+			auto panel = std::make_shared<music_panel_element>(sizei{grid_w, grid_h}, true, flex_item::stretch);
+			beside_voices->add(panel);
+			registers = panel;
+		}
+		else
+		{
+			registers = add_part(pad * 2 + lh + px(8) + register_rows * cell_h + (register_rows - 1) * cell_gap,
+			                     beside_registers ? row : nullptr);
+		}
 	}
 
 	l.height = root->measure(mc, width).cy;
@@ -481,12 +549,12 @@ sid_monitor_layout layout_sid_monitor(const recti bounds, const double scale, co
 }
 
 sid_monitor_layout fit_sid_monitor(const recti bounds, const double scale, const int songs, render::measure_context& mc,
-                                   const int button_text, double& used_scale, const bool controls)
+                                   const int button_text, double& used_scale, const bool controls, const bool upright)
 {
 	const auto available = bounds.height();
 	const auto lay_out = [&](const recti at, const double s, const int detail)
 	{
-		return layout_sid_monitor(at, s, songs, mc, detail, button_text, controls);
+		return layout_sid_monitor(at, s, songs, mc, detail, button_text, controls, upright);
 	};
 
 	// Smaller first, down to three quarters: text keeps its size, so the geometry cannot shrink much
@@ -593,6 +661,11 @@ int sid_monitor_control::song_count() const
 	return 1;
 }
 
+void sid_monitor_control::arrange_upright(const bool upright)
+{
+	_upright = upright;
+}
+
 sizei sid_monitor_control::measure(render::measure_context& mc, const int width_limit) const
 {
 	const auto songs = song_count();
@@ -601,7 +674,7 @@ sizei sid_monitor_control::measure(render::measure_context& mc, const int width_
 		mc.measure_text(tt.command_volume0, render::font_face::code, render::text_style::single_line, 10000).cx,
 		mc.measure_text(tt.sid_solo, render::font_face::code, render::text_style::single_line, 10000).cx);
 	const auto l = layout_sid_monitor(recti(0, 0, width_limit, 0), mc.scale_factor, songs, mc, 4, button_text,
-	                                  _state != nullptr);
+	                                  _state != nullptr, _upright);
 	return {width_limit, l.height};
 }
 
@@ -613,15 +686,17 @@ void sid_monitor_control::update_layout(render::measure_context& mc, const bool 
 		mc.measure_text(tt.sid_solo, render::font_face::code, render::text_style::single_line, 10000).cx);
 	const auto songs = song_count();
 	if (!force && _panels && _layout_bounds == bounds && _layout_scale == mc.scale_factor &&
-	    _layout_line_height == line_height && _layout_button_width == button_text && _layout_songs == songs)
+	    _layout_line_height == line_height && _layout_button_width == button_text && _layout_songs == songs &&
+	    _layout_upright == _upright)
 		return;
-	_drawn = fit_sid_monitor(bounds, mc.scale_factor, songs, mc, button_text, _used_scale, _state != nullptr);
+	_drawn = fit_sid_monitor(bounds, mc.scale_factor, songs, mc, button_text, _used_scale, _state != nullptr, _upright);
 	_panels = _drawn.panels;
 	_layout_bounds = bounds;
 	_layout_scale = mc.scale_factor;
 	_layout_line_height = line_height;
 	_layout_button_width = button_text;
 	_layout_songs = songs;
+	_layout_upright = _upright;
 }
 
 void sid_monitor_control::layout(render::measure_context& mc, const recti r)
@@ -992,15 +1067,19 @@ void sid_monitor_control::render(render::draw_context& dc, const pointi element_
 		const auto x0 = r.left + pad;
 		const auto x1 = r.right - pad;
 		const auto cell_gap = p.px(4);
-		const auto cell_w = (x1 - x0 - cell_gap * (register_columns - 1)) / register_columns;
-		// Taller than they need where the grid stands beside the output and the filter, and takes their height.
-		const auto cell_h = std::max(lh * 2 + p.px(8),
-		                             (r.bottom - pad - y - cell_gap * (register_rows - 1)) / register_rows);
+		const auto by_voice = l.registers_by_voice;
+		const auto grid_columns = by_voice ? register_voice_columns : register_columns;
+		const auto grid_rows = by_voice ? register_voice_rows : register_rows;
+		const auto cell_w = (x1 - x0 - cell_gap * (grid_columns - 1)) / grid_columns;
+		// Taller than they need where the grid stands beside the output and the filter, or the voices, and takes
+		// their height.
+		const auto cell_h = std::max(lh * 2 + p.px(8), (r.bottom - pad - y - cell_gap * (grid_rows - 1)) / grid_rows);
 
 		for (int i = 0; i < sid_register_count; ++i)
 		{
-			const auto left = x0 + (i % register_columns) * (cell_w + cell_gap);
-			const auto top = y + (i / register_columns) * (cell_h + cell_gap);
+			const auto at = register_cell(i, by_voice);
+			const auto left = x0 + at.x * (cell_w + cell_gap);
+			const auto top = y + at.y * (cell_h + cell_gap);
 			const recti cell(left, top, left + cell_w, top + cell_h);
 			parts.registers[i] = cell;
 

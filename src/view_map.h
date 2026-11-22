@@ -136,6 +136,7 @@ inline void map_pan_controller::on_mouse_left_button_down(const pointi loc, cons
 	_tracking = true;
 	_panned = false;
 	_view.pan_start(loc);
+	_host->invalidate(ui::host_invalid::tooltip);
 }
 
 inline void map_pan_controller::on_mouse_move(const pointi loc)
@@ -172,12 +173,15 @@ inline void map_pan_controller::on_mouse_move(const pointi loc)
 
 inline void map_pan_controller::popup_from_location(view_hover_element& hover)
 {
+	if (_tracking) return;
+
 	pointi anchor;
 	int count = 0;
 	const int marker = _view._engine.hit_test_marker(_last_loc, _view._extent, anchor, count);
 
 	if (marker >= 0)
 	{
+		hover.active_delay = bubble_delay::immediate;
 		_view.on_marker_hover(hover, marker, count, anchor);
 	}
 }
@@ -195,6 +199,8 @@ inline void map_pan_controller::on_mouse_left_button_up(const pointi loc, const 
 		const auto marker_gps = on_marker ? _view._engine.gps_at_screen(anchor, _view._extent) : gps_coordinate{};
 
 		_view.pan_end(_start_loc, loc);
+		_last_loc = loc;
+		_host->invalidate(ui::host_invalid::tooltip);
 
 		if (on_marker && marker_gps.is_valid())
 		{

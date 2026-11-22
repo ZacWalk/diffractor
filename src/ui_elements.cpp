@@ -6,17 +6,106 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Out-of-line implementations of the application's elements and the media controls: the
-// collage layout, the compare, preview and zoom controllers and the zoom overlay, ratings, previews,
-// the bars every task view declares, the context menus views share, and how the keyboard finds,
-// steps between and presses the parts of drawn elements.
+// collage layout, the compare, preview and zoom controllers and the zoom overlay, the faces on a picture
+// and their buttons, ratings, previews, the bars every task view declares, the context menus views share,
+// and how the keyboard finds, steps between and presses the parts of drawn elements.
 
 #include "pch.h"
 #include "libdesktop/core/geometry.h"
 #include "model.h"
+#include "app_commands.h"
+#include "app_text.h"
+#include "model_faces_search.h"
 #include "model_index.h"
 #include "ui_elements.h"
 #include "ui_dialog.h"
 #include "ui_controls.h"
+#include "view_faces.h"
+
+void add_shortcut_hint(view_hover_element& hover, const std::string_view keys)
+{
+	if (!keys.empty())
+		hover.elements->add(
+			std::make_shared<action_element>(std::format("{} {}", tt.keyboard_accelerator_press, keys)));
+}
+
+void add_shortcut_hint(view_hover_element& hover, const ui::command_ptr& command)
+{
+	if (command && command->enable) add_shortcut_hint(hover, command->keyboard_accelerator_text);
+}
+
+view_info_element::view_info_element(const icon_index icon, const std::string_view heading,
+                                     const std::string_view detail) :
+	view_elements(view_element_style::shaded_background | flex_item::stretch), _icon(icon),
+	_heading(std::make_shared<text_element>(heading, render::font_face::title)),
+	_detail(std::make_shared<text_element>(detail))
+{
+	padding = {0, 0};
+	margin = {8, 6};
+	update_background_color();
+	add(_heading);
+	add(_detail);
+}
+
+bool view_info_element::heading(const std::string_view value)
+{
+	if (_heading->text() == value) return false;
+	_heading->text(value);
+	return true;
+}
+
+bool view_info_element::text(const std::string_view value)
+{
+	if (_detail->text() == value) return false;
+	_detail->text(value);
+	return true;
+}
+
+int view_info_element::arrange(render::measure_context& mc, const int width, const pointi origin,
+                               const bool place) const
+{
+	const auto inset = core::round(12 * mc.scale_factor);
+	const auto gap = mc.padding1;
+	const auto inner = std::max(1, width - 2 * inset);
+	const auto badge = inner >= 4 * mc.icon_cxy ? mc.icon_cxy + 2 * gap : 0;
+	const auto indent = badge ? badge + mc.padding2 : 0;
+	const auto head = std::max(badge, _heading->measure(mc, std::max(1, inner - indent)).cy);
+	const auto body = _detail->text().empty() ? 0 : _detail->measure(mc, inner).cy;
+	const auto left = origin.x + inset;
+	const auto top = origin.y + inset;
+	const auto detail_top = top + head + (body ? gap : 0);
+	if (place)
+	{
+		_heading->layout(mc, {left + indent, top, left + inner, top + head});
+		_detail->layout(mc, {left, detail_top, left + inner, detail_top + body});
+	}
+	return detail_top + body - origin.y + inset;
+}
+
+sizei view_info_element::measure(render::measure_context& mc, const int width) const
+{
+	return {width, arrange(mc, width, {}, false)};
+}
+
+void view_info_element::layout(render::measure_context& mc, const recti bounds_in)
+{
+	bounds = bounds_in;
+	arrange(mc, bounds.width(), bounds.top_left(), true);
+	const auto left = _detail->bounds.left;
+	const auto edge = _heading->bounds.left - left - mc.padding2;
+	_badge = edge > 0 ? recti(pointi(left, _heading->bounds.top), sizei(edge, edge)) : recti{};
+}
+
+void view_info_element::render(render::draw_context& dc, const pointi offset) const
+{
+	view_elements::render(dc, offset);
+	if (!_badge.is_empty())
+	{
+		const auto b = _badge.offset(offset);
+		dc.draw_rounded_rect(b, core::color(dc.colors.selected, dc.colors.alpha * 0.30f), dc.padding1);
+		xdraw_icon(dc, _icon, b, core::color(dc.colors.foreground, dc.colors.alpha), {});
+	}
+}
 
 std::vector<recti> ui::layout_collage(const recti draw_bounds, const std::vector<sizei>& dimensions)
 {
@@ -440,7 +529,7 @@ static void render_zoom_overlay(render::draw_context& dc, const display_state_pt
 		const auto media_bounds = texture_state->display_bounds().offset(element_offset);
 		if (media_bounds.is_empty()) return;
 
-		// zoom.md L10: where the visible region sits within the whole. Projected, that region is the
+		// docs/zoom.md#navigator: where the visible region sits within the whole. Projected, that region is the
 		// patch of the file the camera covers rather than a window onto a scaled rectangle, so it is
 		// asked of the camera; the map underneath is the same flat strip either way.
 		const auto shown_bounds = projected
@@ -529,8 +618,9 @@ static void render_zoom_overlay(render::draw_context& dc, const display_state_pt
 			dc.draw_text(icon_to_utf8(icon_index::zoom_in), in_bounds, render::font_face::icons,
 			             render::text_style::single_line_center, foreground, {});
 
-			// zoom.md L6: which of the two ways of looking at this file is on, shown rather than
-			// remembered. Dimmed while the flat pixels are being shown, lit while projected.
+			// docs/zoom.md#standing-inside-an-equirectangular-panorama: which of the two ways of looking at this
+			// file is on, shown rather than remembered. Dimmed while the flat pixels are being shown, lit while
+			// projected.
 			if (has_projection_toggle)
 			{
 				dc.draw_text(icon_to_utf8(icon_index::world), projection_bounds, render::font_face::icons,
@@ -640,8 +730,8 @@ public:
 	}
 };
 
-// zoom.md L6: switching a declared panorama between the sphere it describes and the flat pixels it
-// stores. One click, and the control it lives on shows which is in force.
+// docs/zoom.md#standing-inside-an-equirectangular-panorama: switching a declared panorama between the sphere it
+// describes and the flat pixels it stores. One click, and the control it lives on shows which is in force.
 class panorama_projection_controller final : public view_controller
 {
 	display_state_ptr _display;
@@ -1259,6 +1349,426 @@ public:
 	}
 };
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// Faces on a picture: docs/faces.md#93-faces-on-a-picture
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool can_place_faces(const display_state_t& display)
+{
+	const auto& st = display._selected_texture1;
+	return st && display.is_one() && display._item1 && !display.is_panorama_projected() &&
+	       st->_preview_quarter_turns == 0 &&
+	       (setting.show_rotated || st->display_orientation() == core::orientation::top_left);
+}
+
+bool photo_control::faces_placeable() const
+{
+	return can_place_faces(*_display);
+}
+
+const std::vector<picture_faces::face_on_picture>& picture_faces::faces_on_picture() const
+{
+	// Boxes are fractions of the upright picture, so they are placed only where the picture is shown upright and
+	// flat.
+	const auto store = faces_placeable() ? faces::active_store() : faces::face_store_const_ptr{};
+	const auto path = faces_item();
+
+	if (!store || path.is_empty())
+	{
+		_faces.clear();
+		_faces_store = nullptr;
+		_hover_face = -1;
+		_buttons_face = -1;
+		return _faces;
+	}
+
+	const auto overview = faces::active_overview();
+	const auto& book = _face_state.item_index.faces().book();
+
+	if (path == _faces_path && store.get() == _faces_store && store->generation() == _faces_generation &&
+	    overview.get() == _faces_overview && book.generation() == _faces_book)
+		return _faces;
+
+	// A scan publishing other pictures' faces, or a new overview, reads this picture's faces again while the pointer is
+	// on one. The face under it and the one whose buttons are drawn stay so, or the hit test moving off the face would
+	// find no buttons to move onto - its own controller has already let go of the face by then.
+	const auto same_picture = path == _faces_path && store.get() == _faces_store;
+	const auto id_at = [&](const int at) -> std::optional<uint32_t>
+	{
+		if (!same_picture || at < 0 || at >= static_cast<int>(_faces.size())) return std::nullopt;
+		return _faces[at].face;
+	};
+	const auto hovered_id = id_at(_hover_face);
+	const auto buttons_id = id_at(_buttons_face);
+	_faces_path = path;
+	_faces_store = store.get();
+	_faces_generation = store->generation();
+	_faces_overview = overview.get();
+	_faces_book = book.generation();
+	_faces.clear();
+	_hover_face = _buttons_face = -1;
+
+	for (auto& f : faces::faces_on_picture(*store, overview.get(), book, path))
+	{
+		const auto at = static_cast<int>(_faces.size());
+		if (hovered_id == f.face) _hover_face = at;
+		if (buttons_id == f.face) _buttons_face = at;
+		auto shown = f.offered && !f.name.empty() ? f.name + "?" : f.name;
+		_faces.push_back(
+			{f.face, f.box, std::move(shown), std::move(f.name), f.offered, f.pictures, f.suggested, f.frame_ms});
+	}
+
+	return _faces;
+}
+
+recti picture_faces::face_strip() const
+{
+	if (_buttons_face < 0) return {};
+	auto strip = _face_buttons[0];
+	for (size_t b = 1; b < _face_buttons.size(); ++b)
+		if (!_face_buttons[b].is_empty()) strip = strip.make_union(_face_buttons[b]);
+	return strip;
+}
+
+recti picture_faces::face_bounds(const size_t face, const pointi element_offset) const
+{
+	if (face >= _faces.size()) return {};
+	const auto image = faces_image_bounds(element_offset);
+	const auto& b = _faces[face].box;
+	return {core::round(image.X + b.X * image.Width), core::round(image.Y + b.Y * image.Height),
+	        core::round(image.X + b.right() * image.Width), core::round(image.Y + b.bottom() * image.Height)};
+}
+
+void picture_faces::hover_face(const int face, const int button)
+{
+	if (_hover_face == face && _hover_face_button == button) return;
+	_hover_face = face;
+	_hover_face_button = button;
+	_face_host->invalidate(ui::host_invalid::redraw);
+}
+
+void picture_faces::press_face_button(const size_t face, const int button)
+{
+	if (face >= _faces.size() || button < 0 || button >= static_cast<int>(_face_buttons.size())) return;
+	const auto id = _faces[face].face;
+
+	switch (_face_button_actions[button])
+	{
+	case face_button::show:
+		// The Faces view opens on the group the face is in, the face selected.
+		_face_state._pending_face = id;
+		_face_host->invoke(commands::faces);
+		break;
+	case face_button::name:
+	{
+		// docs/faces.md#95-naming-a-face: on a suggestion the button names it as someone else; and where the picture
+		// - or the frame of a video - shows no other face, naming it can go on to the next picture.
+		const auto how = _faces[face].offered ? picture_naming::someone_else : picture_naming::anyone;
+		const auto alone = std::ranges::count_if(_faces,
+		                                         [this](const face_on_picture& f) { return face_showing(f); }) == 1;
+		const auto named = name_picture_face(_face_state, _face_host->owner(), id, how, alone);
+		if (named.named) _face_host->invalidate(ui::host_invalid::controller | ui::host_invalid::redraw);
+		if (named.next) _face_host->invoke(commands::browse_next_item);
+		break;
+	}
+	case face_button::confirm:
+	case face_button::reject:
+		if (review_picture_face(_face_state, id, _face_button_actions[button] == face_button::confirm))
+			_face_host->invalidate(ui::host_invalid::controller | ui::host_invalid::redraw);
+		break;
+	}
+}
+
+void picture_faces::render_faces(render::draw_context& dc, const pointi element_offset) const
+{
+	const auto previous_strip = face_strip();
+	_buttons_face = -1;
+	_face_buttons = {};
+	if (_hover_face < 0 || faces_hidden()) return;
+	faces_on_picture();
+	if (_hover_face < 0 || !face_showing(_faces[static_cast<size_t>(_hover_face)])) return;
+
+	const auto face = static_cast<size_t>(_hover_face);
+	const auto box = face_bounds(face, element_offset);
+	const auto limit = faces_limit(element_offset);
+	if (!box.intersects(limit)) return;
+	const auto alpha = dc.colors.alpha;
+	const auto ring = std::max(1, core::round(2 * dc.scale_factor));
+	const auto border = core::color(ui::style::colors.dialog_selected_background, alpha);
+	dc.draw_border(box, box.inflate(ring), border, border);
+
+	const auto& f = _faces[face];
+	const auto pad = std::max(1, dc.padding1);
+	const auto side = std::max(dc.icon_cxy, dc.text_line_height(render::font_face::dialog)) + 2 * pad;
+	const auto height = std::min(limit.height(), side);
+	const auto icon_width = std::min(limit.width(), side);
+	const auto name_text_width = f.name.empty() ? 0
+	                                            : pad + dc.measure_text(f.name, render::font_face::dialog,
+	                                                                    render::text_style::single_line, limit.width())
+	                                                        .cx;
+	const auto show_width = std::min(limit.width(), icon_width + name_text_width);
+
+	// What the face book allows beside Show: a suggestion confirmed, ruled out or named as someone else, any other face
+	// named.
+	std::vector<face_button> actions;
+	if (_face_state.item_index.faces().can_change_book())
+	{
+		if (f.offered) actions = {face_button::confirm, face_button::reject, face_button::name};
+		else actions = {face_button::name};
+	}
+	const auto count = static_cast<int>(actions.size());
+	const auto actions_width = count ? count * icon_width + (count - 1) * pad : 0;
+	const auto stacked = actions_width && show_width + pad + actions_width > limit.width();
+	const auto width = stacked ? std::max(show_width, actions_width)
+	                           : show_width + (actions_width ? pad + actions_width : 0);
+	const auto row_height = stacked ? std::min(height, limit.height() / 2) : height;
+	const auto total_height = stacked ? row_height * 2 : row_height;
+	// Centred under the face, and kept inside the view.
+	const auto left = std::max(limit.left, std::min(box.center().x - width / 2, limit.right - width));
+	const auto top = box.bottom + total_height <= limit.bottom
+	                     ? box.bottom
+	                     : std::clamp(box.bottom - total_height, limit.top, limit.bottom - total_height);
+	_face_buttons[0] = recti(pointi(left, top), sizei(stacked ? width : show_width, row_height));
+	_face_button_actions[0] = face_button::show;
+	auto x = stacked ? left + (width - actions_width) / 2 : left + show_width + pad;
+	const auto y = stacked ? top + row_height : top;
+	for (size_t i = 0; i < actions.size() && i + 1 < _face_buttons.size(); ++i)
+	{
+		_face_buttons[i + 1] = recti(pointi(x, y), sizei(icon_width, row_height));
+		_face_button_actions[i + 1] = actions[i];
+		x += icon_width + pad;
+	}
+	_buttons_face = _hover_face;
+	// The face's bubble stands beside the face and its buttons, so it is placed again once they are laid out.
+	if (face_strip() != previous_strip) _face_host->invalidate(ui::host_invalid::tooltip);
+	const auto ink = core::color(1.0f, 1.0f, 1.0f, alpha);
+	for (size_t b = 0; b < _face_buttons.size(); ++b)
+	{
+		const auto button = _face_buttons[b];
+		if (button.is_empty()) continue;
+		dc.draw_rounded_rect(button, core::color(0, alpha * 0.82f), pad);
+		if (static_cast<int>(b) == _hover_face_button)
+			dc.draw_rounded_rect(button, core::color(ui::style::colors.view_selected_background, alpha * 0.85f), pad);
+		auto icon = button;
+		icon.right = std::min(button.right, icon.left + icon_width);
+		const auto action = _face_button_actions[b];
+		const auto glyph = action == face_button::show      ? icon_index::album_artist
+		                   : action == face_button::confirm ? icon_index::check
+		                   : action == face_button::reject  ? icon_index::remove2
+		                                                    : icon_index::rename;
+		xdraw_icon(dc, glyph, icon, ink, {});
+		if (action == face_button::show && !f.name.empty())
+		{
+			const recti text(icon.right, button.top, button.right - pad, button.bottom);
+			if (!text.is_empty())
+				dc.draw_text(f.name, text, render::font_face::dialog, render::text_style::single_line, ink, {});
+		}
+	}
+}
+
+namespace
+{
+	// The pointer over a face on a picture: its buttons are pressed here, and a press anywhere else on the face is
+	// the picture's own - zooming or panning, or playing a video - as it would be without the face.
+	class picture_face_controller final : public view_controller
+	{
+		std::shared_ptr<picture_faces> _parent;
+		size_t _face;
+		pointi _element_offset;
+		view_controller_ptr _picture;
+		int _pressed = -1;
+
+		int button_at(const pointi loc) const
+		{
+			if (_parent->_buttons_face != static_cast<int>(_face)) return -1;
+			const auto& buttons = _parent->_face_buttons;
+			for (size_t b = 0; b < buttons.size(); ++b)
+				if (buttons[b].contains(loc)) return static_cast<int>(b);
+			return -1;
+		}
+
+	public:
+		picture_face_controller(const view_host_ptr& host, std::shared_ptr<picture_faces> parent, const size_t face,
+		                        const recti bounds, const pointi element_offset, view_controller_ptr picture) :
+			view_controller(host, bounds), _parent(std::move(parent)), _face(face), _element_offset(element_offset),
+			_picture(std::move(picture))
+		{
+			_parent->hover_face(static_cast<int>(_face), -1);
+		}
+
+		~picture_face_controller() override { _parent->hover_face(-1, -1); }
+
+		platform::cursor cursor() const override
+		{
+			if (_pressed >= 0 || button_at(_last_loc) >= 0) return platform::cursor::link;
+			return _picture ? _picture->cursor() : platform::cursor::normal;
+		}
+
+		void draw(render::draw_context& dc) override
+		{
+			if (_picture) _picture->draw(dc);
+		}
+
+		void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+		{
+			_last_loc = loc;
+			if (const auto b = button_at(loc); b >= 0)
+			{
+				_pressed = b;
+				return;
+			}
+			if (_picture) _picture->on_mouse_left_button_down(loc, keys);
+		}
+
+		void on_mouse_move(const pointi loc) override
+		{
+			_last_loc = loc;
+			_parent->hover_face(static_cast<int>(_face), button_at(loc));
+			if (_picture && _pressed < 0) _picture->on_mouse_move(loc);
+		}
+
+		void on_mouse_left_button_up(const pointi loc, const platform::key_state keys) override
+		{
+			_last_loc = loc;
+			if (_pressed >= 0)
+			{
+				if (button_at(loc) == std::exchange(_pressed, -1)) _parent->press_face_button(_face, button_at(loc));
+				return;
+			}
+			if (_picture) _picture->on_mouse_left_button_up(loc, keys);
+		}
+
+		void on_mouse_left_button_double_click(const pointi loc, const platform::key_state keys) override
+		{
+			if (button_at(loc) < 0 && _picture) _picture->on_mouse_left_button_double_click(loc, keys);
+		}
+
+		void on_mouse_middle_button_down(const pointi loc, const platform::key_state keys) override
+		{
+			if (_picture) _picture->on_mouse_middle_button_down(loc, keys);
+		}
+
+		void on_mouse_middle_button_up(const pointi loc, const platform::key_state keys) override
+		{
+			if (_picture) _picture->on_mouse_middle_button_up(loc, keys);
+		}
+
+		bool key_down(const char32_t key, const platform::key_state keys) override
+		{
+			return _picture && _picture->key_down(key, keys);
+		}
+
+		bool escape() override
+		{
+			if (_pressed >= 0)
+			{
+				_pressed = -1;
+				return true;
+			}
+			return _picture && _picture->escape();
+		}
+
+		void tick() override
+		{
+			if (_picture) _picture->tick();
+		}
+
+		void popup_from_location(view_hover_element& hover) override
+		{
+			const auto& shown = _parent->faces_on_picture();
+			if (_face >= shown.size()) return;
+			const auto& f = shown[_face];
+			const auto button = button_at(_last_loc);
+
+			if (button >= 0)
+			{
+				std::string title;
+				switch (_parent->_face_button_actions[button])
+				{
+				case picture_faces::face_button::show:
+					title = f.name.empty() ? std::string(tt.faces_show_in_view)
+					                       : std::format("{} \u00b7 {}", tt.faces_show_in_view, f.name);
+					break;
+				case picture_faces::face_button::name:
+					title = f.offered ? tt.faces_name_someone_else : tt.faces_name_face;
+					break;
+				case picture_faces::face_button::confirm:
+					title = str_format(tt.faces_confirm_person_fmt, f.person);
+					break;
+				case picture_faces::face_button::reject: title = str_format(tt.faces_not_person_fmt, f.person); break;
+				}
+				hover.elements->add(std::make_shared<action_element>(title));
+				hover.active_bounds = hover.window_bounds = _parent->_face_buttons[button];
+				hover.horizontal = true;
+				return;
+			}
+
+			hover.active_delay = bubble_delay::face_preview;
+			hover.elements->add(
+				std::make_shared<text_element>(f.name.empty() ? tt.unknown.sv() : std::string_view(f.name),
+			                                   render::font_face::title, render::text_style::multiline,
+			                                   flex_item::line_break));
+			if (f.pictures > 0 || f.suggested > 0)
+			{
+				auto counts = format_plural_text(tt.faces_pictures_fmt, static_cast<int64_t>(f.pictures));
+				if (f.suggested)
+					counts = std::format("{} \u00b7 {}", counts,
+					                     format_plural_text(tt.faces_suggested_count_fmt,
+					                                        static_cast<int64_t>(f.suggested)));
+				hover.elements->add(std::make_shared<text_element>(counts, render::font_face::dialog,
+				                                                   render::text_style::multiline, flex_item::new_line));
+			}
+			// Beside the face and its buttons, never over the buttons the pointer is on its way to.
+			hover.active_bounds = _parent->face_bounds(_face, _element_offset);
+			hover.window_bounds = _parent->_buttons_face == static_cast<int>(_face)
+			                          ? hover.active_bounds.make_union(_parent->face_strip())
+			                          : hover.active_bounds;
+			hover.horizontal = true;
+		}
+	};
+}
+
+view_controller_ptr picture_faces::face_controller(const view_host_ptr& host,
+                                                   const std::shared_ptr<picture_faces>& self,
+                                                   const pointi element_offset, hit_test_context& ctx,
+                                                   const view_controller_ptr& picture) const
+{
+	// docs/faces.md#93-faces-on-a-picture: a face is under the chrome and the region and over the picture itself; a
+	// press on it that misses its buttons is still the picture's.
+	if (faces_hidden()) return {};
+
+	std::optional<size_t> over_face;
+	const auto& shown_faces = faces_on_picture();
+	const auto limit = faces_limit(element_offset);
+	recti face_hit;
+
+	// Only the visible strip takes precedence over another face. The space beside a face is still the picture.
+	const auto strip = face_strip();
+	if (ctx.occluded(strip))
+	{
+		face_hit = strip;
+		over_face = static_cast<size_t>(_buttons_face);
+	}
+	for (size_t i = 0; i < shown_faces.size() && !over_face; ++i)
+	{
+		if (!face_showing(shown_faces[i])) continue;
+		face_hit = face_bounds(i, element_offset).intersection(limit);
+		if (ctx.occluded(face_hit)) over_face = i;
+	}
+	// Keep the strip visible on any straight approach from the face to its buttons, which reach past it: the
+	// rectangle spanning both holds every such path, however high on the face it starts. This space does not act as
+	// a button, and a neighbouring face still wins.
+	if (!over_face && !strip.is_empty())
+	{
+		const auto bridge = face_bounds(static_cast<size_t>(_buttons_face), element_offset);
+		face_hit = strip.make_union(bridge).intersection(limit);
+		if (ctx.occluded(face_hit)) over_face = static_cast<size_t>(_buttons_face);
+	}
+
+	if (!over_face) return {};
+	return std::make_shared<picture_face_controller>(host, self, *over_face, face_hit, element_offset, picture);
+}
+
 view_controller_ptr photo_control::controller_from_location(const view_host_ptr& host, const pointi loc,
                                                             const pointi element_offset, hit_test_context& ctx)
 {
@@ -1333,26 +1843,34 @@ view_controller_ptr photo_control::controller_from_location(const view_host_ptr&
 		}
 	}
 
+	view_controller_ptr picture;
+
 	if (!_display->zoom() && !image_bounds.is_empty() && image_bounds.contains(loc) && _display->can_zoom())
 	{
 		const auto view_bounds = bounds.offset(element_offset);
-		return std::make_shared<zoom_controller>(host, shared_from_this(), _state, image_bounds, view_bounds,
-		                                         element_offset);
+		picture = std::make_shared<zoom_controller>(host, shared_from_this(), _state, image_bounds, view_bounds,
+		                                            element_offset);
 	}
-
-	if (bounds.contains(logical_loc) && _can_pan && _display->zoom())
+	else if (bounds.contains(logical_loc) && _can_pan && _display->zoom())
 	{
-		return std::make_shared<pan_controller>(host, shared_from_this(), _state, bounds.offset(element_offset),
-		                                        element_offset);
+		picture = std::make_shared<pan_controller>(host, shared_from_this(), _state, bounds.offset(element_offset),
+		                                           element_offset);
 	}
 
-	return nullptr;
+	if (auto face = face_controller(host, shared_from_this(), element_offset, ctx, picture)) return face;
+	return picture;
 }
 
 view_controller_ptr video_control::controller_from_location(const view_host_ptr& host, const pointi loc,
                                                             const pointi element_offset, hit_test_context& ctx)
 {
-	return default_controller_from_location(*this, host, loc, element_offset, ctx);
+	// The face a video was opened at stays outlined until the pointer comes onto the video.
+	if (bounds.contains(loc - element_offset)) _state._opened_face.reset();
+
+	// A press on a paused frame's face that misses its buttons plays the video, as a press beside it does.
+	auto video = default_controller_from_location(*this, host, loc, element_offset, ctx);
+	if (auto face = face_controller(host, shared_from_this(), element_offset, ctx, video)) return face;
+	return video;
 }
 
 view_controller_ptr audio_control::controller_from_location(const view_host_ptr& host, const pointi loc,
@@ -1829,6 +2347,13 @@ view_bars task_view_bars(std::vector<bar_entry> bottom)
 	};
 }
 
+view_bars history_view_bars(std::vector<bar_entry> bottom)
+{
+	auto result = task_view_bars(std::move(bottom));
+	result.top.insert(result.top.begin(), commands::browse_back);
+	return result;
+}
+
 // Anything with a submenu of its own appears once, at the top level, rather than also being spelled out
 // beside it.
 const view_menu& media_view_menu()
@@ -1845,6 +2370,8 @@ const view_menu& media_view_menu()
 				commands::browse_next_item,
 				commands::browse_previous_group,
 				commands::browse_next_group,
+				commands::explore_item,
+				commands::face_name_picture,
 				commands::none,
 				commands::menu_zoom,
 				commands::menu_open,
@@ -1873,6 +2400,7 @@ const view_menu& media_details_menu()
 				commands::tool_edit_metadata,
 				commands::menu_rate_or_label,
 				commands::verbose_metadata,
+				commands::explore_item,
 				commands::none,
 				commands::menu_open,
 				commands::menu_tools,
@@ -2024,15 +2552,6 @@ void press_keyboard_part(const view_host_ptr& host, const keyboard_part& part)
 		controller->on_mouse_left_button_down(at, {});
 		controller->on_mouse_left_button_up(at, {});
 	}
-}
-
-// As a focused control shows it, so the keyboard looks the same wherever it is.
-void draw_keyboard_ring(render::draw_context& dc, const recti bounds, const bool inside)
-{
-	const auto width = std::max(1, core::round(2 * dc.scale_factor));
-	const auto c = core::color(ui::style::colors.dialog_selected_background, dc.colors.alpha);
-	if (inside) dc.draw_border(bounds.inflate(-width), bounds, c, c);
-	else dc.draw_border(bounds, bounds.inflate(width), c, c);
 }
 
 void scroll_into_view(view_scroller& scroller, const view_host_ptr& host, const recti bounds)

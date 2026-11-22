@@ -1193,17 +1193,21 @@ public:
 	void open(const df::item_element_ptr& item, const bool auto_play, const int video_track, const int audio_track,
 	          const bool can_use_hw, const bool use_last_played_pos,
 	          const std::function<void(std::shared_ptr<av_session>)>& cb, platform::file_ptr file = {},
-	          subtitle_request subtitles = {})
+	          subtitle_request subtitles = {}, const std::optional<double> start_at = {})
 	{
 		const auto path = item->path();
 		const auto file_type = item->file_type();
 		const auto starting_position = item->media_position();
 		queue([path, file_type, starting_position, auto_play, video_track, audio_track, can_use_hw, use_last_played_pos,
-		       cb, file = std::move(file), subtitles = std::move(subtitles)](const std::shared_ptr<av_player>& p)
+		       cb, file = std::move(file), subtitles = std::move(subtitles),
+		       start_at](const std::shared_ptr<av_player>& p)
 		{
 			core::scope_locked_inc l(df::loading_media);
 			auto ses = p->open_impl(path, file_type, starting_position, auto_play, video_track, audio_track, can_use_hw,
-			                        use_last_played_pos, false, file, subtitles);
+			                        use_last_played_pos && !start_at, false, file, subtitles);
+			// docs/faces.md#93-faces-on-a-picture: opened at a face, it starts on the frame the face was found in,
+			// wherever that is - the start of the video too, which resuming would pass over.
+			if (ses && start_at) p->seek_impl(ses, *start_at, false);
 			if (cb) p->_host.queue_ui([cb, ses] { cb(ses); });
 		});
 	}

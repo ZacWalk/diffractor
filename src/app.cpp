@@ -23,6 +23,7 @@
 
 #include "model_location.h"
 #include "model_db.h"
+#include "model_faces_search.h"
 #include "model_index.h"
 #include "model.h"
 
@@ -46,6 +47,8 @@
 #include "view_sync.h"
 #include "view_tags.h"
 #include "view_options.h"
+#include "view_explore.h"
+#include "view_faces.h"
 
 #include "app_sidebar.h"
 #include "app_commands.h"
@@ -291,7 +294,11 @@ void app_logo_element::tooltip(view_hover_element& hover, const pointi /*loc*/, 
 		hover.elements->add(table);
 	}
 
-	hover.elements->add(std::make_shared<action_element>(tt.help_more_info));
+	if (_interactive)
+	{
+		hover.elements->add(std::make_shared<text_element>(tt.help_more_info));
+		add_shortcut_hint(hover, _state.find_command(commands::view_help));
+	}
 	hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
 }
 
@@ -660,6 +667,7 @@ void view_frame::drag_splitter(const pointi loc)
 // view keeps for it - all of it when it is the whole frame - and the strip a band along the base.
 void view_frame::on_window_layout(render::measure_context& mc, const sizei extent, const bool /*is_minimized*/)
 {
+	const auto resized = extent != _extent;
 	_extent = extent;
 
 	const auto scale_factor = mc.scale_factor;
@@ -669,8 +677,12 @@ void view_frame::on_window_layout(render::measure_context& mc, const sizei exten
 	const auto min_pane = core::round(200 * scale_factor);
 	const auto available = std::max(0, extent.cx - splitter_width);
 	const auto stored = setting.view_splitter(_state.view_mode());
-	const auto preferred = stored > 0 ? core::mul_div(available, stored, settings_t::view_splitter_max)
-	                                  : std::max(extent.cx / 4, core::round(400 * scale_factor));
+	// Faces has a group list as well as the inspector. Leave the largest share for the faces themselves.
+	const auto default_width = _state.view_mode() == view_type::faces
+	                               ? std::clamp(available / 4, core::round(280 * scale_factor),
+	                                            core::round(360 * scale_factor))
+	                               : std::max(extent.cx / 4, core::round(400 * scale_factor));
+	const auto preferred = stored > 0 ? core::mul_div(available, stored, settings_t::view_splitter_max) : default_width;
 	const auto panel_width = fills ? extent.cx : has_panel ? clamp_pane_width(preferred, available, min_pane) : 0;
 	const auto content_right = std::max(0, extent.cx - panel_width - splitter_width);
 	const auto strip_height = _strip_wanted ? std::min(core::round(150 * scale_factor), extent.cy / 3) : 0;
@@ -685,6 +697,8 @@ void view_frame::on_window_layout(render::measure_context& mc, const sizei exten
 
 	_view->layout(mc, _view_bounds.extent());
 	if (_panel) _panel->layout_panel(mc, recti(content_right + splitter_width, 0, extent.cx, extent.cy));
+	if (resized && _state.view_mode() == view_type::faces && _active_controller)
+		_state.invalidate_view(view_invalid::controller | view_invalid::tooltip);
 }
 
 void view_frame::on_window_paint(render::draw_context& dc)
@@ -945,7 +959,11 @@ void bar_frame::on_window_paint(render::draw_context& dc)
 
 	for (const auto& c : _controls)
 	{
-		if (c->is_visible()) c->render(dc, {});
+		if (!c->is_visible()) continue;
+		const auto foreground = dc.colors.foreground;
+		if (_kind == kind::status && c == _app._receipt_link) dc.colors.foreground = core::rgba(104, 183, 255);
+		c->render(dc, {});
+		dc.colors.foreground = foreground;
 	}
 }
 
@@ -1044,6 +1062,8 @@ app_frame::app_frame() :
 	}, [this] { return ask_to_save_options(_app_frame); }});
 	_view_import = std::make_shared<import_view>(_state, _view_frame);
 	_view_locate = std::make_shared<locate_view>(_state, _view_frame);
+	_view_explore = std::make_shared<explore_view>(_state, _view_frame);
+	_view_faces = std::make_shared<faces_view>(_state, _view_frame);
 	_view_rename = std::make_shared<rename_view>(_state, _view_frame);
 	_view_batch = std::make_shared<batch_tool_view>(_state, _view_frame);
 	_view_items = std::make_shared<items_view>(_state, _view_frame);
@@ -1288,6 +1308,7 @@ void app_frame::tick()
 		_selector_frame->tick();
 
 		if (_state.view_mode() == view_type::movie) _view_movie->tick();
+		if (_state.view_mode() == view_type::explore) _view_explore->tick_model();
 
 		const auto progress = _view->progress();
 		const auto repaint = status_repaints(progress.active, progress.total, setting.show_debug_info);
@@ -1357,6 +1378,15 @@ void app_frame::tick()
 		constexpr auto instance_claim_seconds = 2.0;
 		_next_instance_claim = core::now() + instance_claim_seconds;
 		reuse_running_instance(false);
+	}
+
+	// docs/faces.md#64-the-face-database: a window that only reads the face book takes it over within a few seconds of
+	// the window writing it closing, and a book whose change could not be written is written again.
+	if (_state.item_index.faces().book_needs_polling() && core::now() >= _next_face_book_poll)
+	{
+		constexpr auto face_book_poll_seconds = 2.0;
+		_next_face_book_poll = core::now() + face_book_poll_seconds;
+		queue_database([](database& db) { db.poll_faces(); });
 	}
 
 	if (_invalids != view_invalid::none)
@@ -1591,8 +1621,7 @@ void app_frame::search_complete(const df::search_t& search, const bool path_chan
 	}
 }
 
-// Every bar's toolbars share one style, so measuring all of them gives both bars a height that stays put
-// as views come and go.
+// Every bar's toolbars share one style, so measuring all of them gives the command rows a common height.
 static int bars_toolbar_height(render::measure_context& mc,
                                const std::map<std::vector<bar_entry>, app_frame::frame_bar>& bars, const int cx)
 {
@@ -1620,10 +1649,28 @@ int app_frame::title_bar_height(render::measure_context& mc)
 	return core::mul_div(content_height, 6, 5);
 }
 
-int app_frame::status_bar_height(render::measure_context& mc)
+int app_frame::status_bar_height(render::measure_context& mc, const int width)
 {
-	const auto cy_control = mc.text_line_height(render::font_face::dialog) + mc.padding2;
-	return std::max(bars_toolbar_height(mc, _bars, _extent.cx), cy_control) + mc.padding2;
+	const auto line_height = mc.text_line_height(render::font_face::dialog);
+	const auto height = std::max(bars_toolbar_height(mc, _bars, _extent.cx), line_height + mc.padding2) + mc.padding2;
+	_status_text_row_height = 0;
+	if (!_view || _view != _view_faces) return height;
+
+	// Leave the commands where they fit; on a narrow bar the text gets the full width below them.
+	const auto declared = _view->bars();
+	const auto bar_width = [&](const std::vector<bar_entry>& entries)
+	{
+		auto used = 0;
+		for (const auto& slot : measure_bar(mc, bar(entries), line_height + mc.padding2))
+			if (slot.extent.cx > 0) used += slot.extent.cx + mc.padding1;
+		return used;
+	};
+	const auto text_width = width - mc.padding2 - mc.padding1 - mc.handle_cxy - bar_width(declared.bottom) -
+	                        bar_width(declared.bottom_leading);
+	const auto text_height = line_height + mc.padding2;
+	if (text_width >= core::round(180 * mc.scale_factor)) return std::max(height, text_height);
+	_status_text_row_height = text_height;
+	return height + text_height;
 }
 
 // The window holds three regions, each with a surface of its own: the title bar, the view - with its panel
@@ -1648,7 +1695,8 @@ void app_frame::layout(render::measure_context& mc)
 	const auto scale1 = core::round(1 * mc.scale_factor);
 	const auto client = recti(_extent).inflate(_state.is_full_screen ? 0 : -scale1);
 	const auto body_top = _show_bars ? client.top + title_bar_height(mc) : client.top;
-	const auto body_bottom = _show_bars ? std::max(body_top, client.bottom - status_bar_height(mc)) : client.bottom;
+	const auto body_bottom = _show_bars ? std::max(body_top, client.bottom - status_bar_height(mc, client.width()))
+	                                    : client.bottom;
 
 	_title_region->bounds = recti(client.left, client.top, client.right, body_top);
 	_body_region->bounds = recti(client.left, body_top, client.right, body_bottom);
@@ -1691,8 +1739,10 @@ void app_frame::layout_title_bar(render::measure_context& mc, const sizei extent
 	const auto scale1000 = core::round(1000 * mc.scale_factor);
 	const auto area = recti(extent);
 
-	const auto navigate1_extent = _navigate1->measure_toolbar(mc, extent.cx);
-	const auto navigate2_extent = _navigate2->measure_toolbar(mc, extent.cx);
+	auto before_address = _navigate1;
+	auto after_address = _navigate2;
+	auto navigate1_extent = before_address->measure_toolbar(mc, extent.cx);
+	auto navigate2_extent = after_address->measure_toolbar(mc, extent.cx);
 	const auto navigate3_extent = _navigate3->measure_toolbar(mc, extent.cx);
 
 	// Bound to an lvalue, not a temporary: each bar lives in _bars, but a reference returned from a call
@@ -1713,9 +1763,26 @@ void app_frame::layout_title_bar(render::measure_context& mc, const sizei extent
 	const recti nav3_bounds(x_nav3, y_nav3, x_nav3 + navigate3_extent.cx, y_nav3 + navigate3_extent.cy);
 
 	const auto toolbar_widths = navigate1_extent.cx + navigate2_extent.cx + navigate3_extent.cx;
-	const auto address_width = std::clamp((area.width() - toolbar_widths) / 2, scale300, scale1000);
+	auto address_width = std::clamp((area.width() - toolbar_widths) / 2, scale300, scale1000);
 	const auto address_center = (area.left + area.right) / 2;
-	const auto address_left = address_center - address_width / 2;
+	auto address_left = address_center - address_width / 2;
+	if (show_navigation && (address_left <= navigate1_extent.cx + mc.padding1 ||
+	                        address_left + address_width + navigate2_extent.cx + mc.padding1 >= x_nav3))
+	{
+		// Keep the main menu: it contains the destinations whose buttons no longer fit.
+		after_address = bar({commands::menu_main}).front().toolbar;
+		navigate2_extent = after_address->measure_toolbar(mc, extent.cx);
+		const auto right = x_nav3 - navigate2_extent.cx - 2 * mc.padding1;
+		const auto logo_room = mc.icon_cxy + 2 * mc.padding2;
+		if (right - logo_room - navigate1_extent.cx < scale300)
+		{
+			before_address = bar({commands::browse_back}).front().toolbar;
+			navigate1_extent = before_address->measure_toolbar(mc, extent.cx);
+		}
+		const auto left = logo_room + navigate1_extent.cx + mc.padding1;
+		address_width = std::min(address_width, std::max(0, right - left));
+		address_left = std::clamp(address_center - address_width / 2, left, std::max(left, right - address_width));
+	}
 	const auto address_right = address_center + address_width / 2;
 	const auto nav1_x = address_left - mc.padding1 - navigate1_extent.cx;
 	const auto nav1_y = center_y(navigate1_extent.cy);
@@ -1727,14 +1794,13 @@ void app_frame::layout_title_bar(render::measure_context& mc, const sizei extent
 	const recti search_bounds(address_left, address_y, address_right, address_y + cy_address);
 
 	_app_logo->text(declared.navigation ? core::app_name() : _view->title());
-	const auto title_left = area.left + mc.padding2;
-	const auto top_arrangement = arrange_bar(recti(title_left, area.top, area.right - mc.padding2, area.bottom),
+	const auto bar_left = area.left + mc.padding2;
+	const auto top_arrangement = arrange_bar(recti(bar_left, area.top, area.right - mc.padding2, area.bottom),
 	                                         top_slots, mc.padding1);
 	const auto title_limit = declared.navigation ? nav1_bounds.left - mc.padding1 : top_arrangement.remainder.right;
-	const auto title_available_right = std::max(title_left, title_limit);
-	const auto title_extent = _app_logo->measure(mc, title_available_right - title_left);
+	const auto title_extent = _app_logo->measure(mc, std::max(0, title_limit - bar_left));
 	const auto title_top = center_y(title_extent.cy);
-	_title_bounds = recti(title_left, title_top, title_left + title_extent.cx, title_top + title_extent.cy);
+	_title_bounds = recti(bar_left, title_top, bar_left + title_extent.cx, title_top + title_extent.cy);
 	_app_logo->bounds = _title_bounds;
 
 	const auto place = [&mc, &shown](const ui::control_ptr& c, const recti bounds, const bool visible)
@@ -1745,9 +1811,9 @@ void app_frame::layout_title_bar(render::measure_context& mc, const sizei extent
 		shown.emplace_back(c);
 	};
 
-	place(_navigate1, nav1_bounds, show_navigation && nav1_bounds.left > area.left);
-	place(_search_edit, search_bounds, show_navigation && search_bounds.right < nav3_bounds.left);
-	place(_navigate2, nav2_bounds, show_navigation && nav2_bounds.right < nav3_bounds.left);
+	place(before_address, nav1_bounds, show_navigation && nav1_bounds.left > area.left && nav1_bounds.right < x_nav3);
+	place(_search_edit, search_bounds, show_navigation && !search_bounds.is_empty() && search_bounds.right < x_nav3);
+	place(after_address, nav2_bounds, show_navigation && nav2_bounds.right < x_nav3);
 
 	for (auto i = 0u; i < top_bar.size(); ++i)
 	{
@@ -1791,11 +1857,22 @@ void app_frame::layout_status_bar(render::measure_context& mc, const sizei exten
 			bottom_slots[i].min_width = trimmed_run(part.run, 1)->measure_toolbar(mc, extent.cx).cx;
 	}
 
-	const recti inner(mc.padding2, 0, extent.cx - mc.padding1 - mc.handle_cxy, extent.cy);
-	const auto bottom_arrangement = arrange_bar(inner, bottom_slots, mc.padding1);
-	const auto leading_arrangement = arrange_bar(bottom_arrangement.remainder, leading_slots, mc.padding1,
-	                                             bar_alignment::leading);
-	_status_text_bounds = leading_arrangement.remainder;
+	const recti inner(mc.padding2, 0, extent.cx - mc.padding1 - mc.handle_cxy,
+	                  std::max(0, extent.cy - _status_text_row_height));
+	auto commands_area = inner;
+	if (_view == _view_faces && !bottom_slots.empty())
+	{
+		// In Faces, make room for the filter and slider before putting the rest of the commands into More.
+		auto controls_width = 0;
+		for (const auto& slot : leading_slots) controls_width += slot.extent.cx + mc.padding1;
+		commands_area.left += std::clamp(inner.width() - bottom_slots.back().min_width, 0, controls_width);
+	}
+	const auto bottom_arrangement = arrange_bar(commands_area, bottom_slots, mc.padding1);
+	auto leading_area = bottom_arrangement.remainder;
+	leading_area.left = inner.left;
+	const auto leading_arrangement = arrange_bar(leading_area, leading_slots, mc.padding1, bar_alignment::leading);
+	_status_text_bounds = _status_text_row_height > 0 ? recti(inner.left, inner.bottom, inner.right, extent.cy)
+	                                                  : leading_arrangement.remainder;
 	_totals_bounds = {};
 	_bar_overflow.clear();
 
@@ -1825,7 +1902,8 @@ void app_frame::layout_status_bar(render::measure_context& mc, const sizei exten
 		return part.toolbar;
 	};
 
-	const auto place = [this, &mc, &shown, &fitted_run](const frame_bar& b, const bar_arrangement& a, const bool trims)
+	const auto place =
+		[this, &mc, &shown, &extent, &fitted_run](const frame_bar& b, const bar_arrangement& a, const bool trims)
 	{
 		for (auto i = 0u; i < b.size(); ++i)
 		{
@@ -1833,9 +1911,36 @@ void app_frame::layout_status_bar(render::measure_context& mc, const sizei exten
 			if (bounds.is_empty()) continue;
 
 			ui::control_ptr c;
-			if (b[i].toolbar) c = trims ? fitted_run(b[i], bounds) : b[i].toolbar;
+			if (b[i].toolbar)
+			{
+				c = trims ? fitted_run(b[i], bounds) : b[i].toolbar;
+				if (!trims && b[i].toolbar->measure_toolbar(mc, extent.cx).cx > bounds.width())
+				{
+					// A clipped leading toolbar used to leave half an icon against the filter box.
+					std::vector<bar_entry> entries(b[i].run.begin(), b[i].run.end());
+					for (size_t keep = entries.size(); keep-- > 0;)
+					{
+						entries.resize(keep);
+						entries.emplace_back(commands::menu_bar_more);
+						const auto compact = bar(entries).front().toolbar;
+						const auto width = compact->measure_toolbar(mc, extent.cx).cx;
+						if (width > bounds.width() && keep != 0) continue;
+						for (size_t k = keep; k < b[i].run.size(); ++k)
+							if (auto cmd = find_command(b[i].run[k]); cmd && cmd->visible) _bar_overflow.push_back(cmd);
+						if (width > bounds.width()) c.reset();
+						else
+						{
+							c = compact;
+							bounds.right = bounds.left + width;
+						}
+						break;
+					}
+				}
+			}
 			else if (b[i].control == bar_control::item_filter) c = _filter_edit;
 			else if (b[i].control == bar_control::item_size) c = _item_size;
+			else if (b[i].control == bar_control::face_filter) c = _face_filter_edit;
+			else if (b[i].control == bar_control::face_size) c = _face_size;
 			else _totals_bounds = bounds;
 
 			if (c)
@@ -1850,7 +1955,53 @@ void app_frame::layout_status_bar(render::measure_context& mc, const sizei exten
 	place(leading_bar, leading_arrangement, false);
 	place(bottom_bar, bottom_arrangement, true);
 
-	if (_filter_has_focus && std::ranges::find(shown, _filter_edit) == shown.end())
+	_receipt_prefix_bounds = {};
+	_receipt_link.reset();
+	_receipt_suffix_bounds = {};
+	if (_view == _view_faces && !_status_text_bounds.is_empty())
+	{
+		const auto dest = _view_faces->can_undo_placement() ? _view_faces->placement_destination() : std::string{};
+		const auto status = _view_faces->status();
+		const auto line = status.substr(0, status.find('\n'));
+		const auto at = dest.empty() ? line.npos : line.rfind(dest);
+		const auto undo = _view_faces->can_undo_placement() ? commands::face_undo_placement : commands::none;
+		if (at != line.npos || undo != commands::none)
+		{
+			auto row = _status_text_bounds;
+			const auto height = std::min(row.height(), cy_control);
+			row.top += (row.height() - height) / 2;
+			row.bottom = row.top + height;
+			_receipt_prefix = line.substr(0, at);
+			_receipt_suffix = at == line.npos ? "" : std::string(line.substr(at + dest.size()));
+			constexpr auto font = render::font_face::dialog;
+			constexpr auto style = render::text_style::single_line;
+			auto link = at != line.npos ? bar({commands::face_follow_placement}).front().toolbar : nullptr;
+			_receipt_link = link;
+			auto revert = undo != commands::none ? bar({undo}).front().toolbar : nullptr;
+			const int undo_width = revert ? std::min(row.width(), revert->measure_toolbar(mc, extent.cx).cx) : 0;
+			const int link_width = link ? std::min((row.width() - undo_width) * 2 / 3,
+			                                       link->measure_toolbar(mc, extent.cx).cx)
+			                            : 0;
+			const int prefix_width = std::min(row.width() - undo_width - link_width,
+			                                  mc.measure_text(_receipt_prefix, font, style, extent.cx).cx +
+			                                      mc.padding1);
+			_receipt_prefix_bounds = {row.left, row.top, row.left + prefix_width, row.bottom};
+			row.left += prefix_width;
+			const auto add_action = [&](const ui::toolbar_ptr& button, const int w)
+			{
+				if (!button || w <= 0) return;
+				button->is_visible(true);
+				button->layout(mc, {row.left, row.top, row.left + w, row.bottom});
+				shown.push_back(button);
+				row.left += w;
+			};
+			add_action(link, link_width);
+			add_action(revert, undo_width);
+			_receipt_suffix_bounds = row;
+		}
+	}
+
+	if (_focused_filter && std::ranges::find(shown, _focused_filter) == shown.end())
 	{
 		queue_ui([this] { focus_view(); });
 	}
@@ -2027,7 +2178,11 @@ void app_frame::complete_pending_events()
 			{
 				// The status is painted in the frame's status bar, and an open-ended run with no rows yet
 				// also says it across the empty list.
-				if (_show_bars) _status_bar->frame()->invalidate();
+				if (_show_bars)
+				{
+					if (_view == _view_faces) _status_bar->frame()->layout();
+					_status_bar->frame()->invalidate();
+				}
 				_view_frame->frame()->invalidate();
 
 				// The task view on screen reports under one key, so switching to a view that is not
@@ -2060,6 +2215,8 @@ void app_frame::complete_pending_events()
 				_navigate3->options_changed();
 				_filter_edit->options_changed();
 				_item_size->options_changed();
+				_face_filter_edit->options_changed();
+				_face_size->options_changed();
 
 				for (const auto& [entries, parts] : _bars)
 				{
@@ -2145,6 +2302,7 @@ void app_frame::complete_pending_events()
 				const auto& sidebar = _view_items->sidebar();
 				sidebar->populate();
 				sidebar->layout();
+				_view_explore->collection_changed();
 				auto search = _state.search();
 				// Finding an area can take items away from what is listed - one searched without - and so waits for
 				// a view that gives way without asking, rather than asking each time the sidebar is drawn again.
@@ -2161,6 +2319,7 @@ void app_frame::complete_pending_events()
 				const auto& sidebar = _view_items->sidebar();
 				sidebar->populate_file_types_and_dates();
 				sidebar->layout();
+				_view_explore->collection_changed();
 			}
 
 			if (pop_invalid_flag(_invalids, view_invalid::sidebar_drives))
@@ -2178,6 +2337,35 @@ void app_frame::complete_pending_events()
 				_state.invalidate_day_counts();
 				_state.item_index.queue_update_predictions();
 				_state.item_index.queue_update_summary();
+				// Pictures the index has found or seen change since are read for faces.
+				_state.item_index.faces().start_scan();
+
+				// The names the collection holds may be new: the Faces view and the suggestions made against them
+				// are made again while it is shown, and as it is shown otherwise.
+				_state.item_index.faces().names_may_have_changed();
+				if (_state.view_mode() == view_type::faces)
+				{
+					_state.item_index.faces().queue_overview();
+					_view_faces->model_changed();
+				}
+			}
+
+			if (pop_invalid_flag(_invalids, view_invalid::faces))
+			{
+				_view_faces->faces_changed();
+				_view_items->sidebar()->faces_changed();
+
+				// docs/design.md#system-states-and-consistency: what person:, face: and @face list, and the sidebar's
+				// counts of people, follow each grouping face search publishes - once a minute while it scans, and
+				// after each change the user makes - rather than each picture it reads.
+				const auto overview = _state.item_index.faces().current_overview();
+				if (_faces_listed.owner_before(overview) || overview.owner_before(_faces_listed))
+				{
+					_faces_listed = overview;
+					if (_state.is_items_or_media_view() && _state.search().reads_faces())
+						invalidate_view(view_invalid::refresh_items);
+					invalidate_view(view_invalid::sidebar_counts);
+				}
 			}
 
 			if (pop_invalid_flag(_invalids, view_invalid::media_elements))
@@ -2217,7 +2405,7 @@ void app_frame::complete_pending_events()
 					_state.update_item_groups();
 					_state.update_selection();
 
-					// locations.md 6.2: the timeline is derived from the result set, so it is
+					// docs/locations.md#visits: the timeline is derived from the result set, so it is
 					// re-derived exactly when the result set changes and never during paint.
 					_state.refresh_visits();
 				}
@@ -2358,6 +2546,15 @@ bool control_takes_key(const ui::control& c, const char32_t key, const platform:
 	       key == platform::keys::END || key == platform::keys::PRIOR || key == platform::keys::NEXT;
 }
 
+commands app_frame::close_shortcut_target() const
+{
+	if (!_state.is_items_or_media_view()) return commands::view_close;
+	if (_state.is_full_screen) return commands::view_fullscreen;
+	const auto display = _state.display_state();
+	if (display && (display->is_zoom_mode() || display->is_playing_slideshow())) return commands::none;
+	return commands::exit;
+}
+
 bool app_frame::key_down(const char32_t key, const platform::key_state keys)
 {
 	// Ctrl is itself a key press, so this is where the modifier that arms drawing a region first
@@ -2368,7 +2565,7 @@ bool app_frame::key_down(const char32_t key, const platform::key_state keys)
 	{
 		// The filter box is an edit, so it reaches here first only for the keys an edit hands up; the
 		// rest it handles itself.
-		if (_filter_has_focus && filter_key_down(key, keys)) return true;
+		if (_focused_filter && filter_key_down(key, keys)) return true;
 
 		// Step the prediction list without committing. The address bar is drawn by the items view,
 		// so the arrow and tab keys have to be claimed before the view sees them as text input.
@@ -2458,7 +2655,8 @@ bool app_frame::key_down(const char32_t key, const platform::key_state keys)
 
 		// Text being edited in the view has every key, but for a Tab it does not use, which moves on as it does from
 		// any field.
-		if (_view_has_focus && _view->focus_mode() == ui::focus_mode::text_edit)
+		const auto close_shortcut = key == close_view_shortcut().key && keys.control && !keys.shift && !keys.alt;
+		if (!close_shortcut && _view_has_focus && _view->focus_mode() == ui::focus_mode::text_edit)
 		{
 			const auto taken = _view->key_down(key, keys);
 			if (taken || key != platform::keys::TAB) return taken;
@@ -2467,6 +2665,15 @@ bool app_frame::key_down(const char32_t key, const platform::key_state keys)
 		// A running Commodore 64 has the keyboard while the view does: the arrows and Space are its joystick,
 		// and Escape leaves it before Escape's other meanings are reached.
 		if (_view_has_focus && _state.c64_key_down(key, keys)) return true;
+
+		if (close_shortcut && _state.is_items_or_media_view())
+		{
+			const auto target = close_shortcut_target();
+			if (target == commands::none) _state.escape(_view_frame);
+			else if (target == commands::exit && _mcp) core::log("key_down", agent_command_refusal(*_mcp, target));
+			else invoke(target);
+			return true;
+		}
 
 		// Tab moves the keyboard on round the window, through every frame of it, and Shift+Tab back.
 		if (key == platform::keys::TAB && !keys.control && !keys.alt)
@@ -2567,29 +2774,45 @@ bool app_frame::key_down(const char32_t key, const platform::key_state keys)
 			{
 				if (!keys.alt)
 				{
+					// In Items the keys move through the items as through any list: alone they select what they
+					// reach, Shift extends from the anchor and Ctrl with Shift adds the run, Ctrl alone moves the
+					// focus, and Ctrl+Space puts the focused item in the selection or takes it out. The media view,
+					// which shows no list, steps through the items with Ctrl putting each one reached in or out.
+					const auto in_items = _state.view_mode() == view_type::items;
+					const auto focus_only = in_items && keys.control && !keys.shift;
+
 					if (key == platform::keys::LEFT)
 					{
-						_state.select_next(_view_frame, false, keys.control, keys.shift);
+						if (focus_only) _state.focus_next(false);
+						else _state.select_next(_view_frame, false, keys.control, keys.shift);
 						return true;
 					}
 					if (key == platform::keys::RIGHT)
 					{
-						_state.select_next(_view_frame, true, keys.control, keys.shift);
+						if (focus_only) _state.focus_next(true);
+						else _state.select_next(_view_frame, true, keys.control, keys.shift);
 						return true;
 					}
 					if (key == platform::keys::HOME)
 					{
-						_state.select_end(_view_frame, false, keys.control, keys.shift);
+						if (focus_only) _state.focus_end(false);
+						else _state.select_end(_view_frame, false, keys.control, keys.shift);
 						return true;
 					}
 					if (key == platform::keys::END)
 					{
-						_state.select_end(_view_frame, true, keys.control, keys.shift);
+						if (focus_only) _state.focus_end(true);
+						else _state.select_end(_view_frame, true, keys.control, keys.shift);
 						return true;
 					}
 
-					if (_state.view_mode() == view_type::items)
+					if (in_items)
 					{
+						if (key == platform::keys::SPACE && keys.control && !keys.shift)
+						{
+							_state.toggle_focus(_view_frame);
+							return true;
+						}
 						if (key == platform::keys::UP)
 						{
 							_state.stop_slideshow();
@@ -2674,7 +2897,7 @@ bool app_frame::text_input(const std::string_view text)
 
 ui::focus_mode app_frame::focus_mode() const
 {
-	if (_search_has_focus || _filter_has_focus) return ui::focus_mode::text_edit;
+	if (_search_has_focus || _focused_filter) return ui::focus_mode::text_edit;
 	if (_view_has_focus && _view) return _view->focus_mode();
 	return ui::focus_mode::none;
 }
@@ -2721,7 +2944,7 @@ void app_frame::toggle_full_screen()
 	}
 
 	// Full screen swaps to the media view and hides both bars, so release text focus first.
-	if (_search_has_focus || _filter_has_focus)
+	if (_search_has_focus || _focused_filter)
 	{
 		focus_view();
 	}
@@ -2808,6 +3031,8 @@ void app_frame::element_broadcast(const view_element_event& event)
 	_view_import->broadcast_event(event);
 	_view_locate->broadcast_event(event);
 	_view_tags->broadcast_event(event);
+	_view_explore->broadcast_event(event);
+	_view_faces->broadcast_event(event);
 }
 
 void app_frame::focus_changed(const bool has_focus, const ui::control_ptr& child)
@@ -2818,9 +3043,9 @@ void app_frame::focus_changed(const bool has_focus, const ui::control_ptr& child
 	{
 		focus_search(has_focus);
 	}
-	else if (child == _filter_edit)
+	else if (child && (child == _filter_edit || child == _face_filter_edit))
 	{
-		focus_filter(has_focus);
+		focus_filter(child, has_focus);
 	}
 
 	// The view frame holds the keyboard for the view, for a drawn part around it and for its panel's controls alike.
@@ -2913,6 +3138,10 @@ void app_frame::display_changed()
 	{
 		_view->display_changed();
 		_view_selector->display_changed();
+
+		// The picture on screen is read for faces next: docs/faces.md#32-the-scan.
+		if (const auto d = _state.display_state(); d && d->_item1)
+			_state.item_index.faces().prioritize(d->_item1->path());
 
 		invalidate_view(view_invalid::app_layout | view_invalid::view_layout | view_invalid::command_state |
 		                view_invalid::screen_saver | view_invalid::media_elements | view_invalid::controller |
@@ -3012,6 +3241,11 @@ void app_frame::view_changed(const view_type m)
 	case view_type::tags:
 		v = _view_tags;
 		vc = _view_tags->controls(_view_frame->frame());
+		break;
+	case view_type::explore: v = _view_explore; break;
+	case view_type::faces:
+		v = _view_faces;
+		vc = _view_faces->controls(_view_frame->frame());
 		break;
 	case view_type::options:
 		v = _view_options;
@@ -3267,6 +3501,13 @@ void app_frame::draw_status_bar(render::draw_context& dc)
 
 	auto text_bounds = _status_text_bounds;
 
+	if (_view == _view_faces && !_receipt_prefix_bounds.is_empty())
+	{
+		dc.draw_text(_receipt_prefix, _receipt_prefix_bounds, font, render::text_style::single_line, text_color, {});
+		dc.draw_text(_receipt_suffix, _receipt_suffix_bounds, font, render::text_style::single_line, text_color, {});
+		return;
+	}
+
 	if (progress.active)
 	{
 		// Measured at the final count, so the pill does not twitch every time a digit is added.
@@ -3303,9 +3544,10 @@ void app_frame::draw_status_bar(render::draw_context& dc)
 		text_bounds = pill.inflate(-dc.padding2, 0);
 	}
 
-	const auto extent = dc.measure_text(text, font, render::text_style::single_line, 100000);
-	_status_text_clipped = extent.cx > text_bounds.width();
-	dc.draw_text(text, text_bounds, font, render::text_style::single_line, text_color, {});
+	constexpr auto style = render::text_style::single_line;
+	const auto extent = dc.measure_text(text, font, style, 100000);
+	_status_text_clipped = extent.cx > text_bounds.width() || extent.cy > text_bounds.height();
+	dc.draw_text(text, text_bounds, font, style, text_color, {});
 }
 
 void app_frame::title_bar_mouse_move(const pointi loc)
@@ -3518,8 +3760,12 @@ void app_frame::delete_items(const df::item_set& items)
 				detach_file_handles detach(_state);
 				shell_file_operation_ui processing(*_view_frame, _app_frame);
 
-				constexpr auto allow_undo = true;
-				const auto res = platform::delete_items(items.file_paths(), items.folder_paths(), allow_undo);
+				// Where Windows cannot recycle everything, the dialog above said so and was agreed to: Windows
+				// recycles what it can and is not asked to confirm the rest again, so a network delete is one
+				// question, not two.
+				const auto mode = will_recycle ? platform::delete_mode::recycle
+				                               : platform::delete_mode::recycle_where_possible;
+				const auto res = platform::delete_items(items.file_paths(), items.folder_paths(), mode);
 
 				if (res.success())
 				{
@@ -3551,18 +3797,6 @@ void app_frame::focus_view()
 	}
 }
 
-// A radio group is one stop, entered at its checked button, as Tab within one frame treats it.
-static bool is_tab_stop(const ui::control& c, const std::vector<ui::control_ptr>& among)
-{
-	if (!c.is_visible() || !c.can_focus()) return false;
-
-	const auto group = c.traits.radio_group;
-	if (group < 0 || c.is_checked()) return true;
-
-	return std::ranges::none_of(among, [&c, group](const ui::control_ptr& other)
-	{ return other.get() != &c && other->traits.radio_group == group && other->is_checked() && other->can_focus(); });
-}
-
 std::vector<app_frame::keyboard_stop> app_frame::keyboard_stops() const
 {
 	std::vector<keyboard_stop> stops;
@@ -3571,7 +3805,7 @@ std::vector<app_frame::keyboard_stop> app_frame::keyboard_stops() const
 	{
 		for (const auto& c : controls)
 		{
-			if (is_tab_stop(*c, controls)) stops.push_back({c});
+			if (ui::is_tab_stop(*c, controls)) stops.push_back({c});
 		}
 	};
 
@@ -3605,7 +3839,7 @@ std::vector<app_frame::keyboard_stop> app_frame::keyboard_stops() const
 		{
 			if (const auto* const c = std::get_if<ui::control_ptr>(&target))
 			{
-				if (is_tab_stop(**c, controls)) stops.push_back({*c});
+				if (ui::is_tab_stop(**c, controls)) stops.push_back({*c});
 			}
 			else if (const auto& part = std::get<keyboard_part>(target);
 			         !stops.empty() && !stops.back().parts.empty() &&
@@ -4088,8 +4322,10 @@ std::vector<ui::command_ptr> app_frame::menu(const pointi loc)
 	// The menu the platform asks for after Apps or Shift+F10 is already open beside what has the keyboard
 	// (open_keyboard_menu), so the request it makes at no point is not answered with a second.
 	if (loc == pointi{-1, -1}) return {};
+	// The view may select what is under the pointer as it names its menu, so the commands' states follow that.
+	const auto at = menu_at(loc);
 	update_button_state(false);
-	return context_menu(menu_at(loc));
+	return context_menu(at);
 }
 void app_frame::exit()
 {

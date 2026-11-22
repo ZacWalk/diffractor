@@ -1197,6 +1197,13 @@ class scrubber_element final :
 	// A handle's width, and how far either side of it a press takes it; from the scale at measure.
 	mutable int _handle_width = 8;
 	mutable int _handle_grab = 8;
+	// docs/faces.md#8-searching: where in the video what the search found it by is seen - the faces it found - as
+	// seconds from and to, marked on the track in the orange a search's matches are shown in.
+public:
+	using found_spans = std::vector<std::pair<double, double>>;
+
+private:
+	std::function<found_spans()> _found;
 
 	// The transport row is [play button][scrubber]. Without grow/shrink the scrubber's natural
 	// width would push it past the row's right edge and over the media beneath it.
@@ -1216,6 +1223,7 @@ public:
 	}
 
 	void trim_changed(std::function<void(double start, double end)> changed) { _trim_changed = std::move(changed); }
+	void found_by(std::function<found_spans()> found) { _found = std::move(found); }
 
 	bool has_trim_handles() const
 	{
@@ -1404,6 +1412,7 @@ public:
 			                         .aa(dc.colors.alpha),
 			                     dc.padding1);
 
+			if (_found) draw_found(dc, track_bounds);
 			if (has_trim_handles()) draw_trim(dc, track_bounds);
 
 			auto time_bounds = logical_bounds;
@@ -1425,6 +1434,25 @@ public:
 			             render::text_style::single_line_center, clr, {});
 			dc.draw_text(_display->_duration, duration_bounds, render::font_face::dialog,
 			             render::text_style::single_line_center, clr, {});
+		}
+	}
+
+	// docs/faces.md#8-searching: a line along the foot of the track under each part of the video a face the search found
+	// it by is seen in, wide enough to see however short the part.
+	void draw_found(render::draw_context& dc, const recti track) const
+	{
+		const auto found = _found();
+		if (found.empty()) return;
+
+		const auto clr = core::color(ui::style::colors.important_background, dc.colors.alpha);
+		const auto least = std::max(2, core::round(3 * dc.scale_factor));
+		const auto height = std::max(least, track.height() / 4);
+
+		for (const auto& [from, to] : found)
+		{
+			const auto left = x_of_time(track, from);
+			const auto right = std::min(track.right, std::max(left + least, x_of_time(track, to)));
+			dc.draw_rect({left, track.bottom - height, right, track.bottom}, clr);
 		}
 	}
 
@@ -1762,11 +1790,91 @@ private:
 	mutable std::vector<view_element_ptr> _children;
 };
 
+// docs/faces.md#93-faces-on-a-picture: whether the display shows one picture whole, upright and flat, where the faces
+// found on it - fractions of the upright picture - can be placed.
+bool can_place_faces(const display_state_t& display);
+
 // The keyboard zooms the picture with keys of its own, so the picture itself is no part of it.
+// docs/faces.md#93-faces-on-a-picture: the faces found on what a control shows - a picture, or the frame a paused video
+// shows: the face under the pointer outlined, with its name and what the face book allows done to it beneath. The
+// hovered face opens Faces; where the face book can be changed, a face is named or renamed there, and a suggestion
+// confirmed, ruled out or named as someone else. The control says what it shows, and where.
+class picture_faces
+{
+public:
+	struct face_on_picture
+	{
+		uint32_t face = 0;
+		// Fractions of the upright picture.
+		rectd box;
+		// As shown: the person's name, with a question mark where it is only a suggestion; empty for a face nobody
+		// has named.
+		std::string name;
+		std::string person;
+		bool offered = false;
+		uint32_t pictures = 0;
+		uint32_t suggested = 0;
+		// In a video, the frame it was found in: it is on that frame alone.
+		std::optional<uint32_t> frame_ms;
+	};
+
+	enum class face_button : uint8_t
+	{
+		show,
+		name,
+		confirm,
+		reject,
+	};
+
+	mutable std::vector<face_on_picture> _faces;
+	mutable core::file_path _faces_path;
+	mutable const void* _faces_store = nullptr;
+	mutable uint64_t _faces_generation = 0;
+	mutable const void* _faces_overview = nullptr;
+	mutable uint64_t _faces_book = 0;
+	mutable int _hover_face = -1;
+	mutable int _hover_face_button = -1;
+	mutable int _buttons_face = -1;
+	mutable std::array<recti, 4> _face_buttons{};
+	mutable std::array<face_button, 4> _face_button_actions{};
+
+	picture_faces(view_state& state, view_host_ptr host) : _face_state(state), _face_host(std::move(host)) {}
+	virtual ~picture_faces() = default;
+
+	const std::vector<face_on_picture>& faces_on_picture() const;
+	recti face_bounds(size_t face, pointi element_offset) const;
+	// The buttons drawn under the hovered face, as one rectangle; empty while none are.
+	recti face_strip() const;
+	void hover_face(int face, int button);
+	void press_face_button(size_t face, int button);
+	void render_faces(render::draw_context& dc, pointi element_offset) const;
+
+protected:
+	view_state& _face_state;
+	view_host_ptr _face_host;
+
+	// What the control shows: the item, where its picture is on screen, what the buttons are kept inside, and whether
+	// a face is on it now - none while a region is drawn, a video plays, or another of its frames shows.
+	virtual core::file_path faces_item() const = 0;
+	virtual rectd faces_image_bounds(pointi element_offset) const = 0;
+	virtual recti faces_limit(pointi element_offset) const = 0;
+	// Whether boxes measured on the upright picture can be placed on it as it is drawn.
+	virtual bool faces_placeable() const = 0;
+	virtual bool faces_hidden() const = 0;
+	virtual bool face_showing(const face_on_picture& face) const = 0;
+
+	// The face the pointer is over, or the buttons of one, as the control's controller; `picture` is what a press on a
+	// face that misses its buttons does. Null over no face.
+	view_controller_ptr face_controller(const view_host_ptr& host, const std::shared_ptr<picture_faces>& self,
+	                                    pointi element_offset, hit_test_context& ctx,
+	                                    const view_controller_ptr& picture) const;
+};
+
 class photo_control final :
 	public view_element,
 	public std::enable_shared_from_this<photo_control>,
-	public no_keyboard_parts
+	public no_keyboard_parts,
+	public picture_faces
 {
 public:
 	view_state& _state;
@@ -1780,7 +1888,8 @@ public:
 	mutable recti _zoom_100_bounds;
 	mutable recti _zoom_in_bounds;
 	mutable recti _zoom_options_bounds;
-	// zoom.md L6: the visible control for the flat/projected state of a declared panorama.
+	// docs/zoom.md#standing-inside-an-equirectangular-panorama: the visible control for the flat/projected state
+	// of a declared panorama.
 	mutable recti _zoom_projection_bounds;
 	mutable uint64_t _zoom_quality_generation = 0;
 	view_elements_ptr _zoom_grading_element;
@@ -1800,6 +1909,13 @@ public:
 		// question here is only whether it resolves to one picture.
 		return _display->is_one() && _display->_item1 ? _display->_item1->path() : core::file_path{};
 	}
+
+	core::file_path faces_item() const override { return region_item(); }
+	rectd faces_image_bounds(const pointi element_offset) const override { return image_bounds(element_offset); }
+	recti faces_limit(const pointi element_offset) const override { return bounds.offset(element_offset); }
+	bool faces_placeable() const override;
+	bool faces_hidden() const override { return _state.drawing_region(); }
+	bool face_showing(const face_on_picture& /*face*/) const override { return true; }
 
 	rectd region() const { return _state.drawn_region(region_item()); }
 
@@ -1888,8 +2004,8 @@ public:
 	}
 
 	photo_control(view_state& state, display_state_ptr display, view_host_ptr host) :
-		view_element(view_element_style::can_invoke | flex_item::media), _state(state), _display(std::move(display)),
-		_host(std::move(host))
+		view_element(view_element_style::can_invoke | flex_item::media), picture_faces(state, host), _state(state),
+		_display(std::move(display)), _host(std::move(host))
 	{
 		if (_display->is_one())
 		{
@@ -1941,6 +2057,7 @@ public:
 
 			// The zoom chrome is drawn after the region for the same reason it is hit-tested before it:
 			// a rectangle drawn across the navigator must not hide it and must not claim its clicks.
+			render_faces(dc, element_offset);
 			render_region(dc, element_offset);
 			if (_display->zoom()) render_zoom_thumb(dc, element_offset);
 			if (_display->is_zoom_mode() && !_display->is_temporary_zoom() && _zoom_grading_element &&
@@ -2101,16 +2218,19 @@ public:
 class video_control final :
 	public view_element,
 	public std::enable_shared_from_this<video_control>,
-	public no_keyboard_parts
+	public no_keyboard_parts,
+	public picture_faces
 {
 public:
 	view_state& _state;
 	display_state_ptr _display;
 	view_host_ptr _host;
+	// The face a video was opened at is outlined once, as if pointed at, until the pointer finds another.
+	mutable bool _opened_face_taken = false;
 
 	video_control(view_state& s, display_state_ptr display, view_host_ptr host) noexcept :
-		view_element(view_element_style::can_invoke | flex_item::media), _state(s), _display(std::move(display)),
-		_host(std::move(host))
+		view_element(view_element_style::can_invoke | flex_item::media), picture_faces(s, host), _state(s),
+		_display(std::move(display)), _host(std::move(host))
 	{
 	}
 
@@ -2132,6 +2252,8 @@ public:
 
 				st->draw(dc, element_offset, 0, false);
 				_display->draw_subtitles(dc);
+				outline_opened_face();
+				render_faces(dc, element_offset);
 			}
 		}
 		catch (std::exception& e)
@@ -2193,6 +2315,49 @@ public:
 
 	view_controller_ptr controller_from_location(const view_host_ptr& host, pointi loc, pointi element_offset,
 	                                             hit_test_context& ctx) override;
+
+	core::file_path faces_item() const override
+	{
+		return _display->is_one() && _display->_item1 ? _display->_item1->path() : core::file_path{};
+	}
+
+	rectd faces_image_bounds(const pointi element_offset) const override
+	{
+		if (!_display->_selected_texture1) return {};
+		return rectd(_display->_selected_texture1->display_bounds().offset(element_offset));
+	}
+
+	recti faces_limit(const pointi element_offset) const override { return bounds.offset(element_offset); }
+
+	// A video is drawn as its frames are shown, turned upright.
+	bool faces_placeable() const override
+	{
+		return _display->is_one() && _display->_item1 && _display->_selected_texture1 &&
+		       !_display->is_panorama_projected();
+	}
+
+	// docs/faces.md#93-faces-on-a-picture: a video's faces are on the frames they were found in, so they are shown only
+	// while it is paused on one.
+	bool faces_hidden() const override { return !_display->_session || _display->is_playing_media(); }
+
+	bool face_showing(const face_on_picture& face) const override
+	{
+		return face.frame_ms && std::abs(_display->media_pos() * 1000.0 - *face.frame_ms) <= 1.0;
+	}
+
+	// The face the video was opened at is outlined, as if pointed at, once its frame shows.
+	void outline_opened_face() const
+	{
+		if (_opened_face_taken || !_state._opened_face || faces_hidden()) return;
+		const auto& shown = faces_on_picture();
+		for (size_t i = 0; i < shown.size(); ++i)
+		{
+			if (shown[i].face != *_state._opened_face || !face_showing(shown[i])) continue;
+			_opened_face_taken = true;
+			if (_hover_face < 0) _hover_face = static_cast<int>(i);
+			return;
+		}
+	}
 
 	friend class zoom_controller;
 	friend class pan_controller;

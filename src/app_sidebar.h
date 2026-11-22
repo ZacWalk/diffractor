@@ -41,7 +41,10 @@
 #include "ui_controls.h"
 #include "ui_globe.h"
 #include "ui_plasma.h"
+#include "model_explore.h"
+#include "model_faces_search.h"
 #include "app_util.h"
+#include "view_faces.h"
 
 static std::string format_total_text(const core::count_and_size total, const bool multi_line)
 {
@@ -133,8 +136,8 @@ struct sidebar_tooltip_thumbnail
 		const auto surface = item->thumbnail_surface();
 		if (is_valid(surface))
 		{
-			hover.elements->add(std::make_shared<surface_element>(surface, 160, flex_item::center | flex_item::new_line,
-			                                                      item->layout_orientation()));
+			hover.elements->add(
+				std::make_shared<surface_element>(surface, 160, flex_item::center | flex_item::new_line));
 		}
 		else if (is_valid(item->thumbnail()))
 		{
@@ -174,7 +177,6 @@ public:
 	core::color32 clr = 0;
 	int icon_repeat = 1;
 	mutable sidebar_tooltip_thumbnail _tooltip_thumbnail;
-
 	explicit sidebar_element(view_state& state) noexcept :
 		view_element(view_element_style::has_tooltip | view_element_style::can_invoke), _state(state)
 	{
@@ -270,6 +272,7 @@ public:
 
 	void tooltip(view_hover_element& result, const pointi /*loc*/, const pointi element_offset) const override
 	{
+		result.active_delay = bubble_delay::sidebar_entry;
 		if (title_layout.is_empty())
 		{
 			result.elements->add(make_icon_element(tooltip_icon, icon_repeat, flex_item::line_break));
@@ -426,6 +429,7 @@ public:
 
 	void tooltip(view_hover_element& result, const pointi /*loc*/, const pointi element_offset) const override
 	{
+		result.active_delay = bubble_delay::sidebar_entry;
 		result.elements->add(make_icon_element(icon, flex_item::no_break));
 		result.elements->add(std::make_shared<text_element>(_drive.name, render::font_face::title,
 		                                                    render::text_style::multiline, flex_item::line_break));
@@ -616,6 +620,34 @@ public:
 		return results;
 	}
 
+	// docs/faces.md#94-the-sidebars-faces: whom the collection's pictures name, most pictures first, each row
+	// listing their pictures.
+	std::vector<search_item_ptr> create_people(view_state& s, const search_items_by_key_t& existing) const
+	{
+		std::vector<search_item_ptr> results;
+
+		for (const auto& [name, counts] : s.item_index.distinct_people())
+		{
+			auto person = std::string(name);
+			auto search = df::search_t().with(prop::person, person);
+			if (person.empty() || search.is_empty()) continue;
+
+			auto i = create_or_find_item(s, existing, std::format("p:{}", person));
+			i->tooltip_icon = i->icon = icon_index::person;
+			i->title_layout.text = person;
+			i->search = search;
+			i->calc_sum = [person](const view_state& s, core::cancel_token /*token*/)
+			{
+				return s.item_index.person_summary(person);
+			};
+			i->sum_is_cheap = true;
+			i->summary = counts;
+			results.emplace_back(i);
+		}
+
+		return results;
+	}
+
 	search_item_ptr create_rating_item(view_state& s, const search_items_by_key_t& existing, const std::string& key,
 	                                   const int rating) const
 	{
@@ -772,18 +804,28 @@ class sidebar_indexing_element final :
 {
 	render::font_face _font = render::font_face::title;
 	view_state& _s;
+	bool _faces;
 
 public:
-	sidebar_indexing_element(view_state& s, const view_element_options& style_in) noexcept :
+	sidebar_indexing_element(view_state& s, const view_element_options& style_in, const bool faces = false) noexcept :
 		view_element(style_in | view_element_style::can_invoke | view_element_style::has_tooltip |
 	                 view_element_style::important),
-		_s(s)
+		_s(s), _faces(faces)
 	{
 		update_background_color();
 	}
 
 	std::string format_text() const
 	{
+		if (_faces)
+		{
+			const auto& faces = _s.item_index.faces();
+			const auto p = faces.progress();
+			const auto pct = p.eligible > 0 ? (100ull * (p.eligible - p.left())) / p.eligible : 0;
+			if (faces.is_paused())
+				return std::format("{} {}% - {}", tt.indexing_faces, pct, tt.face_search_paused_short);
+			return std::format("{} {}%", tt.indexing_faces, pct);
+		}
 		return std::format("{} {}%", tt.indexing, calc_indexing_perc(_s.item_index.indexing_progress()));
 	}
 
@@ -803,9 +845,12 @@ public:
 
 	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
-		hover.elements->add(std::make_shared<text_element>(tt.indexing_message, render::font_face::dialog,
-		                                                   render::text_style::multiline, flex_item::line_break));
-		hover.elements->add(std::make_shared<action_element>(tt.options_title));
+		if (_faces) hover.elements->add(std::make_shared<text_element>(tt.indexing_faces));
+		hover.elements->add(std::make_shared<text_element>(_faces ? tt.face_search_local : tt.indexing_message,
+		                                                   render::font_face::dialog, render::text_style::multiline,
+		                                                   flex_item::line_break));
+		hover.elements->add(std::make_shared<text_element>(_faces ? tt.command_faces : tt.options_title));
+		add_shortcut_hint(hover, _s.find_command(_faces ? commands::faces : commands::options));
 
 		hover.active_bounds = hover.window_bounds = bounds.offset(element_offset);
 		hover.horizontal = true;
@@ -815,7 +860,7 @@ public:
 	{
 		if (event.type == view_element_event_type::invoke)
 		{
-			event.host->invoke(commands::options);
+			event.host->invoke(_faces ? commands::faces : commands::options);
 		}
 	}
 
@@ -823,6 +868,334 @@ public:
 	                                             const pointi element_offset, hit_test_context& ctx) override
 	{
 		return default_controller_from_location(*this, host, loc, element_offset, ctx);
+	}
+};
+
+class sidebar_face_switch final : public view_element, public std::enable_shared_from_this<sidebar_face_switch>
+{
+	view_state& _state;
+
+public:
+	explicit sidebar_face_switch(view_state& state) :
+		view_element(view_element_style::can_invoke | view_element_style::has_tooltip | flex_item::stretch),
+		_state(state)
+	{
+	}
+
+	sizei measure(render::measure_context& mc, const int width) const override
+	{
+		const auto text_width = std::max(1, width - mc.icon_cxy * 3 / 2 - mc.padding2);
+		const auto text = mc.measure_text(tt.face_scan, render::font_face::dialog, render::text_style::multiline,
+		                                  text_width);
+		return {width, std::max(mc.icon_cxy, text.cy) + mc.padding1};
+	}
+
+	void render(render::draw_context& dc, const pointi offset) const override
+	{
+		render_background(dc, offset);
+		const auto r = bounds.offset(offset);
+		const auto height = std::max(4, dc.icon_cxy * 3 / 4);
+		const auto top = r.top + (r.height() - height) / 2;
+		const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
+		const recti track(r.left, top, r.left + height * 2, top + height);
+		dc.draw_rounded_rect(track, core::color(dc.colors.foreground, dc.colors.alpha * 0.3f), height / 2);
+		const recti thumb(track.left, top, track.left + height, top + height);
+		dc.fill_ellipse(thumb.inflate(-std::max(1, height / 5)), clr);
+		dc.draw_text(tt.face_scan, recti(track.right + dc.padding2, r.top, r.right, r.bottom),
+		             render::font_face::dialog, render::text_style::multiline, clr, {});
+	}
+
+	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi offset) const override
+	{
+		hover.elements->add(std::make_shared<text_element>(tt.face_scan));
+		hover.elements->add(std::make_shared<text_element>(tt.face_search_local));
+		hover.active_bounds = hover.window_bounds = bounds.offset(offset);
+		hover.horizontal = true;
+	}
+
+	void dispatch_event(const view_element_event& event) override
+	{
+		if (event.type == view_element_event_type::invoke) turn_on_face_search(_state, event.host->owner());
+	}
+
+	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc, const pointi offset,
+	                                             hit_test_context& ctx) override
+	{
+		return default_controller_from_location(*this, host, loc, offset, ctx);
+	}
+};
+
+// docs/faces.md#94-the-sidebars-faces: one row of people with the most pictures, as many as fit, then
+// a button that opens the Faces view. A face searches for its person's pictures; hovering it says who and how many.
+class sidebar_face_row final :
+	public view_element,
+	public std::enable_shared_from_this<sidebar_face_row>,
+	public keyboard_parts_source
+{
+public:
+	struct source
+	{
+		core::file_path path;
+		rectd area;
+		// In a video, the frame the face was found in: docs/faces.md#33-videos.
+		std::optional<uint32_t> frame_ms;
+		std::string name;
+		// The pictures the person is confirmed in, and the faces suggested for them.
+		uint32_t pictures = 0;
+		uint32_t suggested = 0;
+		// Clicking the portrait searches for the named person.
+		std::string search;
+		bool operator==(const source&) const = default;
+	};
+
+private:
+	struct tile
+	{
+		core::const_surface_ptr surface;
+		mutable render::texture_ptr texture;
+	};
+
+	view_state& _state;
+	std::vector<source> _sources;
+	std::vector<tile> _tiles;
+	uint64_t _generation = 0;
+	mutable int _hover = -1;
+
+	int edge_of(const int width) const { return std::clamp(width / 6, 1, core::round(44 * _scale)); }
+
+	// How many faces fit beside the button.
+	int shown_count(const recti r, const int gap) const
+	{
+		const auto edge = r.height();
+		const auto room = r.width() - edge - gap;
+		return std::clamp((room + gap) / std::max(1, edge + gap), 0, static_cast<int>(_sources.size()));
+	}
+
+	std::vector<recti> parts(const recti r, const int gap) const
+	{
+		std::vector<recti> result;
+		const auto edge = r.height();
+		const auto count = shown_count(r, gap);
+		result.reserve(static_cast<size_t>(count) + 1);
+		for (auto i = 0; i < count; ++i)
+			result.emplace_back(r.left + i * (edge + gap), r.top, r.left + i * (edge + gap) + edge, r.bottom);
+		result.emplace_back(r.right - edge, r.top, r.right, r.bottom);
+		return result;
+	}
+
+	int part_at(const pointi loc, const int gap) const
+	{
+		const auto all = parts(bounds, gap);
+		for (size_t i = 0; i < all.size(); ++i)
+			if (all[i].contains(loc)) return static_cast<int>(i);
+		return -1;
+	}
+
+	bool is_button(const int part) const { return part >= 0 && part == shown_count(bounds, _gap); }
+
+	void act(const int part, const view_host_ptr& host) const
+	{
+		if (part < 0) return;
+		if (is_button(part)) host->invoke(commands::faces);
+		else if (part < static_cast<int>(_sources.size()))
+			_state.open(host, df::search_t::parse(_sources[part].search), {});
+	}
+
+	mutable double _scale = 1.0;
+	mutable int _gap = 4;
+
+public:
+	static constexpr size_t capacity = 12;
+
+	explicit sidebar_face_row(view_state& state) :
+		view_element(view_element_style::can_invoke | view_element_style::has_tooltip | flex_item::stretch),
+		_state(state)
+	{
+	}
+
+	const std::vector<source>& sources() const { return _sources; }
+
+	void populate(std::vector<source> sources)
+	{
+		if (sources == _sources) return;
+
+		// A tile is the same face whatever count or name it shows: the row is cut again only for faces new to it, not
+		// each time face search counts again.
+		const auto same_faces = std::ranges::equal(sources, _sources, [](const source& a, const source& b)
+		{ return a.path == b.path && a.area == b.area && a.frame_ms == b.frame_ms; });
+		_sources = std::move(sources);
+		_state.invalidate_view(view_invalid::controller | view_invalid::view_redraw);
+		if (same_faces) return;
+
+		_tiles.assign(_sources.size(), {});
+		const auto generation = ++_generation;
+		if (_sources.empty()) return;
+
+		_state.queue_async(async_queue::thumbnail_decode, [weak = weak_from_this(), &state = _state, sources = _sources,
+		                                                   generation, function = __FUNCTION__]
+		{
+			constexpr auto edge = 112;
+			std::vector<tile> tiles(sources.size());
+			files ff;
+
+			for (size_t i = 0; i < sources.size() && !platform::is_closing; ++i)
+			{
+				const auto& s = sources[i];
+				const auto item = state.item_index.find_item(s.path);
+				const auto from_video = s.frame_ms.has_value();
+				if (!item.ft || (item.ft->group != &file_group::photo && !from_video) || s.area.Width <= 0.0) continue;
+
+				try
+				{
+					const auto scale = std::max(s.area.Width, s.area.Height) * 1.6;
+					const auto bound = static_cast<int>(std::clamp(std::ceil(edge / scale), static_cast<double>(edge),
+					                                               static_cast<double>(faces::defaults().decode_edge)));
+					tiles[i].surface = faces::cut_tile(faces::decode_face_source(ff, s.path, item.ft, from_video,
+					                                                             s.frame_ms.value_or(0),
+					                                                             {bound, bound}),
+					                                   s.area, edge);
+				}
+				catch (const std::exception& e)
+				{
+					core::log(function, e.what());
+				}
+			}
+
+			state.queue_ui([weak, &state, generation, tiles = std::move(tiles)]() mutable
+			{
+				if (const auto self = weak.lock(); self && self->_generation == generation)
+				{
+					self->_tiles = std::move(tiles);
+					state.invalidate_view(view_invalid::view_redraw);
+				}
+			});
+		});
+	}
+
+	sizei measure(render::measure_context& mc, const int width) const override
+	{
+		_scale = mc.scale_factor;
+		_gap = mc.padding1;
+		return {width, edge_of(width)};
+	}
+
+	void render(render::draw_context& dc, const pointi offset) const override
+	{
+		render_background(dc, offset);
+		const auto all = parts(bounds, _gap);
+		const auto radius = dc.padding1;
+		const auto dim = core::color(dc.colors.foreground, dc.colors.alpha * 0.6f);
+
+		for (size_t i = 0; i < all.size(); ++i)
+		{
+			const auto square = all[i].offset(offset);
+			const auto hover = static_cast<int>(i) == _hover;
+
+			if (is_button(static_cast<int>(i)))
+			{
+				dc.draw_rounded_rect(square, core::color(dc.colors.foreground, dc.colors.alpha * (hover ? 0.2f : 0.1f)),
+				                     radius);
+				xdraw_icon(dc, icon_index::album_artist, square, core::color(dc.colors.foreground, dc.colors.alpha),
+				           {});
+				continue;
+			}
+
+			const auto& t = _tiles[i];
+			if (t.surface && !t.texture)
+			{
+				t.texture = dc.create_texture();
+				if (t.texture && t.texture->update(t.surface) == render::texture_update_result::failed)
+					t.texture.reset();
+			}
+
+			if (t.texture)
+			{
+				dc.draw_texture(t.texture, square, recti(t.surface->dimensions()), dc.colors.alpha,
+				                render::texture_sampler::bilinear, static_cast<float>(radius));
+			}
+			else
+			{
+				xdraw_icon(dc, icon_index::person, square, dim, {});
+			}
+
+			if (hover)
+			{
+				const auto ring = std::max(1, core::round(2 * dc.scale_factor));
+				const auto clr = core::color(dc.colors.foreground, dc.colors.alpha * 0.8f);
+				dc.draw_border(square, square.inflate(ring), clr, clr);
+			}
+		}
+	}
+
+	void hover(interaction_context& ic) override
+	{
+		const auto part = ic.loc.x < 0 ? -1 : part_at(ic.loc - ic.element_offset, _gap);
+		if (part != _hover)
+		{
+			_hover = part;
+			ic.redraw = true;
+		}
+	}
+
+	void tooltip(view_hover_element& hover, const pointi loc, const pointi offset) const override
+	{
+		const auto part = part_at(loc - offset, _gap);
+		const auto all = parts(bounds, _gap);
+
+		if (part < 0) return;
+		if (is_button(part))
+		{
+			hover.elements->add(std::make_shared<text_element>(tt.command_faces));
+			add_shortcut_hint(hover, _state.find_command(commands::faces));
+			hover.active_bounds = hover.window_bounds = all[part].offset(offset);
+			hover.horizontal = true;
+			return;
+		}
+
+		const auto& s = _sources[part];
+		hover.active_delay = bubble_delay::immediate;
+		hover.elements->add(std::make_shared<text_element>(s.name.empty() ? std::string(tt.unknown) : s.name,
+		                                                   render::font_face::title, render::text_style::multiline,
+		                                                   flex_item::line_break));
+		if (_tiles[part].surface)
+		{
+			hover.elements->add(
+				std::make_shared<surface_element>(_tiles[part].surface, 112, flex_item::center | flex_item::new_line));
+		}
+		auto pictures = format_plural_text(tt.faces_pictures_fmt, static_cast<int64_t>(s.pictures));
+		if (s.suggested)
+			pictures = std::format("{} \u00b7 {}", pictures,
+			                       format_plural_text(tt.faces_suggested_count_fmt, static_cast<int64_t>(s.suggested)));
+		hover.elements->add(std::make_shared<text_element>(pictures, render::font_face::dialog,
+		                                                   render::text_style::multiline, flex_item::new_line));
+		hover.elements->add(std::make_shared<action_element>(tt.faces_click_to_search));
+		hover.active_bounds = hover.window_bounds = all[part].offset(offset);
+		hover.horizontal = true;
+	}
+
+	std::vector<recti> keyboard_parts() const override { return parts(bounds, _gap); }
+
+	bool press_keyboard_part(const int index, const view_host_ptr& host) override
+	{
+		act(index, host);
+		return true;
+	}
+
+	void dispatch_event(const view_element_event& event) override
+	{
+		if (event.type == view_element_event_type::invoke) act(_hover, event.host);
+		if (event.type == view_element_event_type::free_graphics_resources)
+			for (const auto& t : _tiles) t.texture.reset();
+	}
+
+	view_controller_ptr controller_from_location(const view_host_ptr& host, const pointi loc, const pointi offset,
+	                                             hit_test_context& ctx) override
+	{
+		const auto part = part_at(loc - offset, _gap);
+		if (part < 0) return nullptr;
+		const auto b = parts(bounds, _gap)[part].offset(offset);
+		ctx.confine(b);
+		return std::make_shared<clickable_controller>(host, shared_from_this(), offset, b);
 	}
 };
 
@@ -992,6 +1365,7 @@ public:
 
 	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
 	{
+		hover.active_delay = bubble_delay::immediate;
 		if (_center_hover)
 		{
 			const auto file_types = _state.item_index.file_types();
@@ -1004,18 +1378,14 @@ public:
 			const auto text = str_format(tt.total_title.sv(), num, size, num_folder);
 
 			hover.elements->add(std::make_shared<text_element>(tt.collection_title, render::font_face::title,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::line_break | flex_item::center));
+			                                                   render::text_style::multiline, flex_item::line_break));
 			hover.elements->add(std::make_shared<text_element>(text, render::font_face::dialog,
-			                                                   render::text_style::multiline,
-			                                                   flex_item::line_break | flex_item::center));
+			                                                   render::text_style::multiline, flex_item::line_break));
 
 			hover.elements->add(std::make_shared<divider_element>());
-			hover.elements->add(
-				std::make_shared<summary_control>(file_types, flex_item::line_break | flex_item::center));
-			hover.elements->add(std::make_shared<divider_element>());
+			hover.elements->add(std::make_shared<summary_control>(file_types, flex_item::line_break));
 
-			const auto table = std::make_shared<ui::table_element>(flex_item::center);
+			const auto table = std::make_shared<ui::table_element>(flex_item::line_break);
 			table->no_shrink_col[1] = true;
 			table->no_shrink_col[2] = true;
 
@@ -1032,7 +1402,8 @@ public:
 
 			hover.elements->add(table);
 			hover.elements->add(std::make_shared<divider_element>());
-			hover.elements->add(std::make_shared<action_element>(tt.options_title));
+			hover.elements->add(std::make_shared<text_element>(tt.options_title));
+			add_shortcut_hint(hover, _state.find_command(commands::options));
 
 			hover.preferred_size = view_hover_element::default_preferred_size + 64;
 		}
@@ -1689,6 +2060,7 @@ struct sidebar_history_element final :
 	{
 		if (hover_month_is_valid())
 		{
+			hover.active_delay = bubble_delay::immediate;
 			const auto m = _hover_month % col_count;
 			const auto date_index = _hover_month;
 			const auto date_count = _counts[date_index];
@@ -1858,6 +2230,7 @@ public:
 		_tracking = true;
 		_dragged = false;
 		_element->begin_pan();
+		_host->invalidate(ui::host_invalid::tooltip);
 	}
 
 	void on_mouse_move(const pointi loc) override
@@ -1879,6 +2252,7 @@ public:
 		if (!_tracking) return;
 		_tracking = false;
 		update_hover(loc);
+		_host->invalidate(ui::host_invalid::tooltip);
 		if (!_dragged && _bounds.contains(loc)) _element->dispatch_event({view_element_event_type::invoke, _host});
 	}
 
@@ -1894,7 +2268,7 @@ public:
 
 	void popup_from_location(view_hover_element& hover) override
 	{
-		_element->tooltip(hover, _last_loc, _element_offset);
+		if (!_tracking) _element->tooltip(hover, _last_loc, _element_offset);
 	}
 };
 
@@ -1908,12 +2282,12 @@ inline view_controller_ptr sidebar_history_element::controller_from_location(con
 	                                                bounds.offset(element_offset));
 }
 
-// The keyboard passes over the globe: a click finds its place on the turning globe as drawn, which no rectangle
-// describes.
+// The keyboard passes over the globe itself - a click finds its place on the turning globe as drawn, which no
+// rectangle describes - and reaches the button in its corner, which expands it into Explore.
 class sidebar_map_element final :
 	public view_element,
 	public std::enable_shared_from_this<sidebar_map_element>,
-	public no_keyboard_parts
+	public keyboard_parts_source
 {
 	view_state& _state;
 
@@ -1931,11 +2305,13 @@ class sidebar_map_element final :
 	df::location_heat_map _summary;
 
 	// The coordinate facing the viewer. It starts on the collection and stays wherever the user
-	// last dragged it; a drag is theirs to keep, so a later publish never yanks it back.
+	// last dragged it; a drag is theirs to keep, so a later publish never yanks it back. Explore's globe is
+	// the same globe larger: each faces where the user last turned either, and this counts the turns seen.
 	gps_coordinate _view;
 	gps_coordinate _drag_start_view;
 	bool _view_is_user_set = false;
 	bool _drag_start_view_is_user_set = false;
+	uint32_t _globe_turns_seen = 0;
 
 	std::vector<map_location_area> _locations;
 	core::hash_map<uint32_t, map_location_area> _resolved_areas;
@@ -1949,6 +2325,7 @@ class sidebar_map_element final :
 	mutable core::hash_map<uint32_t, representative_item> _representatives;
 	mutable core::unique_paths _thumbnail_requests;
 	int _hover_location = -1;
+	bool _expand_hovered = false;
 
 	// Issue #119: the display language bit that _resolved_areas / _locations names were resolved
 	// under. When the UI language changes the cached place names must be dropped and re-resolved,
@@ -1968,6 +2345,30 @@ class sidebar_map_element final :
 		return {_view, logical_bounds.center(), static_cast<double>(std::max(radius, 1))};
 	}
 
+public:
+	// The button in the element's corner that expands the globe into Explore's, in the corner the sphere leaves
+	// clear, so it covers none of the world.
+	recti expand_bounds(const pointi element_offset) const
+	{
+		const auto logical_bounds = bounds.offset(element_offset);
+		const auto radius = std::min(logical_bounds.width(), logical_bounds.height()) / 2;
+		const auto size = std::clamp(radius / 4, 12, 48);
+		const auto pad = std::max(1, size / 8);
+		return {logical_bounds.right - size - pad, logical_bounds.bottom - size - pad, logical_bounds.right - pad,
+		        logical_bounds.bottom - pad};
+	}
+
+	std::vector<recti> keyboard_parts() const override { return {expand_bounds({})}; }
+
+	bool set_expand_hovered(const bool hovered) { return std::exchange(_expand_hovered, hovered) != hovered; }
+
+	bool press_keyboard_part(const int /*index*/, const view_host_ptr& /*host*/) override
+	{
+		_state.invoke(commands::explore);
+		return true;
+	}
+
+private:
 	// Where an area is drawn, or nothing when it is on the far side. The user turns the globe to
 	// reach those; nothing off the near hemisphere is drawn or aimed at.
 	std::optional<pointi> location_to_view(const map_location_area& location, const pointi element_offset) const
@@ -2084,21 +2485,9 @@ class sidebar_map_element final :
 		_state.queue_location([weak = std::weak_ptr(shared_from_this()), &state = _state, key,
 		                       generation = _resolved_generation, request = area](const location_cache& locations)
 		{
-			auto selected = locations.find_largest(request.min_latitude, request.min_longitude, request.max_latitude,
-			                                       request.max_longitude);
-			if (selected.id == 0)
-			{
-				selected = locations.find_closest(request.position.latitude(), request.position.longitude());
-			}
-
-			// locations.md 5.1 + 2.5: a place may only name the area from within its attribution
-			// radius, so a distant city is never borrowed as the answer for an empty region.
-			if (selected.id != 0 && selected.position.is_valid() && request.position.is_valid() &&
-			    selected.position.distance_in_kilometers(request.position) >
-			        location_attribution_radius_km(selected.population) * 3.0)
-			{
-				selected = {};
-			}
+			// A place may only name the area from within its attribution radius, so a distant city is never
+			// borrowed as the answer for an empty region.
+			const auto selected = name_map_area(locations, request);
 
 			auto resolved = request;
 			resolved.name = selected.id == 0 ? std::string(tt.location_remote.sv()) : qualified_name(selected);
@@ -2135,62 +2524,10 @@ class sidebar_map_element final :
 		});
 	}
 
-	// The map ships as flat-toned land over transparent water, so drawing it as it comes left the
-	// oceans the colour of whatever was behind them - black, which sits badly beside the rest of
-	// the palette. Composite it once over deep water, using the source's alpha as coverage so
-	// coastlines stay smooth.
-	static core::const_surface_ptr composite_water(const core::const_surface_ptr& map)
-	{
-		if (!is_valid(map)) return map;
-
-		const auto dims = map->dimensions();
-		const auto result = std::make_shared<core::surface>();
-
-		// A failed alloc still reports the requested extent, so the composite is abandoned rather than
-		// written through the null it handed back. The uncomposited map draws, over a black ocean.
-		if (!result->alloc(dims, core::texture_format::ARGB)) return map;
-
-		// Land is one flat tone, so its colour is whatever the first opaque pixel carries - and a
-		// fully opaque pixel reads the same whether the decode premultiplied alpha or not.
-		auto land = core::bgr(core::rgb(128, 128, 128));
-		auto found_land = false;
-
-		for (auto y = 0; y < dims.cy && !found_land; ++y)
-		{
-			const auto* const line = std::bit_cast<const core::color32*>(map->pixels_line(y));
-
-			for (auto x = 0; x < dims.cx; ++x)
-			{
-				if (core::get_a(line[x]) == 255)
-				{
-					land = line[x] & 0x00FFFFFFu;
-					found_land = true;
-					break;
-				}
-			}
-		}
-
-		const auto water = core::bgr(core::rgb(19, 38, 64));
-
-		for (auto y = 0; y < dims.cy; ++y)
-		{
-			const auto* const source = std::bit_cast<const core::color32*>(map->pixels_line(y));
-			auto* const destination = std::bit_cast<core::color32*>(result->pixels_line(y));
-
-			for (auto x = 0; x < dims.cx; ++x)
-			{
-				destination[x] = (core::lerp(water, land, static_cast<int>(core::get_a(source[x]))) & 0x00FFFFFFu) |
-				                 0xFF000000u;
-			}
-		}
-
-		return result;
-	}
-
 public:
 	sidebar_map_element(view_state& state, const core::const_surface_ptr& s) :
 		view_element(view_element_style::has_tooltip | view_element_style::can_invoke | flex_item::center),
-		_state(state), _surface_original(composite_water(s))
+		_state(state), _surface_original(globe_composite_water(s))
 	{
 		_surface = _surface_original;
 		_renderer.set_source(_surface);
@@ -2243,6 +2580,23 @@ public:
 		if (turned == _view) return false;
 
 		_view = turned;
+		_view_is_user_set = true;
+		_tex_invalid = true;
+		_hover_location = -1;
+		// Explore's globe is this one larger, so it faces where this one was turned to.
+		_state.turn_globes(_view);
+		_globe_turns_seen = _state.globe_turns;
+		return true;
+	}
+
+	// Takes up a turn made on Explore's globe since this one last showed: true when it now faces elsewhere.
+	bool follow_turns()
+	{
+		if (_globe_turns_seen == _state.globe_turns) return false;
+		_globe_turns_seen = _state.globe_turns;
+		if (!_state.globe_facing.is_valid() || _state.globe_facing == _view) return false;
+
+		_view = _state.globe_facing;
 		_view_is_user_set = true;
 		_tex_invalid = true;
 		_hover_location = -1;
@@ -2378,6 +2732,18 @@ public:
 
 	void render(render::draw_context& dc, const pointi element_offset) const override
 	{
+		if (bounds.is_empty()) return;
+		render_globe(dc, element_offset);
+		const auto expand = expand_bounds(element_offset);
+		if (_expand_hovered)
+			dc.fill_ellipse(expand, core::color(ui::style::colors.dialog_selected_background, dc.colors.alpha * 0.9f));
+		xdraw_icon(dc, icon_index::world, expand.inflate(-std::max(2, expand.width() / 5)),
+		           core::color(ui::style::colors.view_text, dc.colors.alpha), {});
+	}
+
+private:
+	void render_globe(render::draw_context& dc, const pointi element_offset) const
+	{
 		if (!_renderer.is_ready()) return;
 
 		const auto logical_bounds = bounds.offset(element_offset);
@@ -2443,6 +2809,7 @@ public:
 		}
 	}
 
+public:
 	sizei measure(render::measure_context& mc, const int width_limit) const override
 	{
 		// Square, and as wide as the pie above it: the pie is tilted and so shorter than it is wide,
@@ -2459,7 +2826,7 @@ public:
 		if (_renderer.is_ready())
 		{
 			const auto logical_bounds = bounds.offset(ic.element_offset);
-			const auto hovering = logical_bounds.contains(ic.loc);
+			const auto hovering = logical_bounds.contains(ic.loc) && !expand_bounds(ic.element_offset).contains(ic.loc);
 			int hover_location = -1;
 
 			if (hovering)
@@ -2500,10 +2867,23 @@ public:
 		}
 	}
 
-	void tooltip(view_hover_element& hover, const pointi /*loc*/, const pointi element_offset) const override
+	void tooltip(view_hover_element& hover, const pointi loc, const pointi element_offset) const override
 	{
+		if (const auto expand = expand_bounds(element_offset); expand.contains(loc))
+		{
+			hover.elements->add(make_icon_element(icon_index::world, flex_item::no_break));
+			hover.elements->add(std::make_shared<text_element>(tt.command_explore, render::font_face::title,
+			                                                   render::text_style::multiline, flex_item::line_break));
+			hover.elements->add(std::make_shared<text_element>(tt.sidebar_expand_globe, render::font_face::dialog,
+			                                                   render::text_style::multiline, flex_item::new_line));
+			add_shortcut_hint(hover, _state.find_command(commands::explore));
+			hover.active_bounds = hover.window_bounds = expand;
+			return;
+		}
+
 		if (_hover_location != -1)
 		{
+			hover.active_delay = bubble_delay::immediate;
 			const auto& location = _locations[_hover_location];
 			const auto name = display_name(location);
 
@@ -2536,8 +2916,7 @@ public:
 					if (is_valid(surface))
 					{
 						hover.elements->add(
-							std::make_shared<surface_element>(surface, 160, flex_item::center | flex_item::new_line,
-						                                      representative.item->layout_orientation()));
+							std::make_shared<surface_element>(surface, 160, flex_item::center | flex_item::new_line));
 					}
 					else if (is_valid(representative.item->thumbnail()))
 					{
@@ -2557,8 +2936,8 @@ public:
 				                                   render::font_face::dialog, render::text_style::multiline,
 				                                   flex_item::new_line));
 
-				// locations.md 5.4: the action line states the search it will run, including the
-				// radius, so the count on the map and the count after the click are never a surprise.
+				// docs/locations.md#areas-become-places-with-a-radius: the action line states the search it will run,
+				// including the radius, so the count on the map and the count after the click are never a surprise.
 				hover.elements->add(std::make_shared<action_element>(
 					str_format(tt.search_within_fmt.sv(), format_distance_km(location.search_radius_km()), name)));
 			}
@@ -2584,27 +2963,9 @@ public:
 
 		if (event.type == view_element_event_type::invoke && _hover_location != -1)
 		{
-			const auto& loc = _locations[_hover_location];
-			auto search = df::search_t();
-
-			// locations.md 5.1: an area opens a place plus a radius, never an internal `area:`
-			// term. "Within 25 km of London" is a concept the user holds; "the cells GeoNames
-			// happened to attribute to London" is not.
-			const auto km = loc.search_radius_km();
-
-			if (loc.place_position.is_valid() && !loc.name.empty())
-			{
-				search.location(loc.name, df::location_level::any).set_place_distance(km);
-			}
-			else if (loc.position.is_valid())
-			{
-				// Nothing was near enough to name, so the coordinates say exactly what was clicked.
-				search.location(loc.position, km);
-			}
-
-			// Navigating from the map changes the query only. Grouping and sorting are
-			// user-owned presentation and are never reassigned as a side effect (design.md).
-			_state.open(event.host, search, {});
+			// Navigating from the map changes the query only. Grouping and sorting are user-owned
+			// presentation and are never reassigned as a side effect (design.md).
+			_state.open(event.host, df::map_area_search(_locations[_hover_location]), {});
 		}
 	}
 };
@@ -2653,6 +3014,7 @@ public:
 		_turned = false;
 		_element->begin_drag();
 		update_hover(loc);
+		_host->invalidate(ui::host_invalid::tooltip);
 	}
 
 	void on_mouse_move(const pointi loc) override
@@ -2676,8 +3038,9 @@ public:
 		const auto was_pressed = std::exchange(_tracking, false);
 		const auto was_turning = _turned;
 		update_hover(loc);
+		_host->invalidate(ui::host_invalid::tooltip);
 
-		// locations.md 5.5: a drag is never read as a click.
+		// docs/locations.md#map-and-globe: a drag is never read as a click.
 		if (should_invoke_globe_release(was_pressed, was_turning, _bounds.contains(loc)))
 		{
 			const view_element_event click{view_element_event_type::click, _host};
@@ -2702,7 +3065,7 @@ public:
 
 	void popup_from_location(view_hover_element& hover) override
 	{
-		_element->tooltip(hover, _last_loc, _element_offset);
+		if (!_tracking) _element->tooltip(hover, _last_loc, _element_offset);
 	}
 
 private:
@@ -2716,11 +3079,65 @@ private:
 	void invalidate() const { _host->frame()->invalidate(_element->invalidate_bounds(_element_offset)); }
 };
 
+// The button in the sidebar globe's corner: Explore, which is this globe expanded beside the collection's timeline,
+// facing where this one faces.
+class globe_expand_controller final : public view_controller
+{
+	const std::shared_ptr<sidebar_map_element> _element;
+	const pointi _element_offset;
+	bool _pressed = false;
+
+	void set_hovered(const bool hovered) const
+	{
+		if (_element->set_expand_hovered(hovered)) _host->frame()->invalidate(_bounds);
+	}
+
+public:
+	globe_expand_controller(const view_host_ptr& host, std::shared_ptr<sidebar_map_element> element,
+	                        const pointi element_offset, const recti bounds) :
+		view_controller(host, bounds), _element(std::move(element)), _element_offset(element_offset)
+	{
+	}
+
+	~globe_expand_controller() override { set_hovered(false); }
+
+	platform::cursor cursor() const override { return platform::cursor::link; }
+
+	void on_mouse_move(const pointi loc) override
+	{
+		_last_loc = loc;
+		set_hovered(_bounds.contains(loc));
+	}
+
+	void on_mouse_left_button_down(const pointi loc, const platform::key_state keys) override
+	{
+		view_controller::on_mouse_left_button_down(loc, keys);
+		_pressed = true;
+	}
+
+	void on_mouse_left_button_up(const pointi loc, const platform::key_state /*keys*/) override
+	{
+		const auto inside = _bounds.contains(loc);
+		set_hovered(inside);
+		if (std::exchange(_pressed, false) && inside) _host->invoke(commands::explore);
+	}
+
+	bool escape() override { return std::exchange(_pressed, false); }
+
+	void popup_from_location(view_hover_element& hover) override
+	{
+		_element->tooltip(hover, _bounds.center(), _element_offset);
+	}
+};
+
 inline view_controller_ptr sidebar_map_element::controller_from_location(const view_host_ptr& host, const pointi loc,
                                                                          const pointi element_offset,
-                                                                         hit_test_context& /*ctx*/)
+                                                                         hit_test_context& ctx)
 {
 	if (!is_visible() || !bounds.contains(loc - element_offset)) return nullptr;
+
+	if (const auto expand = expand_bounds(element_offset); ctx.occluded(expand))
+		return std::make_shared<globe_expand_controller>(host, shared_from_this(), element_offset, expand);
 
 	return std::make_shared<globe_rotate_controller>(host, shared_from_this(), element_offset,
 	                                                 bounds.offset(element_offset));
@@ -2912,10 +3329,18 @@ public:
 	recti _embedded_bounds;
 	bool _has_focus = false;
 	bool _show_indexing_control = false;
+	bool _show_face_indexing_control = false;
+	bool _show_face_switch = true;
 	bool _is_detecting = false;
 	int _last_indexing_perc = -1;
 
 	std::shared_ptr<sidebar_indexing_element> _indexing_elements;
+	std::shared_ptr<sidebar_indexing_element> _face_indexing;
+	std::shared_ptr<sidebar_face_switch> _face_switch;
+	std::shared_ptr<sidebar_face_row> _face_row;
+	std::weak_ptr<const faces::overview> _face_overview;
+	uint64_t _face_book_generation = 0;
+	std::vector<sidebar_face_row::source> _top_people;
 	std::shared_ptr<sidebar_file_type_element> _type_chart;
 	std::shared_ptr<sidebar_history_element> _history_chart;
 	std::shared_ptr<sidebar_map_element> _map;
@@ -2937,6 +3362,10 @@ public:
 		_indexing_elements = std::make_shared<sidebar_indexing_element>(s, flex_item::stretch | flex_item::center |
 		                                                                       view_element_style::important);
 		_indexing_elements->padding(8);
+		_face_indexing = std::make_shared<sidebar_indexing_element>(s, flex_item::stretch | flex_item::center, true);
+		_face_indexing->padding(8);
+		_face_switch = std::make_shared<sidebar_face_switch>(s);
+		_face_row = std::make_shared<sidebar_face_row>(s);
 
 		_type_chart = std::make_shared<sidebar_file_type_element>(s);
 		_history_chart = std::make_shared<sidebar_history_element>(s);
@@ -2954,9 +3383,7 @@ public:
 			visual->margin = {0, visual_margin};
 		}
 
-		_elements.emplace_back(_type_chart);
-		_elements.emplace_back(_map);
-		_elements.emplace_back(_history_chart);
+		compose_elements();
 	}
 
 	void init(const ui::frame_ptr& owner)
@@ -2998,6 +3425,12 @@ public:
 
 	bool can_scroll() const { return _scroller.can_scroll(); }
 
+	// Faces where the globe was last turned, whichever globe turned it, as it shows again.
+	void follow_globe_turns() const
+	{
+		if (_map->follow_turns()) invalidate();
+	}
+
 	void populate_file_types_and_dates() const
 	{
 		const auto histograms = _state.item_index.histograms();
@@ -3017,18 +3450,23 @@ public:
 		if (setting.sidebar.show_total_items) _elements.emplace_back(_type_chart);
 		if (setting.sidebar.show_world_map) _elements.emplace_back(_map);
 		if (setting.sidebar.show_history) _elements.emplace_back(_history_chart);
+		if (_show_face_switch) _elements.emplace_back(_face_switch);
+		if (_show_face_indexing_control) _elements.emplace_back(_face_indexing);
+		_elements.emplace_back(_face_row);
 
 		_elements.insert(_elements.end(), _item_elements.begin(), _item_elements.end());
 	}
 
 	void update_content(std::vector<search_item_ptr> items, std::vector<drive_item_ptr> drives,
-	                    std::vector<view_element_ptr> item_elements)
+	                    std::vector<view_element_ptr> item_elements, std::vector<sidebar_face_row::source> top_people)
 	{
 		core::assert_true(platform::is_ui_thread());
 
 		_items = std::move(items);
 		_drives = std::move(drives);
 		_item_elements = std::move(item_elements);
+		_top_people = std::move(top_people);
+		refresh_face_row();
 
 		compose_elements();
 
@@ -3134,6 +3572,31 @@ public:
 				add_elements(search_item_factory::count_rows(s, counter, f.create_tags(s, existing, config), true));
 			}
 
+			// The people the files name with the most pictures, each shown by the largest region naming them: the
+			// sidebar's faces where face search has not offered its own.
+			const auto people = search_item_factory::count_rows(s, counter, f.create_people(s, existing), true);
+			std::vector<sidebar_face_row::source> top_people;
+			for (const auto& person : people)
+			{
+				if (top_people.size() == sidebar_face_row::capacity) break;
+				const auto name = std::string(person->title_layout.text);
+				const auto path = person->summary.representative_path;
+				rectd area;
+				if (const auto md = s.item_index.find_item(path).metadata.load())
+				{
+					for (const auto& r : faces::unpack_regions(md->face_regions, md->dimensions(), md->orientation))
+					{
+						if (r.has_area() && core::icmp(r.name, name) == 0 &&
+						    r.area.Width * r.area.Height > area.Width * area.Height)
+							area = r.area;
+					}
+				}
+				top_people.push_back({path, area, std::nullopt, name,
+				                      static_cast<uint32_t>(person->summary.total_items().count), 0,
+				                      df::search_t().with(prop::person, name).format_terms()});
+			}
+			add_elements(people);
+
 			item_elements.emplace_back(std::make_shared<divider_element>());
 
 			const auto tag_show_text = config.sidebar.show_favorite_tags_only ? tt.command_all_tags
@@ -3157,14 +3620,15 @@ public:
 			item_elements.emplace_back(favorite_tags_element);
 			item_elements.emplace_back(customise_element);
 
-			s.queue_ui([t, items = std::move(items), drives = std::move(drives),
-			            item_elements = std::move(item_elements), request_id]
+			s.queue_ui(
+				[t, items = std::move(items), drives = std::move(drives), item_elements = std::move(item_elements),
+			     top_people = std::move(top_people), request_id]() mutable
 			{
 				if (!should_publish_sidebar_structural_request(t->_structural_request_id, request_id))
 				{
 					return;
 				}
-				t->update_content(items, drives, item_elements);
+				t->update_content(std::move(items), std::move(drives), std::move(item_elements), std::move(top_people));
 			});
 		});
 	}
@@ -3236,6 +3700,75 @@ public:
 		}
 
 		if (_history_chart->set_current_search(current_search)) invalidate();
+	}
+
+	// Named people, most pictures first, each shown by the overview's main portrait.
+	void refresh_face_row()
+	{
+		const auto& face_search = _state.item_index.faces();
+		const auto overview = face_search.is_enabled() ? face_search.current_overview() : nullptr;
+		_face_overview = overview;
+		_face_book_generation = face_search.book().generation();
+		std::vector<sidebar_face_row::source> sources;
+
+		if (overview && overview->store)
+		{
+			const auto& store = *overview->store;
+			const auto roster = face_search.book().people();
+
+			for (const auto& person : overview->people)
+			{
+				if (sources.size() == sidebar_face_row::capacity) break;
+				if (person.samples.empty()) continue;
+
+				// A rename can precede the next overview.
+				auto name = person.name;
+				if (const auto* const kept = roster->person(person.id)) name = kept->name;
+				const auto face = person.samples.front();
+				const auto search = df::search_t().with(prop::person, name).format_terms();
+				const auto& run = store.run_of_face(face);
+				sources.push_back({run.path, store.entry(face).bounds(),
+				                   run.video ? std::optional(store.entry(face).time_ms) : std::nullopt, name,
+				                   person.confirmed_pictures, static_cast<uint32_t>(person.suggested.size()), search});
+			}
+		}
+
+		if (sources.empty() && face_search.is_enabled())
+		{
+			// A file can name people even if face detection has not located their faces. Never use
+			// its thumbnail for a name explicitly corrected on that picture.
+			const auto roster = face_search.book().people();
+			for (const auto& p : _top_people)
+			{
+				if (overview && overview->file_name_contradicted(p.path, p.name)) continue;
+				const auto name = roster->canonical_name(p.name);
+				if (std::ranges::any_of(sources, [&](const auto& s) { return core::icmp(s.name, name) == 0; }))
+					continue;
+				auto& source = sources.emplace_back(p);
+				source.name = name;
+				source.search = df::search_t().with(prop::person, name).format_terms();
+			}
+		}
+		_face_row->populate(std::move(sources));
+	}
+
+	void faces_changed()
+	{
+		const auto& faces = _state.item_index.faces();
+		const auto show_switch = !faces.is_enabled();
+		const auto show_progress = !show_switch && faces.progress().left() > 0;
+		const auto overview = show_switch ? nullptr : faces.current_overview();
+		if (show_switch != _show_face_switch || overview != _face_overview.lock() ||
+		    _face_book_generation != faces.book().generation())
+			refresh_face_row();
+		if (_show_face_indexing_control != show_progress || _show_face_switch != show_switch)
+		{
+			_show_face_indexing_control = show_progress;
+			_show_face_switch = show_switch;
+			compose_elements();
+			layout();
+		}
+		else if (show_progress) invalidate();
 	}
 
 	void queue_update_predictions()
@@ -3617,6 +4150,9 @@ public:
 		core::assert_true(platform::is_ui_thread());
 
 		if (_indexing_elements) _indexing_elements->dispatch_event(event);
+		_face_indexing->dispatch_event(event);
+		_face_switch->dispatch_event(event);
+		_face_row->dispatch_event(event);
 		if (_type_chart) _type_chart->dispatch_event(event);
 		if (_map) _map->dispatch_event(event);
 		if (_history_chart) _history_chart->dispatch_event(event);

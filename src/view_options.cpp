@@ -17,6 +17,7 @@
 #include "app_commands.h"
 #include "app_dialogs.h"
 #include "app_text.h"
+#include "view_faces.h"
 
 namespace
 {
@@ -124,60 +125,6 @@ namespace
 
 			const auto tallest = std::ranges::max(heights);
 			return tallest > 0 ? tallest - gap : 0;
-		}
-	};
-
-	// A section's header: its icon, its name and what it covers, on a shaded band like the explainer that opens
-	// a task view's panel, so each section stands apart from the cards of the one before without a rule between
-	// them. The band is the element's bounds, so a section scrolled to the top shows all of it.
-	class options_section_header final : public view_element
-	{
-		icon_index _icon = icon_index::none;
-		std::string _title;
-		std::string _info;
-		mutable sizei _title_extent;
-
-		static int inset(const render::measure_context& mc) { return core::round(12 * mc.scale_factor); }
-
-	public:
-		options_section_header(const icon_index icon, const std::string_view title, const std::string_view info) :
-			view_element(view_element_style::shaded_background), _icon(icon), _title(title), _info(info)
-		{
-			padding = {0, 0};
-			margin = {8, 8};
-			update_background_color();
-		}
-
-		sizei measure(render::measure_context& mc, const int width_limit) const override
-		{
-			const auto text_width = std::max(0, width_limit - inset(mc) * 2 - mc.icon_cxy * 2);
-			_title_extent = mc.measure_text(_title, render::font_face::title, render::text_style::multiline,
-			                                text_width);
-			const auto info_extent = mc.measure_text(_info, render::font_face::dialog, render::text_style::multiline,
-			                                         text_width);
-			return {width_limit, _title_extent.cy + info_extent.cy + inset(mc) * 2};
-		}
-
-		void layout(render::measure_context& mc, const recti bounds_in) override
-		{
-			bounds = bounds_in;
-			measure(mc, bounds_in.width());
-		}
-
-		void render(render::draw_context& dc, const pointi element_offset) const override
-		{
-			render_background(dc, element_offset);
-
-			const auto content = bounds.offset(element_offset).inflate(-inset(dc));
-			const auto clr = core::color(dc.colors.foreground, dc.colors.alpha);
-			const auto text_left = content.left + dc.icon_cxy * 2;
-			const auto title_bottom = content.top + _title_extent.cy;
-
-			xdraw_icon(dc, _icon, recti(content.left, content.top, text_left, title_bottom), clr, {});
-			dc.draw_text(_title, recti(text_left, content.top, content.right, title_bottom), render::font_face::title,
-			             render::text_style::multiline, clr, {});
-			dc.draw_text(_info, recti(text_left, title_bottom, content.right, content.bottom),
-			             render::font_face::dialog, render::text_style::multiline, clr, {});
 		}
 	};
 
@@ -387,7 +334,10 @@ void options_view::cancel()
 
 bool options_view::has_changes() const
 {
-	return _edit && _opened && edited_options_differ(stored_form(*_edit), *_opened);
+	return _edit && _opened &&
+	       (edited_options_differ(stored_form(*_edit), *_opened) ||
+	        _edit->settings.faces.photos != _opened->faces.photos ||
+	        _edit->settings.faces.videos != _opened->faces.videos);
 }
 
 bool options_view::leave()
@@ -410,20 +360,17 @@ options_leave_choice ask_to_save_options(const ui::frame_ptr& parent)
 		set_margin(std::make_shared<ui::title_control2>(frame, icon_index::settings, tt.options_title,
 	                                                    tt.options_unsaved_prompt)),
 		std::make_shared<divider_element>(),
-		std::make_shared<ui::button_control>(frame, icon_index::save, tt.command_options_save, std::string_view{},
-	                                         [answer, frame]
+		ui::save_discard_cancel(
+			[answer, frame]
 	{
 		*answer = options_leave_choice::save;
 		frame->close(false);
-	}),
-		std::make_shared<ui::button_control>(frame, icon_index::del, tt.close_without_saving, std::string_view{},
-	                                         [answer, frame]
+	},
+			[answer, frame]
 	{
 		*answer = options_leave_choice::discard;
 		frame->close(false);
-	}),
-		std::make_shared<divider_element>(),
-		std::make_shared<ui::close_control>(frame, true, tt.button_cancel),
+	}, [frame] { frame->close(true); }),
 	};
 
 	if (dlg->show_modal(controls, {44}, {44}) != ui::close_result::ok) return options_leave_choice::stay;
@@ -457,6 +404,8 @@ void options_view::save()
 	const auto language_changed = edited.language != setting.language;
 	const auto sound_device_changed = edited.sound_device != setting.sound_device;
 	const auto read_nfo_changed = edited.read_nfo != setting.read_nfo;
+	const auto faces_changed = edited.faces.photos != setting.faces.photos ||
+	                           edited.faces.videos != setting.faces.videos;
 
 	apply_edited_options(edited, setting);
 
@@ -470,6 +419,9 @@ void options_view::save()
 	_state.invalidate_view(invalid);
 
 	close();
+
+	// Face search is turned on as the Faces view turns it on, saying first what it will read.
+	if (faces_changed) turn_on_face_search(_state, _host->owner(), edited.faces.photos, edited.faces.videos);
 
 	if (language_changed && _actions.select_language) _actions.select_language(setting.language);
 }
@@ -689,9 +641,32 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 	const auto maintenance = make_section(tt.index_maintenance_title);
 	maintenance->add(std::make_shared<text_element>(format_index_text(_state)));
 	maintenance->add(std::make_shared<text_element>(tt.index_maintenance_help));
-	maintenance->add(std::make_shared<link_element>(tt.defragment_and_compact, [actions = _actions]
+	maintenance->add(ui::make_button(tt.defragment_and_compact, [actions = _actions]
 	{
 		if (actions.index_maintenance) actions.index_maintenance();
+	}));
+	// Acts at once, as index maintenance does; the page's copy of the switches follows, so Save does not turn face
+	// search on again.
+	const auto face_search = make_section(tt.command_faces);
+	const auto photos_switch = std::make_shared<ui::check_control>(frame, tt.face_scan_photos, s.faces.photos);
+	const auto videos_switch = std::make_shared<ui::check_control>(frame, tt.face_scan_videos, s.faces.videos);
+	face_search->add(photos_switch);
+	face_search->add(videos_switch);
+	face_search->add(std::make_shared<text_element>(tt.face_search_local));
+	face_search->add(ui::make_button(tt.face_search_delete, [this, photos_switch, videos_switch, frame]
+	{
+		if (!delete_face_data(_state, frame)) return;
+		photos_switch->checked(false);
+		videos_switch->checked(false);
+
+		// Done already, as the switches now show, so leaving Options has nothing of it to save or to undo.
+		if (_opened)
+		{
+			auto opened = *_opened;
+			opened.faces.photos = false;
+			opened.faces.videos = false;
+			_opened = std::make_shared<const settings_t>(std::move(opened));
+		}
 	}));
 
 	// Sidebar
@@ -752,7 +727,7 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 	const auto add_section = [&result](const icon_index icon, const std::string_view title, const std::string_view info,
 	                                   const std::initializer_list<std::shared_ptr<ui::group_control>> cards)
 	{
-		auto header = std::make_shared<options_section_header>(icon, title, info);
+		auto header = std::make_shared<view_info_element>(icon, title, info);
 		const auto columns = std::make_shared<options_columns>();
 		for (const auto& card : cards) columns->add(card);
 		result->_controls.emplace_back(header);
@@ -761,7 +736,7 @@ view_controls_host_ptr options_view::controls(const ui::frame_ptr& owner)
 	};
 
 	add_section(icon_index::set, tt.collection_title, tt.collection_options_info,
-	            {folders, other_folders, library, maintenance});
+	            {folders, other_folders, library, maintenance, face_search});
 	add_section(icon_index::preview, tt.options_section_viewing, tt.options_section_viewing_info,
 	            {viewing, playback, subtitles});
 	const auto sidebar_header = add_section(icon_index::navigation, tt.customise_sidebar_title,

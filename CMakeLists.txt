@@ -134,7 +134,7 @@ include(DiffractorLibfiles)
 # copy used: codec recipes live in libfiles. Named like the vendored libraries, so the link list and the codecs
 # reach them the same way. The system packages are no substitute: the vendored zlib was zlib-ng, not
 # zlib, and libfiles and the tests use the 12- and 16-bit APIs libjpeg-turbo added in 3.0, where
-# Ubuntu 24.04 ships 2.1.5. dav1d is declared here, before the forks, because FFmpeg's configure registers
+# Ubuntu 24.04 ships 2.1.5. dav1d is declared here, before FFmpeg, because FFmpeg's configure registers
 # its libdav1d decoder only when it can already see the library.
 add_library(diffractor::zlib ALIAS libfiles-zlib)
 add_library(diffractor::png ALIAS libfiles-png)
@@ -196,10 +196,10 @@ include(DiffractorHeif)
 diffractor_dependency(hunspell VENDORED_MODULE vendored/hunspell OPTIONAL)
 diffractor_dependency(minizip VENDORED_MODULE vendored/minizip OPTIONAL)
 
-# Face detection: libfacedetection's network and weights, on the Highway libfiles builds. Not OPTIONAL:
-# it needs nothing else, so every configuration can find faces, and model_faces_detect.cpp has no
-# stand-in.
-diffractor_dependency(facedetection NO_SYSTEM VENDORED_MODULE vendored/facedetection)
+# Face search: libmug finds faces and makes each a vector, both networks' weights compiled in, on the Highway
+# libfiles builds: see cmake/DiffractorLibmug.cmake. Not OPTIONAL: it needs nothing else, so every configuration
+# can find faces.
+include(DiffractorLibmug)
 
 diffractor_report_dependencies()
 
@@ -228,9 +228,13 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/media_edit.cpp
         src/model.cpp
         src/model_db.cpp
+        src/model_db_faces.cpp
         src/model_document.cpp
+        src/model_explore.cpp
         src/model_faces.cpp
-        src/model_faces_detect.cpp
+        src/model_faces_book.cpp
+        src/model_faces_groups.cpp
+        src/model_faces_search.cpp
         src/model_index.cpp
         src/model_index_duplicates.cpp
         src/model_index_summary.cpp
@@ -251,6 +255,7 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/app_dup_report.cpp
         src/app_mcp.cpp
         src/app_mcp_controls.cpp
+        src/app_mcp_faces.cpp
         src/app_mcp_tools.cpp
         src/app_mcp_ui.cpp
         src/app_movie_batch.cpp
@@ -260,6 +265,9 @@ set(DIFFRACTOR_PORTABLE_SOURCES
         src/app_workers.cpp
         src/view_batch.cpp
         src/view_edit.cpp
+        src/view_explore.cpp
+        src/view_faces.cpp
+        src/view_faces_actions.cpp
         src/view_import.cpp
         src/view_items.cpp
         src/view_locate.cpp
@@ -339,7 +347,7 @@ set(DIFFRACTOR_TEST_SOURCES
 )
 
 # The face tests run the detector over libfacedetection's own sample photographs, read from the
-# archive the build fetched, so that this repository keeps no photograph of a person.
+# archive libmug fetched, so that this repository keeps no photograph of a person.
 FetchContent_GetProperties(facedetection SOURCE_DIR _facedetection_source_dir)
 set_property(SOURCE src/test_faces.cpp APPEND PROPERTY COMPILE_DEFINITIONS
         "DIFFRACTOR_FACEDETECTION_SOURCE_DIR=\"${_facedetection_source_dir}\"")
@@ -447,7 +455,7 @@ foreach (dep IN ITEMS
         zlib png jpeg sqlite webp archive ffmpeg
         heif heif_ffmpeg jxl raw hunspell minizip
         de265 dav1d aom dng openmpt
-        bzip2 lzma brotli highway skcms facedetection)
+        bzip2 lzma brotli highway skcms)
     if (TARGET diffractor::${dep})
         list(APPEND DIFFRACTOR_LINK_DEPENDENCIES diffractor::${dep})
     endif ()
@@ -457,7 +465,7 @@ endforeach ()
 # naming them here is what puts them inside the rescan group below.
 get_property(_grouped_archives GLOBAL PROPERTY DIFFRACTOR_GROUPED_ARCHIVES)
 list(APPEND DIFFRACTOR_LINK_DEPENDENCIES ${_grouped_archives})
-list(APPEND DIFFRACTOR_LINK_DEPENDENCIES libfiles::libfiles libdesktop::ui lib64::lib64)
+list(APPEND DIFFRACTOR_LINK_DEPENDENCIES libfiles::libfiles libdesktop::ui lib64::lib64 libmug::libmug)
 
 if (MSVC)
     target_link_libraries(diffractor PRIVATE ${DIFFRACTOR_LINK_DEPENDENCIES})

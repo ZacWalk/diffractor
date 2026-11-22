@@ -6,14 +6,16 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The index summary and the vocabulary built from it: histograms, the location heat map
-// and matrix, the items taken where and when that lend a place to those taken nearby in time,
-// distinct words and property values, collection folder totals, and the auto-complete answers the
-// address box asks for.
+// and matrix, the items taken where and when that lend a place to those taken nearby in time, the
+// collection as the Explore view reads it, distinct words and property values, collection folder
+// totals, and the auto-complete answers the address box asks for.
 
 #include "pch.h"
 
 #include "model_index.h"
 #include "model_index_internal.h"
+#include "model_explore.h"
+#include "model_faces_search.h"
 #include "model_locations.h"
 #include "model_property.h"
 #include "model.h"
@@ -228,6 +230,24 @@ std::vector<dated_location> index_state::dated_locations() const
 	return result;
 }
 
+std::vector<df::explore_sample> index_state::explore_samples() const
+{
+	std::vector<df::explore_sample> result;
+
+	for (const auto& [folder, folder_item] : _items.all_folders())
+	{
+		if (!folder_item->is_in_collection.load()) continue;
+
+		for (const auto& file : folder_item->files)
+		{
+			if (auto sample = df::explore_sample_of(file, core::file_path(folder, file.name)))
+				result.push_back(*sample);
+		}
+	}
+
+	return result;
+}
+
 std::vector<location_suggestion> suggest_locations(std::vector<unplaced_item> items,
                                                    const std::vector<dated_location>& located, const int64_t max_gap_s)
 {
@@ -284,6 +304,10 @@ void index_state::update_summary(const uint64_t generation)
 	prop_num_summary distinct_ratings;
 	prop_text_summary distinct_tags;
 	tag_companion_counts tag_companions;
+	// Whom the pictures name, keyed whatever the case, and how often each spelling of each name is used, so a
+	// person is listed as most of their pictures spell them.
+	prop_text_summary distinct_people;
+	core::hash_map<std::string_view, core::hash_map<uint32_t, int>, core::ihash, core::ieq> people_spellings;
 
 	core::dense_string_counts distinct_words;
 	strings_by_prop distinct_text;
@@ -456,6 +480,20 @@ void index_state::update_summary(const uint64_t generation)
 
 					if (!prop::is_null(md->label)) distinct_labels[md->label].record(file, path);
 
+					if (!prop::is_null(md->people))
+					{
+						split2(md->people, true, [&](const std::string_view part)
+						{
+							const auto name = core::trim(part);
+							if (name.empty()) return;
+							const auto cached = core::cache(name);
+							distinct_people[cached.sv()].record(file, path);
+							++people_spellings[cached.sv()][cached.id];
+							str::count_ranges(distinct_words, cached.sv());
+							distinct_text[prop::person].emplace(cached);
+						});
+					}
+
 					auto r = md->rating;
 
 					if (r >= -1 && r < 6 && r != 0)
@@ -479,6 +517,18 @@ void index_state::update_summary(const uint64_t generation)
 	// are. Seeded once at startup, they were lost from the first rebuild on.
 	at_words.add_to(distinct_words);
 
+	// docs/faces.md#8-searching: `@face` is offered while face search has found a face in a picture.
+	if (const auto store = faces::active_store())
+	{
+		auto pictures = 0;
+		for (uint32_t r = 0; r < store->run_count(); ++r)
+		{
+			const auto& run = store->run(r);
+			if (run.is_current() && run.count > 0) ++pictures;
+		}
+		if (pictures > 0) distinct_words[core::cache("@face"sv)] += pictures;
+	}
+
 	// This walk visits every indexed folder, so it is authoritative. Seeding from the previous
 	// snapshot and only inserting would keep words from items that have since been deleted or
 	// renamed, and grow without bound for as long as the session lasts.
@@ -489,6 +539,24 @@ void index_state::update_summary(const uint64_t generation)
 	summary->_distinct_ratings = distinct_ratings;
 	summary->_distinct_tags = std::move(distinct_tags);
 	summary->_tag_companions = std::move(tag_companions);
+
+	for (auto& [name, histogram] : distinct_people)
+	{
+		auto best = core::cached{};
+		auto best_count = 0;
+
+		for (const auto& [id, count] : people_spellings[name])
+		{
+			// Ties go to the spelling interned first, so the choice is the same on every rebuild.
+			if (count > best_count || (count == best_count && id < best.id))
+			{
+				best = core::cached{id};
+				best_count = count;
+			}
+		}
+
+		summary->_distinct_people.emplace(best.is_empty() ? name : best.sv(), histogram);
+	}
 	if (generation != 0)
 	{
 		core::shared_lock lock(_summary_rw);
@@ -733,18 +801,6 @@ std::vector<core::cached> index_state::distinct_genres() const
 	           : std::vector<core::cached>{};
 }
 
-std::vector<std::string> index_state::auto_complete_text(const prop::key_ref key)
-{
-	index_metadata_summary_const_ptr summary;
-	{
-		core::shared_lock lock(_summary_rw);
-		summary = _summary._metadata;
-	}
-	const auto found = summary->_distinct_text.find(key);
-	return found != summary->_distinct_text.end() ? std::vector<std::string>{found->second.begin(), found->second.end()}
-	                                              : std::vector<std::string>{};
-}
-
 static core::count_and_size sum_items(const df::index_folder_info_const_ptr& folder)
 {
 	core::count_and_size result;
@@ -984,7 +1040,68 @@ size_t index_state::tag_companion_entry_count() const
 	return result;
 }
 
-// locations.md 3.4: a completion the collection has no photos anywhere near is noise. The heat
+std::vector<index_state::auto_complete_word> index_state::auto_complete_people(const std::string_view query,
+                                                                               const size_t max_results) const
+{
+	std::vector<auto_complete_word> starting;
+	std::vector<auto_complete_word> containing;
+	core::hash_map<std::string, int, core::ihash, core::ieq> people;
+	const auto roster = faces().book().people();
+
+	for (const auto& [name, histogram] : distinct_people())
+	{
+		auto& n = people[std::string(roster->canonical_name(name))];
+		n = static_cast<int>(std::min<int64_t>(INT_MAX, static_cast<int64_t>(n) + histogram.total_items().count));
+	}
+
+	const auto& face_search = faces();
+	if (face_search.is_enabled())
+	{
+		const auto overview = face_search.current_overview();
+		if (overview)
+		{
+			for (const auto& [name, delta] : overview->count_adjustments)
+			{
+				auto& count = people[std::string(roster->canonical_name(name))];
+				count = static_cast<int>(std::clamp<int64_t>(static_cast<int64_t>(count) + delta, 0, INT_MAX));
+			}
+			std::erase_if(people, [](const auto& entry) { return entry.second == 0; });
+		}
+		for (const auto& person : roster->people) people.try_emplace(person.name, 0);
+	}
+
+	for (const auto& [name, count] : people)
+	{
+		// docs/faces.md#8-searching: a name person: finds - by its start, or by the start of another of its words - is
+		// offered before one that holds the query inside a word.
+		const auto word = df::find_name_word(name, query);
+
+		if (query.empty() || word != std::string_view::npos)
+		{
+			starting.emplace_back(std::string(name),
+			                      query.empty() ? std::vector<core::part_t>{}
+			                                    : std::vector<core::part_t>{{word, query.size()}},
+			                      count);
+		}
+		else if (const auto found = core::ifind2(name, query, 0); found.found)
+		{
+			containing.emplace_back(std::string(name), found.parts, count);
+		}
+	}
+
+	const auto rank = [](const auto& a, const auto& b)
+	{
+		return a.occurrences != b.occurrences ? a.occurrences > b.occurrences : core::icmp(a.text, b.text) < 0;
+	};
+	std::ranges::sort(starting, rank);
+	std::ranges::sort(containing, rank);
+	starting.insert(starting.end(), std::make_move_iterator(containing.begin()),
+	                std::make_move_iterator(containing.end()));
+	if (starting.size() > max_results) starting.resize(max_results);
+	return starting;
+}
+
+// docs/locations.md#location-search: a completion the collection has no photos anywhere near is noise. The heat
 // map is coordinate-based, so unlike the location groups it also counts GPS-only items that
 // carry no place text -- which is the majority of a camera roll. One cell plus its neighbours is
 // about the coarsest area a single place name can plausibly stand for.
@@ -1014,7 +1131,7 @@ static uint32_t collection_items_near(const df::location_heat_map& heat_map, con
 	return total;
 }
 
-// locations.md 3.4 + 3.5: a place completion commits the canonical location term, never the bare
+// docs/locations.md#location-search: a place completion commits the canonical location term, never the bare
 // name. A bare name would run a text search over stored fields, which is exactly the empty result
 // the one-location-vocabulary rule exists to remove.
 std::vector<index_state::auto_complete_word> index_state::auto_complete_locations(const std::string_view query,

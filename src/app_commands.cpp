@@ -35,6 +35,8 @@
 #include "view_sync.h"
 #include "view_tags.h"
 #include "view_options.h"
+#include "view_explore.h"
+#include "view_faces.h"
 #include "app_dialogs.h"
 
 extern bool toggle_details_state;
@@ -261,6 +263,8 @@ static void rename_invoke(view_state& s, const ui::frame_ptr& parent, const view
 			{
 				detach_file_handles detach(s);
 
+				const auto from_file = i->path();
+				const auto from_folder = i->folder();
 				const auto result = i->rename(s.item_index, name);
 
 				if (result.failed())
@@ -269,6 +273,19 @@ static void rename_invoke(view_state& s, const ui::frame_ptr& parent, const view
 				}
 				else
 				{
+					// docs/design.md#recent-changes: kept as the Rename view keeps its renames, and a change made earlier
+					// in the session to the item, or to what a folder holds, follows it to its new name.
+					if (i->is_folder())
+					{
+						if (from_folder != i->folder())
+							s.move_changed(std::vector{std::pair{from_folder, i->folder()}});
+					}
+					else if (from_file != i->path())
+					{
+						s.move_changed(std::vector{std::pair{from_file, i->path()}});
+						s.record_change(icon, title.sv(), {i->path()});
+					}
+
 					// The index learns of a rename from the folders it touched. Left to the folder
 					// watcher, which covers only the folders shown, a folder renamed from a search kept
 					// its old name in the index - its photos out of searches - until the next walk.
@@ -302,19 +319,123 @@ static void file_properties_invoke(const view_state& s, const ui::frame_ptr& par
 	}
 }
 
+// The files a copy or move made, kept among the session's recent changes: the items, not the sidecars that went with
+// them. What was made comes back one path for each given, in the order given - a collision's new name among them - so a
+// moved item changed earlier in the session takes that change to where it landed, and a moved folder the changes of
+// everything in it; and what the face book keeps of a moved picture goes with it. An answer that does not pair up pairs
+// nothing rather than the wrong things.
+static void record_copy_or_move(view_state& s, const icon_index icon, const std::string_view title,
+                                const std::vector<core::file_path>& files,
+                                const std::vector<core::folder_path>& folders, const core::paths& made,
+                                const bool is_move)
+{
+	const auto pairs = files.size() == made.files.size() && folders.size() == made.folders.size();
+
+	// A sidecar that went with its item counts with it; given on its own, as a related search lists one, it is an item
+	// of its own. Told apart by what the index knows of each, before a move takes that knowledge to where it went.
+	core::unique_paths went_along;
+	if (pairs)
+	{
+		for (const auto& f : files)
+		{
+			if (const auto md = s.item_index.find_item(f).metadata.load())
+				for (const auto name : core::split(md->sidecars.sv(), true))
+					went_along.emplace(f.folder().combine_file(name));
+		}
+	}
+
+	std::vector<core::file_path> made_items;
+	made_items.reserve(made.files.size());
+	for (size_t i = 0; i < made.files.size(); ++i)
+	{
+		if (pairs && went_along.contains(files[i])) continue;
+		made_items.emplace_back(made.files[i]);
+	}
+
+	if (is_move && pairs)
+	{
+		std::vector<std::pair<core::folder_path, core::folder_path>> moved_folders;
+		moved_folders.reserve(folders.size());
+		for (size_t i = 0; i < folders.size(); ++i) moved_folders.emplace_back(folders[i], made.folders[i]);
+		s.item_index.paths_moved(moved_folders);
+		s.move_changed(moved_folders);
+
+		std::vector<std::pair<core::file_path, core::file_path>> moved;
+		moved.reserve(files.size());
+		for (size_t i = 0; i < files.size(); ++i) moved.emplace_back(files[i], made.files[i]);
+		s.item_index.paths_moved(moved);
+		s.move_changed(moved);
+	}
+
+	s.record_change(icon, title, std::move(made_items));
+}
+
+void record_dropped_files(view_state& s, const icon_index icon, const std::string_view title,
+                          const std::vector<core::file_path>& given, const std::vector<bool>& given_is_folder,
+                          const core::paths& made, const bool is_move)
+{
+	if (given.empty() || given.size() != made.files.size() || given.size() != given_is_folder.size())
+	{
+		s.record_change(icon, title, made.files);
+		return;
+	}
+
+	std::vector<core::file_path> files;
+	std::vector<core::folder_path> folders;
+	core::paths landed;
+
+	for (size_t i = 0; i < given.size(); ++i)
+	{
+		const auto& to = made.files[i];
+		if (given_is_folder[i])
+		{
+			folders.emplace_back(given[i].folder().combine(given[i].name()));
+			landed.folders.emplace_back(to.folder().combine(to.name()));
+		}
+		else
+		{
+			files.emplace_back(given[i]);
+			landed.files.emplace_back(to);
+		}
+	}
+
+	record_copy_or_move(s, icon, title, files, folders, landed, is_move);
+}
+
+std::vector<bool> folders_among(const std::vector<core::file_path>& paths)
+{
+	std::vector<bool> result;
+	result.reserve(paths.size());
+	for (const auto& p : paths) result.push_back(platform::is_directory(p.folder().combine(p.name())));
+	return result;
+}
+
 static void edit_paste_invoke(view_state& s, const ui::frame_ptr& parent, const std::shared_ptr<view_frame>& view)
 {
 	const auto dlg = make_dlg(parent);
 	const auto data = platform::clipboard();
 	platform::file_op_result result;
+	// What a paste is given, as the clipboard lists them, told apart before the paste, which takes cut files away.
+	std::vector<bool> given_is_folder;
+	std::vector<core::file_path> given;
 
 	if (data->has_drop_files())
 	{
+		const auto is_move = data->files_description().preferred_drop_effect == platform::drop_effect::move;
+		given = data->drop_paths();
+		given_is_folder = folders_among(given);
+
 		detach_file_handles detach(s);
 		shell_file_operation_ui processing(*view, parent);
 		result = data->drop_files(s.save_path(), platform::drop_effect::none);
 		if (result.success() && (!result.created_files.files.empty() || !result.created_files.folders.empty()))
 			detach.keep_display_closed();
+
+		if (result.success())
+		{
+			record_dropped_files(s, icon_index::edit_paste, tt.command_edit_paste.sv(), given, given_is_folder,
+			                     result.created_files, is_move);
+		}
 	}
 	else if (data->has_bitmap())
 	{
@@ -342,6 +463,7 @@ static void edit_paste_invoke(view_state& s, const ui::frame_ptr& parent, const 
 						results->complete();
 						if (!created_files.files.empty() || !created_files.folders.empty())
 						{
+							s.record_change(icon_index::edit_paste, tt.command_edit_paste.sv(), created_files.files);
 							detach_file_handles detach(s);
 							detach.keep_display_closed();
 							s.open(view.shared(), s.search(), make_unique_paths(created_files));
@@ -478,6 +600,8 @@ static void rotate_invoke(view_state& s, const ui::frame_ptr& parent, const view
 			// A rotation always changes what is drawn, whether it is stored as an orientation tag or
 			// as rotated pixels.
 			spec.changes_presentation = true;
+			spec.change_icon = icon;
+			spec.change_title = title.sv();
 			spec.make_edits = [t](const core::file_path path) -> std::optional<item_edits>
 			{
 				// Only the frame size and stored orientation are needed, and load_image_file derives
@@ -691,7 +815,6 @@ static void favorite_tags_invoke(view_state& s, const ui::frame_ptr& parent)
 	favorite_tags = core::combine(unique_favorites());
 	edit->text(favorite_tags);
 
-	content->add(set_margin(std::make_shared<text_element>(tt.customise_tags_help)));
 	content->add(set_margin(std::make_shared<text_element>(tt.help_tag1)));
 	content->add(set_margin(std::make_shared<text_element>(tt.help_tag2)));
 	content->add(edit);
@@ -854,6 +977,8 @@ class folder_auto_complete final :
 	ui::auto_complete_match_ptr _selected;
 	uint64_t _request_id = 0;
 	std::weak_ptr<void> _picker_lifetime;
+	// The dialog a double-click on a folder answers, as OK does.
+	ui::frame_ptr _dialog;
 
 public:
 	std::string no_results_message() override { return std::string(tt.type_to_search); }
@@ -862,11 +987,11 @@ public:
 
 	folder_auto_complete(view_state& s, ui::frame_ptr parent, const std::shared_ptr<void>& picker_lifetime = {},
 	                     std::shared_ptr<const core::folder_counts> folders = {},
-	                     destination_folder_enumerator enumerate_child_folders = {}) :
+	                     destination_folder_enumerator enumerate_child_folders = {}, ui::frame_ptr dialog = {}) :
 		_state(s),
 		_folders(folders ? std::move(folders) : std::make_shared<core::folder_counts>(_state.known_folders())),
 		_enumerate_child_folders(std::move(enumerate_child_folders)), _parent(std::move(parent)),
-		_picker_lifetime(picker_lifetime)
+		_picker_lifetime(picker_lifetime), _dialog(std::move(dialog))
 	{
 		resize_to_show_results = false;
 		auto_select_first = false;
@@ -1058,7 +1183,7 @@ public:
 		}
 	}
 
-	void selected(const ui::auto_complete_match_ptr& i, const select_type /*st*/) override
+	void selected(const ui::auto_complete_match_ptr& i, const select_type st) override
 	{
 		_selected = i;
 
@@ -1068,6 +1193,9 @@ public:
 		{
 			c->update_edit_text(i->edit_text());
 		}
+
+		// A folder double-clicked is the destination chosen, as it is typed and OK pressed.
+		if (i && st == select_type::double_click && _dialog) _dialog->close(false);
 	}
 
 	ui::auto_complete_match_ptr selected() const override { return _selected; }
@@ -1075,10 +1203,10 @@ public:
 
 std::shared_ptr<ui::complete_strategy_t> make_destination_folder_auto_complete_for_test(
 	view_state& state, const std::shared_ptr<void>& picker_lifetime, std::shared_ptr<const core::folder_counts> folders,
-	destination_folder_enumerator enumerate_child_folders)
+	destination_folder_enumerator enumerate_child_folders, ui::frame_ptr dialog)
 {
 	return std::make_shared<folder_auto_complete>(state, nullptr, picker_lifetime, std::move(folders),
-	                                              std::move(enumerate_child_folders));
+	                                              std::move(enumerate_child_folders), std::move(dialog));
 }
 
 core::file_path selected_external_tool_target(const df::item_set& selected_items)
@@ -1102,7 +1230,8 @@ static void copy_move_invoke(view_state& s, const ui::frame_ptr& parent, const s
 		// so it starts on the destination last used.
 		std::string text = s.recent_folders.items().empty() ? std::string{} : s.recent_folders.items().back();
 
-		const auto auto_complete = std::make_shared<folder_auto_complete>(s, parent);
+		const auto auto_complete = std::make_shared<folder_auto_complete>(s, parent, std::shared_ptr<void>{}, nullptr,
+		                                                                  destination_folder_enumerator{}, dlg->_frame);
 		const auto search_control = std::make_shared<ui::search_control>(dlg->_frame, text, auto_complete);
 		auto_complete->bind_search_control(search_control);
 
@@ -1183,14 +1312,16 @@ static void copy_move_invoke(view_state& s, const ui::frame_ptr& parent, const s
 					detach_file_handles detach(s);
 					shell_file_operation_ui processing(*view, parent);
 
-					const auto result = platform::move_or_copy(items.file_paths(true), items.folder_paths(),
-					                                           write_folder, is_move, replace_existing);
+					const auto files = items.file_paths(true);
+					const auto folders = items.folder_paths();
+					const auto result = platform::move_or_copy(files, folders, write_folder, is_move, replace_existing);
 
 					if (result.success())
 					{
 						s.recent_folders.add(write_folder.text());
 						s.item_index.queue_scan_folder(write_folder);
 						if (!sources.empty()) s.item_index.queue_validate_changed_folders(std::move(sources));
+						record_copy_or_move(s, icon, title, files, folders, result.created_files, is_move);
 
 						if (setting.show_results)
 						{
@@ -1630,9 +1761,8 @@ static void show_eject_dialog(view_state& s, const ui::frame_ptr& parent, const 
 		controls.emplace_back(set_margin(std::make_shared<text_element>(tt.eject_none_found)));
 	}
 
-	controls.emplace_back(std::make_shared<ui::button_control>(dlg->_frame, icon_index::close, tt.close,
-	                                                           tt.eject_close_info,
-	                                                           [f = dlg->_frame] { f->close(false); }));
+	controls.emplace_back(std::make_shared<divider_element>());
+	controls.emplace_back(std::make_shared<ui::close_control>(dlg->_frame));
 
 	{
 		pause_media pause(s);
@@ -1793,7 +1923,6 @@ namespace
 
 	// One name a command: its identifier, so the table reads against the enumeration line for line.
 	constexpr command_entry command_names[] = {
-		{commands::advanced_search, "advanced_search"},
 		{commands::browse_back, "browse_back"},
 		{commands::browse_forward, "browse_forward"},
 		{commands::browse_next_folder, "browse_next_folder"},
@@ -1825,6 +1954,24 @@ namespace
 		{commands::edit_paste, "edit_paste"},
 		{commands::english, "english"},
 		{commands::exit, "exit"},
+		{commands::explore, "explore"},
+		{commands::explore_item, "explore_item"},
+		{commands::face_confirm, "face_confirm"},
+		{commands::face_export, "face_export"},
+		{commands::face_open_in_folder, "face_open_in_folder"},
+		{commands::face_hide, "face_hide"},
+		{commands::face_import, "face_import"},
+		{commands::face_name, "face_name"},
+		{commands::face_name_picture, "face_name_picture"},
+		{commands::face_reject, "face_reject"},
+		{commands::face_rename_person, "face_rename_person"},
+		{commands::face_person_search, "face_person_search"},
+		{commands::face_save_names, "face_save_names"},
+		{commands::face_search, "face_search"},
+		{commands::face_show_again, "face_show_again"},
+		{commands::face_follow_placement, "face_follow_placement"},
+		{commands::face_undo_placement, "face_undo_placement"},
+		{commands::faces, "faces"},
 		{commands::favorite, "favorite"},
 		{commands::favorite_tags, "favorite_tags"},
 		{commands::filter_items, "filter_items"},
@@ -1876,6 +2023,7 @@ namespace
 		{commands::menu_options, "menu_options"},
 		{commands::menu_playback, "menu_playback"},
 		{commands::menu_rate_or_label, "menu_rate_or_label"},
+		{commands::menu_recent_changes, "menu_recent_changes"},
 		{commands::menu_select, "menu_select"},
 		{commands::menu_tools, "menu_tools"},
 		{commands::menu_tools_toolbar, "menu_tools_toolbar"},
@@ -2033,7 +2181,11 @@ void app_frame::run_test_action(const std::string_view action)
 	}
 	else if (action == "send-crash-report")
 	{
-		crash(known_path(platform::known_folder::test_files_folder).combine_file("Test.jpg"));
+		// crash() deletes the dump it sends, so it is handed a copy of the fixture rather than the fixture itself.
+		const auto dump = platform::temp_file();
+		platform::copy_file(known_path(platform::known_folder::test_files_folder).combine_file("Test.jpg"), dump, false,
+		                    false);
+		crash(dump);
 		_app_frame->show(true);
 	}
 	else if (action == "new-version")
@@ -2060,6 +2212,11 @@ void app_frame::initialise_commands()
 	_commands[commands::tool_run]->text_can_change = true;
 	_commands[commands::edit_item_save_and_prev]->text_can_change = true;
 	_commands[commands::edit_item_save_and_next]->text_can_change = true;
+	// Face review names the person; Rename follows the target and Arrange follows the listing.
+	_commands[commands::face_rename_person]->text_can_change = true;
+	_commands[commands::face_follow_placement]->text_can_change = true;
+	_commands[commands::face_confirm]->text_can_change = true;
+	_commands[commands::face_reject]->text_can_change = true;
 
 	_commands[commands::play]->icon_can_change = true;
 	_commands[commands::view_fullscreen]->icon_can_change = true;
@@ -2121,7 +2278,7 @@ void app_frame::initialise_commands()
 	                   [this] { _state.select(_view_frame, _state.next_group_item(true), false, false, false); });
 	add_command_invoke(commands::browse_next_item, [this] { _state.select_next(_view_frame, true, false, false); });
 	add_command_invoke(commands::browse_next_item_extend,
-	                   [this] { _state.select_next(_view_frame, true, true, false); });
+	                   [this] { _state.select_next(_view_frame, true, false, true); });
 	add_command_invoke(commands::browse_parent, [this] { browse_parent_invoke(_state, _view_frame); });
 	add_command_invoke(commands::browse_previous_folder, [this] { _state.open_next_path(_view_frame, false); });
 	add_command_invoke(commands::browse_previous_group,
@@ -2129,12 +2286,47 @@ void app_frame::initialise_commands()
 	add_command_invoke(commands::browse_previous_item,
 	                   [this] { _state.select_next(_view_frame, false, false, false); });
 	add_command_invoke(commands::browse_previous_item_extend,
-	                   [this] { _state.select_next(_view_frame, false, true, false); });
+	                   [this] { _state.select_next(_view_frame, false, false, true); });
 
 	add_command_invoke(commands::tool_burn, [this] { burn_command_invoke(_state, _app_frame, _view_frame); });
 	add_command_invoke(commands::tool_save_current_video_frame, [this] { capture_invoke(_state, _app_frame); });
 	add_command_invoke(commands::favorite, [this] { favorite_invoke(_state, _app_frame); });
-	add_command_invoke(commands::advanced_search, [this] { advanced_search_invoke(_state, _app_frame, _view_frame); });
+	add_command_invoke(commands::explore, [this] { _view_explore->open(); });
+	add_command_invoke(commands::explore_item, [this]
+	{
+		if (const auto item = _state.command_item()) _view_explore->show_item(item->path());
+	});
+	add_command_invoke(commands::faces, [this]
+	{
+		// Opened from a face on a picture, the view shows that face among its group's.
+		if (const auto face = std::exchange(_state._pending_face, std::nullopt)) _view_faces->open_at_face(*face);
+		else _view_faces->open();
+	});
+	add_command_invoke(commands::face_rename_person, [this] { _view_faces->rename(); });
+	add_command_invoke(commands::face_follow_placement, [this] { _view_faces->follow_placement(); });
+	add_command_invoke(commands::face_undo_placement, [this] { _view_faces->undo_placement(); });
+	add_command_invoke(commands::face_hide, [this] { _view_faces->hide(true); });
+	add_command_invoke(commands::face_show_again, [this] { _view_faces->hide(false); });
+	add_command_invoke(commands::face_reject, [this] { _view_faces->reject(); });
+	add_command_invoke(commands::face_name, [this] { _view_faces->name_faces(); });
+	add_command_invoke(commands::face_name_picture, [this]
+	{
+		// docs/faces.md#93-faces-on-a-picture: the one face on the picture the commands act on, named in the popup
+		// docs/faces.md#95-naming-a-face describes, then on to the next picture where the user asked to be.
+		const auto item = _state.command_item();
+		const auto target = item ? only_face_on_picture(_state, item->path()) : picture_face_target{};
+		if (!target.face) return;
+		const auto named = name_picture_face(_state, _app_frame, *target.face, picture_naming::anyone, true);
+		if (named.named) _state.invalidate_view(view_invalid::view_redraw | view_invalid::command_state);
+		if (named.next) _state.select_next(_view_frame, true, false, false);
+	});
+	add_command_invoke(commands::face_confirm, [this] { _view_faces->confirm(); });
+	add_command_invoke(commands::face_search, [this] { _view_faces->search_face(); });
+	add_command_invoke(commands::face_person_search, [this] { _view_faces->search_person(); });
+	add_command_invoke(commands::face_open_in_folder, [this] { _view_faces->open_in_folder(); });
+	add_command_invoke(commands::face_save_names, [this] { _view_faces->save_names(); });
+	add_command_invoke(commands::face_export, [this] { _view_faces->export_data(); });
+	add_command_invoke(commands::face_import, [this] { _view_faces->import_data(); });
 
 	add_command_invoke(commands::view_minimize,
 	                   [this] { _app_frame->sys_command(platform::sys_command_type::MINIMIZE); });
@@ -2212,6 +2404,10 @@ void app_frame::initialise_commands()
 		{
 			document->select_all(_state.display_state()->_selected_item_data);
 			invalidate_view(view_invalid::view_redraw);
+		}
+		else if (_state.view_mode() == view_type::faces)
+		{
+			_view_faces->select_all();
 		}
 		else
 		{
@@ -2345,12 +2541,20 @@ void app_frame::initialise_commands()
 	                   [this] { zoom_fit_variant_invoke(_state, df::zoom_scale_mode::fill); });
 	add_command_invoke(commands::view_zoom_toggle_fit, [this] { zoom_toggle_fit_invoke(_state); });
 	add_command_invoke(commands::view_zoom_100, [this] { zoom_100_invoke(_state); });
-	add_command_invoke(commands::view_zoom_in, [this] { zoom_step_invoke(_state, 1); });
+	add_command_invoke(commands::view_zoom_in, [this]
+	{
+		if (_state.view_mode() == view_type::explore) _view_explore->step_globe_zoom(1);
+		else zoom_step_invoke(_state, 1);
+	});
 	add_command_invoke(commands::view_zoom_pane_flip, [this]
 	{
 		if (const auto display = _state.display_state()) display->flip_zoom_pane();
 	});
-	add_command_invoke(commands::view_zoom_out, [this] { zoom_step_invoke(_state, -1); });
+	add_command_invoke(commands::view_zoom_out, [this]
+	{
+		if (_state.view_mode() == view_type::explore) _view_explore->step_globe_zoom(-1);
+		else zoom_step_invoke(_state, -1);
+	});
 	add_command_invoke(commands::view_zoom_navigator_auto_hide,
 	                   [this] { zoom_navigator_mode_invoke(_state, zoom_navigator_mode::auto_hide); });
 	add_command_invoke(commands::view_zoom_navigator_off,
@@ -2581,6 +2785,27 @@ void app_frame::initialise_commands()
 		return result;
 	};
 	_commands[commands::menu_open_status]->menu = _commands[commands::menu_open]->menu;
+	// Newest first, each named by what it did and how many items it changed.
+	_commands[commands::menu_recent_changes]->menu = [this]
+	{
+		std::vector<ui::command_ptr> result;
+
+		for (const auto& change : _state.session_changes())
+		{
+			auto command = std::make_shared<ui::command>();
+			command->icon = change.icon;
+			command->text = std::format("{} \u00B7 {}", change.what,
+			                            format_plural_text(tt.title_item_count_fmt,
+			                                               static_cast<int64_t>(change.paths.size())));
+			command->invoke = [this, paths = change.paths]
+			{
+				_state.open_changed(_view_frame, paths);
+			};
+			result.emplace_back(command);
+		}
+
+		return result;
+	};
 	_commands[commands::menu_language]->menu = [this]
 	{
 		const auto lang_folder = known_path(platform::known_folder::running_app_folder).combine("languages");
@@ -2685,6 +2910,7 @@ void app_frame::initialise_commands()
 	};
 	_commands[commands::menu_group]->menu = group_menu;
 	_commands[commands::menu_group_toolbar]->menu = group_menu;
+	// docs/faces.md#92-faces: how the Faces view lists the faces of the groups selected.
 	_commands[commands::menu_select]->menu = [this]
 	{
 		std::vector<ui::command_ptr> result = {
@@ -2727,12 +2953,19 @@ void app_frame::initialise_commands()
 	_commands[commands::menu_navigate]->menu = [this]
 	{
 		std::vector<ui::command_ptr> result = {
-			find_command(commands::browse_parent),      find_command(commands::browse_back),
-			find_command(commands::browse_forward),     find_command(commands::browse_previous_folder),
-			find_command(commands::browse_next_folder), find_command(commands::browse_previous_group),
-			find_command(commands::browse_next_group),  nullptr,
-			find_command(commands::browse_recursive),   nullptr,
-			find_command(commands::advanced_search),
+			find_command(commands::browse_parent),
+			find_command(commands::browse_back),
+			find_command(commands::browse_forward),
+			find_command(commands::browse_previous_folder),
+			find_command(commands::browse_next_folder),
+			find_command(commands::browse_previous_group),
+			find_command(commands::browse_next_group),
+			nullptr,
+			find_command(commands::browse_recursive),
+			nullptr,
+			find_command(commands::explore),
+			find_command(commands::faces),
+			find_command(commands::menu_recent_changes),
 		};
 		return result;
 	};

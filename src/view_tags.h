@@ -23,7 +23,7 @@ using tag_action = std::pair<std::string, bool>;
 std::vector<tag_action> parse_tag_actions(std::string_view text);
 std::string serialize_tag_actions(const std::vector<tag_action>& actions);
 
-class tags_view final : public list_view, public std::enable_shared_from_this<tags_view>
+class tags_view final : public review_list, public std::enable_shared_from_this<tags_view>
 {
 	// The action field: what to add or remove, not a view of current state (issue #228).
 	std::string _tags;
@@ -44,7 +44,7 @@ class tags_view final : public list_view, public std::enable_shared_from_this<ta
 	std::string _title;
 
 public:
-	tags_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host)) { col_count = 3; }
+	tags_view(view_state& state, view_host_ptr host) : review_list(state, std::move(host)) { col_count = 3; }
 
 	std::array<text_t, max_col_count> col_titles() override
 	{
@@ -67,7 +67,7 @@ public:
 
 	void activate(const sizei extent) override
 	{
-		list_view::activate(extent);
+		review_list::activate(extent);
 		refresh();
 	}
 

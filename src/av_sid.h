@@ -8,8 +8,8 @@
 // Purpose: SID tunes as audio the player plays like any other file. lib64 runs a tune's play routine and
 // its samples reach FFmpeg as a WAV stream, so the session's clock, pause, seeking and end need nothing of
 // their own; each frame's SID registers are kept beside the samples for the SID monitor to show. How long a
-// tune lasts is found by running it apart, silently and far faster than it plays: until it falls silent, or
-// until it starts again from where it first began to repeat.
+// tune lasts is found by running it apart, silently and far faster than it plays: until its last note has
+// died away and nothing more sounds, or until it starts again from where it first began to repeat.
 
 #pragma once
 
@@ -23,15 +23,17 @@ constexpr double sid_tune_seconds = 180.0;
 constexpr double sid_fade_seconds = 3.0;
 constexpr int sid_sample_rate = 44100;
 
-// The most of a tune the scan runs. Silent, it runs at well over a hundred times the speed it plays, so this
-// is a few seconds of a worker's time at most; a repeat has to be heard through once more before it counts,
-// so the longest repeating tune it finds is about half of it.
-constexpr double sid_scan_seconds = 600.0;
+// The most of a tune the scan runs. Silent, it runs at nearly two hundred times the speed it plays, so this is
+// at most about ten seconds of a worker's time, for a tune it never finds the end of; a repeat has to be heard
+// through once more and a minute beyond before it counts, so the longest repeating tune it finds is a little
+// under half of it - the longest of the epics written for the chip.
+constexpr double sid_scan_seconds = 1800.0;
 // The span a tune's stream is declared with, so a tune the scan finds to be long has the room to play out.
 constexpr double sid_stream_seconds = sid_scan_seconds + sid_fade_seconds;
 
-// How long a tune lasts as far as running it shows: until it falls silent, the moment it does; or until it
-// starts again, the moment it begins to repeat. Unknown for a tune that does neither within the scan.
+// How long a tune lasts as far as running it shows: until it falls silent, the moment its last note has died
+// away; or until it starts again, the moment it begins to repeat. Unknown for a tune that does neither within
+// the scan.
 struct sid_tune_length
 {
 	enum class ending

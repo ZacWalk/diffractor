@@ -42,10 +42,9 @@ unbounded allocation. Prefer cancelling and replacing stale work over letting it
 
 ## SQLite
 
-Two connections exist, each pinned to its own thread for life: the index database on
-`queue_database`, and the tile store on `queue_tile_db`. Do not call a database method from any
-other context, and do not add a third connection without a thread of its own. `sqlite3_*` outside
-`model_db*` and `model_tile_cache*` is a lint failure.
+The index and face book have separate connections owned by `queue_database`; the tile store's
+connection is owned by `queue_tile_db`. Do not call a database method outside its owning
+context. `sqlite3_*` outside `model_db*`, `model_tile_cache*` and tests is a lint failure.
 
 ## Checks
 

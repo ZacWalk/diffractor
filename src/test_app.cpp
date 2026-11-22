@@ -1,4 +1,4 @@
-﻿// This file is part of the Diffractor photo and video organizer
+// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -14,6 +14,7 @@
 #include "files.h"
 #include "test.h"
 #include "model_db.h"
+#include "model_faces_search.h"
 #include "model_index.h"
 #include "test_fixtures.h"
 #include "test_runner.h"
@@ -28,6 +29,7 @@
 #include "app_text.h"
 #include "app_commands.h"
 #include "app_search.h"
+#include "app_match.h"
 #include "ui_dialog.h"
 #include "app.h"
 #include "app_sidebar.h"
@@ -37,6 +39,7 @@
 #include "view_rename.h"
 #include "view_batch.h"
 #include "view_import.h"
+#include "view_faces.h"
 #include "view_sync.h"
 #include "view_tags.h"
 #include "view_items.h"
@@ -100,24 +103,6 @@ static void should_store_an_order_an_older_build_can_read()
 	             static_cast<int>(resolve_stored_order<group_by>(static_cast<uint32_t>(group_by::date_created), 0,
 	                                                             false, group_order_older_builds_understand)),
 	             "a store with no extended key answers with what it has");
-}
-
-static void should_bound_advanced_search_hover_thumbnail_retries()
-{
-	auto retries = 2;
-	assert_equal(true, should_refresh_advanced_search_hover_thumbnail(false, true, false, retries),
-	             "first failed thumbnail hover is retried");
-	assert_equal(1, retries, "retry budget decrements");
-	assert_equal(true, should_refresh_advanced_search_hover_thumbnail(false, true, true, retries),
-	             "in-flight staging keeps the hover refreshing without spending the budget");
-	assert_equal(1, retries, "in-flight refresh does not spend retry budget");
-	assert_equal(true, should_refresh_advanced_search_hover_thumbnail(false, true, false, retries),
-	             "second failed thumbnail hover is retried");
-	assert_equal(0, retries, "retry budget reaches zero");
-	assert_equal(false, should_refresh_advanced_search_hover_thumbnail(false, true, false, retries),
-	             "exhausted thumbnail retries stop refreshing");
-	assert_equal(false, should_refresh_advanced_search_hover_thumbnail(true, true, false, retries),
-	             "an available surface needs no refresh");
 }
 
 static void should_persist_to_ini_file()
@@ -1130,6 +1115,48 @@ static void should_keep_import_bookkeeping_when_a_folder_fails(shared_test_conte
 	assert_equal(true, run.folder == dest_ok, "and the run names the folder it reached");
 }
 
+// A photo's date is its camera's clock, local time, and the file system keeps UTC: written unconverted, Explorer
+// showed the imported file created hours from when the photo was taken, by the zone's offset that day.
+static void should_set_imported_file_created_to_when_it_was_taken(shared_test_context& stc)
+{
+	const auto root = test_temps.next_folder("import-created");
+	const auto src = root.combine("source");
+	const auto dest = root.combine("dest");
+	platform::create_folder(src);
+	write_test_file(src.combine_file("photo.txt"), "photo");
+
+	const auto path = src.combine_file("photo.txt");
+	import_analysis_item row;
+	row.source = path;
+	row.destination = dest.combine_file("photo.txt");
+	row.action = import_action::import;
+	row.source_fi = platform::file_attributes(path);
+	row.import_rec.name = path.name();
+	// Summer, where a zone with daylight saving is furthest from UTC.
+	row.created_date = core::date_t(2007, 9, 15, 7, 20, 2);
+
+	import_analysis_result analysis;
+	analysis[dest].emplace_back(row);
+
+	import_options options;
+	options.dest_folder = root;
+	options.set_created_date = true;
+
+	const auto status = std::make_shared<recording_status>();
+	const auto run = import_copy(stc.empty_index, status, analysis, options, test_token);
+
+#ifdef _WIN32
+	assert_equal(0u, run.dates_unset, "the created date was set");
+	assert_equal(platform::local_to_utc(row.created_date).to_int64(),
+	             core::date_t(platform::file_attributes(row.destination).created).to_int64(),
+	             "the file was created when the photo was taken, in local time");
+#else
+	// Linux keeps no creation time a program can set, so the run counts the date it was asked for and could not write.
+	assert_equal(1u, run.dates_unset, "a created date the file system refuses is counted, not reported as set");
+	assert_equal(true, platform::exists(row.destination), "while the file itself arrives");
+#endif
+}
+
 // Import holds each reviewed row to the file that was reviewed, and lets the file system prove a
 // destination is free rather than asking and then writing.
 static void should_revalidate_import_rows(shared_test_context& stc)
@@ -1335,6 +1362,40 @@ static folder_scan_item import_test_item(const core::file_path path, const std::
 		item.item.metadata.store(metadata);
 	}
 	return item;
+}
+
+// docs/faces.md#62-marks: a picture an import moves takes the marks the user put on its faces with it; one it copies
+// leaves them with the original.
+static void should_take_face_marks_with_a_picture_an_import_moves(shared_test_context& stc)
+{
+	for (const auto move : {false, true})
+	{
+		const auto root = test_temps.next_folder("import-face-marks");
+		const auto src = root.combine("source");
+		const auto dest = root.combine("dest");
+		platform::create_folder(src);
+		platform::create_folder(dest);
+		const auto source = src.combine_file("photo.jpg");
+		const auto destination = dest.combine_file("photo.jpg");
+		write_test_file(source, "media");
+
+		auto& book = stc.empty_index.faces().book();
+		const std::array batch{faces::placement_batch{0, {}, {{source, rectd{0.1, 0.1, 0.2, 0.2}, 0}}}};
+		book.place(batch, faces::face_action::hide, book.generation());
+
+		import_options options;
+		options.dest_folder = dest;
+		options.dest_structure = {};
+		options.is_move = move;
+		const auto analysis = import_analysis(std::vector{import_test_item(source)}, options, {}, test_token);
+		import_copy(stc.empty_index, std::make_shared<recording_status>(), analysis, options, test_token);
+
+		assert_equal(true, platform::exists(destination), "the picture is imported");
+		assert_equal(move ? 0 : 1, static_cast<int>(book.marks(source).size()),
+		             move ? "moved, its marks leave the source" : "copied, the original keeps its marks");
+		assert_equal(move ? 1 : 0, static_cast<int>(book.marks(destination).size()),
+		             move ? "and arrive with it" : "and the copy starts without");
+	}
 }
 
 static void should_preserve_shared_import_sidecars_after_auto_rename(shared_test_context& stc)
@@ -1782,6 +1843,117 @@ static void should_offer_every_removable_drive_with_media_for_import()
 	assert_equal("I:\\"sv, limited.front().name, "in drive order");
 }
 
+// design.md#guided-operations: a phone's files are staged under the folders it keeps them in, with their names and
+// times, as a name the file system takes. What an import already took stays on the phone, and its staged copy goes;
+// what an earlier Analyze staged is not copied again; a file the phone will not give up is named and passed over, the
+// rest staged regardless; and what the phone no longer holds goes from staging.
+static void should_stage_a_devices_files_to_import()
+{
+	const auto staging = test_temps.next_folder("device-staging");
+	const core::file_path picture(test_files_folder(), "Test.jpg");
+	const auto size = core::file_size(platform::file_attributes(picture).size);
+	constexpr uint64_t taken = 133'000'000'000'000'000ull;
+	const auto camera = std::format("Internal storage{}DCIM{}Camera", core::preferred_path_sep,
+	                                core::preferred_path_sep);
+	const auto odd = std::format("Internal storage{}Pictures{}Odd:Name", core::preferred_path_sep,
+	                             core::preferred_path_sep);
+
+	const std::vector<platform::portable_file_t> files = {
+		{"first", camera, "PXL_1.jpg", size, taken, taken},
+		{"second", camera, "PXL_2.jpg", size, taken + 10'000'000, taken + 10'000'000},
+		{"cloud", camera, "PXL_3.jpg", size, taken + 30'000'000, taken + 30'000'000},
+		{"odd", odd, "a?b.jpg", size, taken + 20'000'000, taken + 20'000'000},
+	};
+
+	std::vector<std::string> asked;
+	const device_copier copier = [&](const std::vector<platform::portable_copy_t>& copies)
+	{
+		platform::portable_copy_result result;
+		for (size_t i = 0; i < copies.size(); ++i)
+		{
+			const auto& c = copies[i];
+			asked.emplace_back(c.id);
+
+			// Kept only in the cloud: the phone lists it but will not give it up.
+			if (c.id == "cloud")
+			{
+				result.unreadable.emplace_back(i, "not on the phone");
+				continue;
+			}
+
+			(void)platform::create_folder(c.destination.folder());
+			(void)platform::copy_file(picture, c.destination, true, true);
+			(void)platform::set_file_attributes(c.destination, c.modified);
+			result.copied.emplace_back(c.destination);
+		}
+		return result;
+	};
+
+	const auto in_camera = staging.combine("Internal storage").combine("DCIM").combine("Camera");
+	item_import_set imported;
+	imported.emplace(item_import{core::cache("PXL_2.jpg"), core::date_t(taken + 10'000'000), size, {}});
+
+	const auto first = stage_device_files(files, imported, staging, copier);
+	assert_equal(2_z, first.staged, "what no import took is staged");
+	assert_equal(1_z, first.previously_imported, "and what one did stays on the phone");
+	assert_equal(true, asked == std::vector<std::string>{"first", "cloud", "odd"}, "only those are asked for");
+	assert_equal(true, first.unreadable == std::vector<std::string>{"PXL_3.jpg"},
+	             "one the phone would not give up is named, and the rest staged regardless");
+	assert_equal(true, first.stopped.success(), "which stops nothing");
+	assert_equal(taken, platform::file_attributes(in_camera.combine_file("PXL_1.jpg")).modified,
+	             "under the folders the phone keeps it in, with its time");
+	assert_equal(
+		true,
+		platform::exists(
+			staging.combine("Internal storage").combine("Pictures").combine("Odd_Name").combine_file("a_b.jpg")),
+		"a name the file system refuses is made one it takes");
+
+	asked.clear();
+	const auto again = stage_device_files(files, imported, staging, copier);
+	assert_equal(2_z, again.staged, "an Analyze again stages the same");
+	assert_equal(true, asked == std::vector<std::string>{"cloud"}, "asking again only for what it did not have");
+
+	imported.emplace(item_import{core::cache("PXL_1.jpg"), core::date_t(taken), size, {}});
+	const auto after_import = stage_device_files(files, imported, staging, copier);
+	assert_equal(1_z, after_import.staged, "once imported, a file is no longer staged");
+	assert_equal(false, platform::exists(in_camera.combine_file("PXL_1.jpg")), "and its staged copy goes");
+
+	const auto odd_staged =
+		staging.combine("Internal storage").combine("Pictures").combine("Odd_Name").combine_file("a_b.jpg");
+	const auto still_held = stage_device_files({files[2], files[3]}, imported, staging, copier);
+	assert_equal(1_z, still_held.staged, "what the phone still holds stays staged");
+	assert_equal(true, platform::exists(odd_staged), "where it was");
+	(void)stage_device_files({files[2]}, imported, staging, copier);
+	assert_equal(false, platform::exists(odd_staged), "and what it no longer holds goes");
+}
+
+// design.md#guided-operations: opening Import clears what this instance and instances that have ended left staged,
+// and leaves what a running instance holds alone.
+static void should_clear_only_abandoned_device_staging()
+{
+	const auto root = test_temps.next_folder("device-staging-root");
+	const auto own = root.combine(core::to_string(platform::process_id()));
+	const auto running = root.combine("4000000001");
+	const auto ended = root.combine("4000000002");
+	const auto stray = root.combine("Pixel 7");
+
+	for (const auto& folder : {own, running, ended, stray})
+	{
+		(void)platform::create_folder(folder);
+		(void)platform::copy_file(core::file_path(test_files_folder(), "Test.jpg"), folder.combine_file("staged.jpg"),
+		                          true, true);
+	}
+
+	const auto held = platform::try_lock_instance(device_staging_lock_name(4000000001));
+	assert_equal(true, held.lock != nullptr, "a running instance holds its lock");
+
+	clear_abandoned_device_staging(root);
+	assert_equal(true, platform::exists(running.combine_file("staged.jpg")), "and keeps what it staged");
+	assert_equal(false, platform::exists(ended), "an ended instance's staging is cleared");
+	assert_equal(false, platform::exists(own), "as is this one's, which holds nothing as Import opens");
+	assert_equal(false, platform::exists(stray), "and anything else there");
+}
+
 static void should_reject_missing_sync_folder()
 {
 	core::index_roots roots;
@@ -2196,6 +2368,11 @@ static void should_choose_a_history_range_that_survives_wrong_dates()
 		// One busy year is still eight years of navigator, or there is nothing to navigate.
 		const auto range = with({{0, 500}});
 		assert_equal(df::history_window_years, range.year_count(), "the range is never shorter than a window");
+	}
+
+	{
+		const auto range = with({{0, 1}, {20, 1}});
+		assert_equal(this_year - 20, range.first_year, "an older photo is half of this collection, not an outlier");
 	}
 }
 
@@ -2691,6 +2868,71 @@ static void should_commit_history_navigation_only_after_open_is_accepted()
 	assert_equal(true, state.history.can_browse_forward(), "Forward becomes available after accepted Back");
 }
 
+// Explore and Faces, where searches are opened from, are steps of the history: Back from the items one opens returns
+// to it as it was left, and Close from it leaves the history standing on the listing Items shows.
+static void should_step_back_into_the_view_a_search_was_opened_from()
+{
+	navigation_gate_strategy ss;
+	deferred_async_strategy as;
+	location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+	const view_host_base_ptr view;
+	state.view_mode(view_type::items);
+
+	const auto listing = df::search_t::parse("history-listing");
+	const auto week = df::search_t::parse("history-week");
+
+	assert_equal(true, state.open(view, listing, {}), "Items lists a search");
+	drain_query_work(as);
+
+	state.open_in_history(view_type::explore);
+	assert_equal(true, state.view_mode() == view_type::explore, "Explore opens over it");
+	assert_equal(true, state.can_browse_history() && state.history.can_browse_back(), "as a step Back takes back");
+
+	// A part of Explore opens its search in Items.
+	assert_equal(true, state.open(view, week, {}), "a week opens");
+	state.view_mode(view_type::items);
+	drain_query_work(as);
+
+	state.browse_back(view);
+	assert_equal(true, state.view_mode() == view_type::explore, "Back from its items returns to Explore");
+	assert_equal(true, state.search() == week, "over the listing, which Back into a view leaves alone");
+	assert_equal(true, state.history.can_browse_forward(), "and Forward can return to the week");
+
+	state.browse_forward(view);
+	assert_equal(true, state.view_mode() == view_type::items && state.search() == week, "which it does");
+
+	state.browse_back(view);
+	state.browse_back(view);
+	drain_query_work(as);
+	assert_equal(true, state.view_mode() == view_type::items && state.search() == listing,
+	             "Back again reaches the listing Explore was opened from");
+
+	state.browse_forward(view);
+	assert_equal(true, state.view_mode() == view_type::explore, "Forward opens Explore again");
+	state.view_mode(view_type::items);
+	assert_equal(true, state.history.current_view() == view_type::items,
+	             "closed, the history stands on the listing Items shows");
+	history_state::history_entry next;
+	assert_equal(true, state.history.history_entry_at(1, next) && next.view == view_type::explore,
+	             "with Explore after it for Forward");
+
+	state.open_in_history(view_type::explore);
+	state.open_in_history(view_type::faces);
+	history_state::history_entry before;
+	assert_equal(true, state.history.history_entry_at(-1, before) && before.view == view_type::explore,
+	             "Faces opened from Explore follows it");
+
+	// A task view is no step of the history, so Back there leaves the task's target as it is.
+	state.view_mode(view_type::items);
+	state.view_mode(view_type::tags);
+	const auto at = state.history._pos;
+	state.browse_back(view);
+	assert_equal(true, state.view_mode() == view_type::tags && state.history._pos == at,
+	             "Back does nothing in a task view");
+}
+
 static void should_open_an_area_found_later_without_asking_the_view_to_give_way()
 {
 	navigation_gate_strategy ss;
@@ -2973,6 +3215,117 @@ static void should_toggle_rating()
 	assert_equal(0, s.displayed_rating(), "invalid remove cr2 rating");
 }
 
+// design.md#recent-changes: a write is kept, newest first, under what it did, and the items it changed stay marked.
+// The same change made twice is one change, the list keeps only the latest, a renamed item takes its mark along, and
+// a change opens again with its items selected where they are now.
+static void should_keep_the_session_changes_in_sight()
+{
+	const auto temp_folder = test_temps.next_folder("recent-changes");
+	const auto first = test_temps.next_path_in(temp_folder, ".jpg");
+	const auto second = test_temps.next_path_in(temp_folder, ".jpg");
+	platform::copy_file(core::file_path(test_files_folder(), "Test.jpg"), first, false, false);
+	platform::copy_file(core::file_path(test_files_folder(), "Test.jpg"), second, false, false);
+
+	null_state_strategy ss;
+	null_async_strategy as;
+	const view_host_base_ptr view;
+	const auto results = std::make_shared<null_item_results_ui>();
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+	s.view_mode(view_type::items);
+	s.open(view, df::search_t().add_selector(temp_folder), {});
+	s.item_index.scan_items(s.search_items(), false, false, false, false, test_token);
+	s.update_item_groups();
+
+	assert_equal(true, s.session_changes().empty(), "nothing is changed yet");
+
+	s.select(view, first.name(), false);
+	s.update_selection();
+	s.toggle_rating(results, s.selected_items().items(), 3, view);
+
+	assert_equal(1_z, s.session_changes().size(), "the rating is a change");
+	const auto rated = s.session_changes().front();
+	assert_equal(std::format("{}: {}", tt.prop_name_rating, prop::format_rating(3)), rated.what,
+	             "named by what it set");
+	assert_equal(true, rated.paths == std::vector{first}, "on the item it was set on");
+	assert_equal(true, s.changed_this_session(first), "which is marked as changed");
+	assert_equal(false, s.changed_this_session(second), "and the other is not");
+
+	s.record_change(rated.icon, rated.what, {first});
+	assert_equal(1_z, s.session_changes().size(), "the same change made again is one change");
+
+	const auto renamed = temp_folder.combine_file("renamed.jpg");
+	s.move_changed(std::vector<std::pair<core::file_path, core::file_path>>{{first, renamed}});
+	assert_equal(true, s.changed_this_session(renamed), "a renamed item keeps its mark");
+	assert_equal(false, s.changed_this_session(first), "which leaves its old name");
+	assert_equal(true, s.session_changes().front().paths == std::vector{renamed}, "and its change follows it");
+
+	// A rename that hands one item's name to another - renumbering, or a swap - moves each change once, to where its
+	// own item went.
+	s.move_changed(std::vector<std::pair<core::file_path, core::file_path>>{{renamed, second}, {second, first}});
+	assert_equal(true, s.session_changes().front().paths == std::vector{second},
+	             "an item taking a name another gave up keeps its own change");
+	assert_equal(true, s.changed_this_session(second), "and its mark");
+	assert_equal(false, s.changed_this_session(first), "which does not follow the other item on");
+
+	// A folder moved takes the changes of everything in it along.
+	const auto moved_folder = temp_folder.parent().combine("recent-changes-moved");
+	s.move_changed(std::vector<std::pair<core::folder_path, core::folder_path>>{{temp_folder, moved_folder}});
+	assert_equal(true, s.changed_this_session(moved_folder.combine_file(second.name())), "a moved folder's item");
+	s.move_changed(std::vector<std::pair<core::folder_path, core::folder_path>>{{moved_folder, temp_folder}});
+
+	for (auto i = 0_z; i < view_state::max_session_changes + 2; ++i)
+		s.record_change(icon_index::tag, std::format("change {}", i), {second});
+	assert_equal(view_state::max_session_changes, s.session_changes().size(), "only the latest changes are kept");
+	assert_equal(std::format("change {}", view_state::max_session_changes + 1), s.session_changes().front().what,
+	             "newest first");
+
+	s.select_nothing(view);
+	s.update_selection();
+	assert_equal(true, s.open_changed(view, {second}), "a change opens again");
+	s.update_selection();
+	assert_equal(1_z, s.selected_count(), "with its item selected");
+	assert_equal(true, s.selected_items().items().front()->path() == second, "the one it changed");
+}
+
+// design.md#recent-changes: a copy counts the items it made, and a sidecar that went along is its item's.
+static void should_count_copied_items_without_their_sidecars()
+{
+	const auto root = test_temps.next_folder("recent-changes-sidecars");
+	const auto movie = root.combine_file("Movie.mkv");
+	const auto subtitle = root.combine_file("Movie.en.srt");
+	write_test_file(movie, "video");
+	write_test_file(subtitle, "1");
+
+	null_state_strategy ss;
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	core::index_roots roots;
+	roots.folders.emplace(root);
+	index.index_roots(roots);
+	index.index_folders(test_token);
+	view_state s(ss, as, index, make_test_player());
+
+	const auto copied = root.parent().combine("recent-changes-sidecars-copied");
+	core::paths made;
+	made.files = {copied.combine_file(movie.name()), copied.combine_file(subtitle.name())};
+	record_dropped_files(s, icon_index::copy_to_folder, tt.command_copy.sv(), {movie, subtitle}, {false, false}, made,
+	                     false);
+
+	assert_equal(1_z, s.session_changes().size(), "the copy is one change");
+	assert_equal(true, s.session_changes().front().paths == std::vector{made.files.front()},
+	             "of the item it made, not the sidecar that went with it");
+
+	// A sidecar copied on its own, as a related search lists one, is an item of its own.
+	core::paths alone;
+	alone.files = {copied.combine_file(subtitle.name())};
+	record_dropped_files(s, icon_index::copy_to_folder, tt.command_copy.sv(), {subtitle}, {false}, alone, false);
+	assert_equal(2_z, s.session_changes().size(), "a sidecar copied alone is a change");
+	assert_equal(true, s.session_changes().front().paths == alone.files, "of the sidecar");
+}
+
 static void assert_can_process(const view_state& s, const bool photos_only, const bool can_save_pixels,
                                const bool can_save_metadata, const bool local_file, const bool local_file_or_folder,
                                const std::string_view message)
@@ -3082,10 +3435,17 @@ static void should_rename()
 	platform::copy_file(src_path, save_path_1, false, false);
 
 	const auto test_item = load_item(index, save_path_1, false);
+	// docs/faces.md#62-marks: the marks the user put on its faces go with it.
+	const std::array batch{faces::placement_batch{0, {}, {{save_path_1, rectd{0.1, 0.1, 0.2, 0.2}, 0}}}};
+	auto& book = index.faces().book();
+	book.place(batch, faces::face_action::hide, book.generation());
 
 	assert_equal(true, test_item->rename(index, save_path_2.file_name_without_extension()).success(), "can rename");
 	assert_equal(save_path_2.name(), test_item->name(), "renamed");
 	assert_equal(true, platform::exists(save_path_2), "renamed exists");
+	assert_equal(true,
+	             index.faces().book().marks(save_path_1).empty() && index.faces().book().marks(save_path_2).size() == 1,
+	             "its face marks go with it");
 }
 
 static void should_not_overwrite_during_rename()
@@ -3460,6 +3820,79 @@ static void should_round_trip_the_environment_mask()
 
 // A view_state opened over the fixture collection, with no window. Every test below drives the same
 // entry points the commands do, so what they pin is the behavior a user sees rather than a helper.
+static void should_retest_the_sidebar_globe_button_when_pointed_at()
+{
+	struct record_explore final : null_state_strategy
+	{
+		int opened = 0;
+		void invoke(const commands id) override
+		{
+			if (id == commands::explore) ++opened;
+		}
+	} ss;
+	null_async_strategy as;
+	index_state index(as, as.locations);
+	view_state state(ss, as, index, make_test_player());
+	const auto host = std::make_shared<sidebar_host>(state);
+	const core::scope_exit reset_controller([&host] { host->_active_controller.reset(); });
+	host->_elements = {host->_map};
+	ui::test::fake_measure_context mc({8, 16});
+	host->layout_embedded(mc, recti(0, 0, 320, 600));
+	const auto& globe = *host->_map;
+	const auto button = globe.expand_bounds({});
+	const auto on_globe = globe.bounds.center();
+	const auto on_button = button.center();
+
+	ui::test::fake_draw_context rest;
+	globe.render(rest, {});
+	assert_equal(true, rest.ellipses.empty(), "the globe button has no background at rest");
+	assert_equal(true,
+	             std::ranges::any_of(rest.texts, [](const auto& t)
+	{ return t.font == render::font_face::icons && t.text == icon_to_utf8(icon_index::world); }),
+	             "the globe button draws the world icon");
+
+	host->on_mouse_move(on_globe, false);
+	host->on_mouse_move(on_button, false);
+	assert_equal(true, host->_active_controller && host->_active_controller->bounds() == button,
+	             "moving directly from the globe picks up the button");
+	ui::test::fake_draw_context hovered;
+	globe.render(hovered, {});
+	assert_equal(true, std::ranges::any_of(hovered.ellipses, [button](const auto& e) { return e.bounds == button; }),
+	             "the globe button lights while the pointer is over it");
+	host->on_mouse_left_button_down(on_button, {});
+	host->on_mouse_left_button_up(on_button, {});
+	assert_equal(1, ss.opened, "the globe button opens Explore");
+	host->on_mouse_move(on_button, false);
+	host->on_mouse_left_button_down(on_button, {});
+	host->on_mouse_move(on_globe, true);
+	ui::test::fake_draw_context outside;
+	globe.render(outside, {});
+	assert_equal(true, outside.ellipses.empty(), "dragging off clears the button highlight");
+	host->on_mouse_left_button_up(on_globe, {});
+	assert_equal(1, ss.opened, "releasing off the globe button does not open Explore");
+}
+
+static void should_show_the_sidebar_faces_button_before_previews()
+{
+	browsing_fixture fixture;
+	const auto host = std::make_shared<sidebar_host>(fixture.state);
+	ui::test::fake_measure_context mc({8, 16});
+	const auto check_button = [&]
+	{
+		host->layout_embedded(mc, recti(0, 0, 320, 800));
+		assert_equal(true, std::ranges::any_of(host->_elements, [&](const auto& e) { return e == host->_face_row; }),
+		             "the Faces row belongs to the sidebar before previews arrive");
+		const auto parts = host->_face_row->keyboard_parts();
+		assert_equal(1_z, parts.size(), "the empty row has just one button");
+		assert_equal(false, parts.front().is_empty(), "the Faces button has a usable target");
+	};
+
+	check_button();
+	fixture.state.item_index.faces().configure(true, true, false);
+	host->faces_changed();
+	check_button();
+}
+
 static void should_pan_year_columns_in_the_sidebar_calendar()
 {
 	browsing_fixture fixture;
@@ -3681,6 +4114,57 @@ namespace
 	};
 }
 
+static void should_hint_the_shortcut_for_the_action_under_the_pointer()
+{
+	const auto app = std::make_shared<app_frame>();
+	app->initialise_commands();
+	app->_state.view_mode(view_type::items);
+	const auto hint_for = [](const commands id, const app_frame& app)
+	{
+		return std::format("{} {}", tt.keyboard_accelerator_press, app.find_command(id)->keyboard_accelerator_text);
+	};
+	view_hover_element hover;
+	const auto last_hint = [&hover]
+	{
+		std::string text;
+		hover.elements->visit_children([&text](const view_element_ptr& child)
+		{
+			const auto hint = std::dynamic_pointer_cast<action_element>(child);
+			text = hint ? hint->text() : std::string{};
+		});
+		return text;
+	};
+	sidebar_map_element globe(app->_state, {});
+	globe.bounds = {0, 0, 200, 200};
+	hover.clear();
+	globe.tooltip(hover, globe.expand_bounds({}).center(), {});
+	assert_equal(hint_for(commands::explore, *app), last_hint(), "the globe's Expand ends with the Explore shortcut");
+	hover.clear();
+	globe.tooltip(hover, globe.bounds.center(), {});
+	assert_equal(std::string{}, last_hint(), "the globe away from Expand does not advertise Explore");
+
+	sidebar_face_row row(app->_state);
+	row.bounds = {0, 0, 240, 40};
+	hover.clear();
+	row.tooltip(hover, {220, 20}, {});
+	assert_equal(hint_for(commands::faces, *app), last_hint(), "the Faces button shows the same key as the toolbar");
+	hover.clear();
+	row.tooltip(hover, {110, 20}, {});
+	assert_equal(true, hover.is_empty(), "the gap between faces and their button does not act");
+
+	const auto exit_hint = [&]
+	{
+		hover.clear();
+		app->tooltip(hover, commands::exit);
+		return last_hint();
+	};
+	assert_equal(std::format("{} {}", tt.keyboard_accelerator_press,
+	                         platform::format_keyboard_accelerator({close_view_shortcut()})),
+	             exit_hint(), "in normal Items the close shortcut exits the application");
+	app->_state.is_full_screen = true;
+	assert_equal(std::string{}, exit_hint(), "in fullscreen the same key is not Exit");
+}
+
 static void should_place_sidebar_and_bar_bubbles_in_screen_coordinates()
 {
 	struct child_frame final : ui::null_frame
@@ -3815,7 +4299,6 @@ static void should_wait_for_a_still_pointer_before_showing_bubbles()
 	app->_app_logo_hover = true;
 	app->update_tooltip();
 	assert_equal(false, bubble->shown, "a new hover does not show a bubble immediately");
-	app->_hover.active_delay = 50;
 	render::animations_enabled = false;
 	const auto sample = [&](const uint64_t now, const pointi position, const bool visible, const double scale = 1.0)
 	{
@@ -3898,6 +4381,91 @@ static void should_wait_for_a_still_pointer_before_showing_bubbles()
 	app->idle();
 	assert_equal(true, app->_tooltip_dwell.origin == frame->client_to_screen(frame->pointer),
 	             "the real idle path detects movement outside the scaled tolerance");
+}
+
+static void should_follow_pointer_with_fast_hover_bubbles()
+{
+	struct preview_controller final : view_controller
+	{
+		recti anchor{10, 10, 30, 30};
+		uint32_t delay = 0;
+
+		explicit preview_controller(const view_host_ptr& host) : view_controller(host, {}) {}
+
+		void popup_from_location(view_hover_element& hover) override
+		{
+			hover.elements->add(std::make_shared<text_element>("Preview"));
+			hover.active_bounds = hover.window_bounds = anchor;
+			hover.active_delay = delay;
+		}
+	};
+
+	const auto help = std::exchange(setting.show_help_tooltips, true);
+	const core::scope_exit restore([help] { setting.show_help_tooltips = help; });
+	const auto app = std::make_shared<app_frame>();
+	const auto bubble = std::make_shared<tooltip_test_bubble>();
+	app->_bubble = bubble;
+	const auto preview = std::make_shared<preview_controller>(app->_view_frame);
+	const core::scope_exit clear_controller([&] { app->_view_frame->_active_controller.reset(); });
+	const auto sample = [&](const uint64_t now, const bool visible)
+	{
+		app->update_tooltip_visibility(now, preview->anchor.center(), 1.0);
+		assert_equal(visible, bubble->shown, std::format("bubble visibility at {} ms", now));
+		if (visible) assert_equal(true, preview->anchor == bubble->anchor, "the bubble follows the current target");
+	};
+
+	app->_view_frame->_active_controller = preview;
+	app->update_tooltip();
+	sample(0, true);
+	preview->anchor = preview->anchor.offset(0, 40);
+	app->update_tooltip();
+	sample(1, true);
+
+	preview->delay = bubble_delay::sidebar_entry;
+	app->update_tooltip();
+	sample(100, false);
+	preview->anchor = preview->anchor.offset(0, 40);
+	app->update_tooltip();
+	sample(249, false);
+	sample(250, true);
+	preview->anchor = preview->anchor.offset(0, 40);
+	app->update_tooltip();
+	assert_equal(true, bubble->shown, "the bubble stays visible between sidebar rows");
+	sample(251, true);
+
+	app->_view_frame->_active_controller.reset();
+	app->update_tooltip();
+	sample(252, false);
+	app->_view_frame->_active_controller = preview;
+	app->update_tooltip();
+	sample(300, false);
+	sample(450, true);
+
+	preview->delay = bubble_delay::scrollbar_entry;
+	app->update_tooltip();
+	sample(500, false);
+	sample(549, false);
+	sample(550, true);
+	preview->anchor = preview->anchor.offset(0, 40);
+	app->update_tooltip();
+	sample(551, true);
+
+	preview->delay = bubble_delay::face_preview;
+	app->update_tooltip();
+	sample(600, false);
+	preview->anchor = preview->anchor.offset(0, 40);
+	app->update_tooltip();
+	sample(799, false);
+	sample(998, false);
+	sample(999, true);
+
+	app->_view_frame->_active_controller.reset();
+	app->_app_logo->bounds = preview->anchor;
+	app->_app_logo_hover = true;
+	app->update_tooltip();
+	sample(1000, false);
+	sample(1499, false);
+	sample(1500, true);
 }
 
 // The plan clears a destination held by a file the same run renames away, so the run has to free it
@@ -4125,8 +4693,8 @@ static void should_not_run_a_rename_closed_while_releasing_handles()
 static void should_keep_completed_run_results_on_source_refresh()
 {
 	browsing_fixture fixture;
-	const std::vector<std::shared_ptr<list_view>> views{std::make_shared<rename_view>(fixture.state, nullptr),
-	                                                    std::make_shared<batch_tool_view>(fixture.state, nullptr)};
+	const std::vector<std::shared_ptr<review_list>> views{std::make_shared<rename_view>(fixture.state, nullptr),
+	                                                      std::make_shared<batch_tool_view>(fixture.state, nullptr)};
 
 	for (const auto& view : views)
 	{
@@ -4163,7 +4731,7 @@ static void should_say_while_a_review_is_still_being_worked_out()
 	convert->mode(batch_tool_mode::convert);
 	const auto rename = std::make_shared<rename_view>(state, nullptr);
 
-	const std::vector<std::shared_ptr<list_view>> views{convert, rename};
+	const std::vector<std::shared_ptr<review_list>> views{convert, rename};
 
 	for (const auto& view : views)
 	{
@@ -4186,11 +4754,11 @@ static void should_say_while_a_review_is_still_being_worked_out()
 // drop the counts whenever there was a reason, and Tags kept "Processing" when there was neither.
 static void should_conclude_a_run_with_what_it_did_and_why()
 {
-	assert_equal("2 renamed"s, list_view::conclude_run("2 renamed", {}, "review"), "the counts alone");
-	assert_equal("stale"s, list_view::conclude_run({}, "stale", "review"), "the reason alone");
-	assert_equal("2 renamed  stale"s, list_view::conclude_run("2 renamed", "stale", "review"),
+	assert_equal("2 renamed"s, review_list::conclude_run("2 renamed", {}, "review"), "the counts alone");
+	assert_equal("stale"s, review_list::conclude_run({}, "stale", "review"), "the reason alone");
+	assert_equal("2 renamed  stale"s, review_list::conclude_run("2 renamed", "stale", "review"),
 	             "a partial run states both");
-	assert_equal("review"s, list_view::conclude_run({}, {}, "review"), "nothing to report keeps the review");
+	assert_equal("review"s, review_list::conclude_run({}, {}, "review"), "nothing to report keeps the review");
 }
 
 // Convert under Replace wrote over a colliding destination whatever had happened to it since the
@@ -4285,6 +4853,54 @@ static void should_convert_to_avif_with_its_settings()
 	const auto converted = ff_scan_file(ff, destination);
 	assert_equal(true, converted.format == libfiles::image_format::heif, "as an AVIF");
 	assert_equal(true, converted.picture.chroma == libfiles::chroma_format::rgb, "lossless, as the settings ask");
+}
+
+// Edit metadata and Adjust Date write each row through one runner - the edits every row shares, or each row's own
+// date - and each run is one recent change.
+static void should_write_metadata_and_dates_in_a_batch()
+{
+	const auto root = test_temps.next_folder("batch-updates");
+	const auto photo = root.combine_file("photo.jpg");
+	platform::copy_file(core::file_path(test_files_folder(), "Test.jpg"), photo, false, false);
+
+	browsing_fixture f(root);
+	const auto item = f.find("photo.jpg");
+	assert_equal(true, item != nullptr, "the photo is listed");
+	if (!item) return;
+	f.state.select(f.view, item, false, false, false);
+	f.state.update_selection();
+
+	const auto saved_set_caption = setting.set_caption;
+	const auto saved_caption = setting.caption;
+	const core::scope_exit restore([saved_set_caption, saved_caption]
+	{
+		setting.set_caption = saved_set_caption;
+		setting.caption = saved_caption;
+	});
+	const std::string caption = "A walk by the sea";
+	setting.set_caption = true;
+	setting.caption = caption;
+
+	const auto metadata = std::make_shared<batch_tool_view>(f.state, nullptr);
+	metadata->mode(batch_tool_mode::metadata);
+	metadata->activate({100, 100});
+	assert_equal(true, metadata->can_run(), "a caption can be written");
+	metadata->run();
+	assert_equal(caption, extract_properties(photo)->description, "the caption is written");
+	assert_equal(std::string(tt.command_edit_metadata.sv()), f.state.session_changes().front().what, "as a change");
+
+	setting.set_caption = false;
+	const core::date_t moved_to(1985, 7, 14, 10, 30, 0);
+	const auto dates = std::make_shared<batch_tool_view>(f.state, nullptr);
+	dates->mode(batch_tool_mode::adjust_date);
+	dates->activate({100, 100});
+	dates->new_start_for_tests(moved_to);
+	dates->refresh();
+	assert_equal(true, dates->can_run(), "the date can be moved");
+	dates->run();
+	assert_equal(true, extract_properties(photo)->created() == moved_to, "the date is moved");
+	assert_equal(std::string(tt.command_adjust_date.sv()), f.state.session_changes().front().what, "as another change");
+	assert_equal(true, f.state.session_changes().front().paths == std::vector{photo}, "of the photo");
 }
 
 static void should_refuse_convert_destination_claimed_during_staged_publication()
@@ -4708,6 +5324,55 @@ static void should_land_on_what_followed_a_removed_set()
 	f.state.select_all(f.view);
 	f.state.update_selection();
 	assert_equal(true, f.state.next_unselected_item() == nullptr, "a whole listing leaving has no successor");
+}
+
+// Issue #265 - in a listing of copies, a copy whose others are all in the set leaves with them: with them gone it has
+// no copy left. Settling the cursor on it followed it to the top, where an item without copies sorts, before the
+// listing dropped it - so deleting one of a pair lost the user's place. The cursor settles on a copy that stays.
+static void should_land_on_a_copy_that_stays_after_deleting_copies()
+{
+	null_state_strategy ss;
+	null_async_strategy as;
+	location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+	const view_host_base_ptr view;
+	state.view_mode(view_type::items);
+	state.open(view, df::search_t::parse("@duplicates"), {});
+	assert_equal(true, state.search().is_duplicates(), "a listing of copies");
+
+	const auto copy = [](const std::string_view name, const uint32_t group, const uint32_t count)
+	{
+		df::index_file_item indexed;
+		indexed.name = core::cache(name);
+		indexed.ft = files::file_type_from_name(indexed.name);
+		const auto item = std::make_shared<df::item_element>(core::file_path(std::format("c:\\copies\\{}", name)),
+		                                                     indexed);
+		item->duplicates(df::duplicate_info{.group = group, .count = count});
+		return item;
+	};
+
+	// Two pairs either side of a set of three, as a listing of copies orders them: by set, then by name.
+	const auto a1 = copy("a1.jpg", 1, 2);
+	const auto a2 = copy("a2.jpg", 1, 2);
+	const auto b1 = copy("b1.jpg", 2, 3);
+	const auto b2 = copy("b2.jpg", 2, 3);
+	const auto b3 = copy("b3.jpg", 2, 3);
+	const auto c1 = copy("c1.jpg", 3, 2);
+	const auto c2 = copy("c2.jpg", 3, 2);
+	state.append_items(view, df::item_set({a1, a2, b1, b2, b3, c1, c2}), {}, true, true);
+
+	const auto after_deleting = [&](const df::item_element_ptr& deleted)
+	{
+		state.select(view, deleted, false, false, false);
+		state.update_selection();
+		return state.next_unselected_item();
+	};
+
+	assert_equal(true, after_deleting(a1) == b1, "one of a pair passes over its partner, which leaves with it");
+	assert_equal(true, after_deleting(a2) == b1, "whichever of the two goes");
+	assert_equal(true, after_deleting(b1) == b2, "one of three leaves two copies, and the next of them stays");
+	assert_equal(true, after_deleting(c1) == b3, "and at the end the cursor settles on the copy before that stays");
 }
 
 // What a command deletes or moves away leaves the listing where it stood and the cursor lands on the item after it,
@@ -5393,15 +6058,16 @@ static void should_open_a_view_s_menus_beside_what_opened_them()
 	assert_equal(true, surface->opened == expected, "and the sidebar's");
 }
 
-// Items starts its status bar with one toolbar: Options, Tools, Playback options and Open. All but Open
-// are icons alone. Open is labelled with what is selected and opens the same menu as the panel's Open,
-// which keeps its own name.
+// Items starts its status bar with one toolbar: Options, Tools, Playback options, Recent changes and Open.
+// All but Open are icons alone. Open is labelled with what is selected and opens the same menu as the
+// panel's Open, which keeps its own name.
 static void should_start_the_items_status_bar_with_one_toolbar()
 {
 	const auto app = std::make_shared<app_frame>();
 	app->initialise_commands();
 
-	for (const auto id : {commands::options, commands::menu_tools, commands::playback_menu})
+	for (const auto id :
+	     {commands::options, commands::menu_tools, commands::playback_menu, commands::menu_recent_changes})
 	{
 		const auto command = app->find_command(id);
 		assert_equal(true, command != nullptr && command->icon != icon_index::none, "an icon");
@@ -5410,6 +6076,7 @@ static void should_start_the_items_status_bar_with_one_toolbar()
 
 	assert_equal(true, static_cast<bool>(app->find_command(commands::menu_tools)->menu), "Tools drops down");
 	assert_equal(true, static_cast<bool>(app->find_command(commands::playback_menu)->menu), "so does Playback");
+	assert_equal(true, static_cast<bool>(app->find_command(commands::menu_recent_changes)->menu), "and Recent changes");
 
 	const auto open = app->find_command(commands::menu_open);
 	const auto open_status = app->find_command(commands::menu_open_status);
@@ -5418,6 +6085,115 @@ static void should_start_the_items_status_bar_with_one_toolbar()
 	             "and opens the Open menu");
 	assert_equal(true, open_status->text_can_change, "its label follows the selection");
 	assert_equal(tt.command_open.sv(), open->toolbar_text, "while the panel's Open keeps its name");
+}
+
+// docs/faces.md#92-faces: the status bar relabels both review actions while Move to group still opens a chooser.
+static void should_relabel_the_faces_commands_in_the_status_bar()
+{
+	const auto app = std::make_shared<app_frame>();
+	app->initialise_commands();
+	const auto name = app->find_command(commands::face_name);
+	const auto confirm = app->find_command(commands::face_confirm);
+	const auto reject = app->find_command(commands::face_reject);
+	const auto status = ui::make_toolbar({}, {name, confirm, reject});
+
+	assert_equal(tt.face_search.sv(), app->find_command(commands::face_search)->toolbar_text,
+	             "Face search is the button for comparing faces");
+	assert_equal(tt.command_face_person_search.sv(), app->find_command(commands::face_person_search)->toolbar_text,
+	             "Person search is a distinct command");
+	app->update_toolbar_text(commands::face_confirm, str_format(tt.faces_confirm_person_fmt, "Zac Walker"));
+	app->update_toolbar_text(commands::face_reject, str_format(tt.faces_not_person_fmt, "Zac Walker"));
+	status->update_button_state(false, false);
+	const auto shown = status->buttons();
+	assert_equal(3_z, shown.size(), "all three buttons");
+	assert_equal(tt.faces_name_faces.sv(), shown[0].text, "Name acts on the selected faces");
+	assert_equal("Confirm Zac Walker"sv, shown[1].text, "confirm names the person");
+	assert_equal("Not Zac Walker"sv, shown[2].text, "reject names the person");
+}
+
+static void should_show_one_line_of_faces_status_text()
+{
+	class status_draw_context final : public ui::test::fake_draw_context
+	{
+	public:
+		render::text_style style = render::text_style::none;
+		void draw_text(const std::string_view text, const recti bounds, const render::font_face font,
+		               const render::text_style text_style, const core::color foreground,
+		               const core::color background) override
+		{
+			style = text_style;
+			fake_draw_context::draw_text(text, bounds, font, text_style, foreground, background);
+		}
+	};
+
+	null_state_strategy ss;
+	deferred_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+	const auto app = std::make_shared<app_frame>();
+	app->initialise_commands();
+	app->create_toolbars();
+	app->_view_faces = std::make_shared<faces_view>(state, nullptr);
+	app->_view = app->_view_faces;
+	app->_view_faces->model_changed();
+	ui::test::fake_measure_context mc;
+	mc.scale_metrics(1.0);
+	const auto layout_bar = [&](const int width)
+	{
+		app->_extent = {width, 800};
+		const auto height = app->status_bar_height(mc, width);
+		std::vector<ui::control_ptr> shown;
+		app->layout_status_bar(mc, {width, height}, shown);
+		assert_equal(true, shown.size() > 2 && shown[0] == app->_face_filter_edit && shown[1] == app->_face_size,
+		             "the filter and size slider lead, even when the action buttons overflow");
+		assert_equal(true, shown[0]->bounds.right < shown[1]->bounds.left,
+		             "the size slider sits immediately to the right of the filter");
+		assert_equal(true, std::ranges::find(shown, app->_filter_edit) == shown.end(),
+		             "the Items filter is not used in Faces");
+	};
+
+	layout_bar(520);
+	status_draw_context dc;
+	app->draw_status_bar(dc);
+	assert_equal(true, dc.style == render::text_style::single_line, "one line of face status");
+	assert_equal(true, dc.texts.size() == 1 && dc.texts.front().text == app->_view->status(),
+	             "the whole status is passed to the renderer");
+	const auto text = app->_status_text_bounds;
+	assert_equal(true, text.top > 0 && text.width() > 400, "a narrow window gives status a row below the commands");
+	assert_equal(mc.text_line_height(render::font_face::dialog) + mc.padding2, text.height(), "no unused second line");
+
+	layout_bar(2400);
+	assert_equal(0, app->_status_text_bounds.top, "at a wide width the status stays beside the commands");
+
+	const auto store = std::make_shared<faces::face_store>();
+	const auto photo = core::file_path(core::folder_path("C:\\pictures"), "portrait.jpg");
+	faces::face_record record;
+	record.model = faces::model_id();
+	record.faces.emplace_back().box = {0.1, 0.1, 0.2, 0.2};
+	store->add(photo, record);
+	store->publish();
+	auto model = std::make_shared<faces_view_model>();
+	model->store = store;
+	auto overview = std::make_shared<faces::overview>();
+	overview->store = store;
+	overview->unknown = {0};
+	model->overview = std::move(overview);
+	app->_view_faces->model_arrived_for_tests(model);
+	app->_view_faces->move_cells_to_name({0}, "Ann");
+	assert_equal(true, app->_view_faces->can_undo_placement(), "a placement receipt with Undo");
+	for (const int width : {520, 2400})
+	{
+		layout_bar(width);
+		const auto row = app->_status_text_bounds;
+		const auto receipt = app->_receipt_prefix_bounds;
+		assert_equal(true,
+		             !receipt.is_empty() && std::abs((receipt.top - row.top) - (row.bottom - receipt.bottom)) <= 1,
+		             "the receipt text is vertically centered in its status row");
+		assert_equal(true, app->_receipt_link && receipt.center().y == app->_receipt_link->bounds.center().y,
+		             "the destination action shares the receipt's center line");
+	}
+	app->_view_faces->deactivate();
 }
 
 static void should_invoke_link_commands_and_selection_shortcuts()
@@ -5481,6 +6257,62 @@ static void should_invoke_link_commands_and_selection_shortcuts()
 	{
 		assert_equal(true, item->is_selected(), "Ctrl+A selects every visible item");
 	}
+}
+
+// docs/design.md#keyboard: Items takes the keys every list does. The arrows select what they reach, Ctrl moves the
+// focus alone, Ctrl+Space puts the focused item in the selection or takes it out, and Ctrl with Shift adds the run
+// from the anchor - while the selection stays what the keys leave it.
+static void should_move_through_items_by_the_common_keys()
+{
+	const auto app = std::make_shared<app_frame>();
+	app->initialise_commands();
+
+	df::item_set items;
+	for (const auto name : {"keys-1.jpg"sv, "keys-2.jpg"sv, "keys-3.jpg"sv, "keys-4.jpg"sv})
+	{
+		df::index_file_item indexed;
+		indexed.name = core::cache(name);
+		indexed.ft = files::file_type_from_name(name);
+		const auto item = std::make_shared<df::item_element>(core::file_path(core::folder_path("c:\\keys"), name),
+		                                                     indexed);
+		item->add_to(items);
+	}
+	app->_state.append_items(app->_view_frame, items, {}, true, true);
+	app->_state.update_item_groups();
+	app->_state.view_mode(view_type::items);
+	app->_view_has_focus = true;
+
+	std::vector<df::item_element_ptr> shown;
+	for (const auto& group : app->_state.groups())
+		for (const auto& i : group->items()) shown.push_back(i);
+	assert_equal(4_z, shown.size(), "four items listed");
+
+	const auto selected = [&shown]
+	{
+		std::string result;
+		for (size_t i = 0; i < shown.size(); ++i)
+			if (shown[i]->is_selected()) result += std::to_string(i);
+		return result;
+	};
+	platform::key_state control;
+	control.control = true;
+	platform::key_state control_shift = control;
+	control_shift.shift = true;
+
+	app->_state.select(app->_view_frame, shown[0], false, false, false);
+	assert_equal(true, app->key_down(platform::keys::RIGHT, {}), "Items takes the arrows");
+	assert_equal("1"s, selected(), "an arrow selects what it reaches");
+	app->key_down(platform::keys::RIGHT, control);
+	assert_equal("1"s, selected(), "Ctrl moves the focus alone");
+	assert_equal(true, app->_state.focus_item() == shown[2], "on to the next item");
+	app->key_down(platform::keys::SPACE, control);
+	assert_equal("12"s, selected(), "Ctrl+Space puts the focused item in the selection");
+	app->key_down(platform::keys::SPACE, control);
+	assert_equal("1"s, selected(), "and takes it out again");
+	app->key_down(platform::keys::RIGHT, control_shift);
+	assert_equal("123"s, selected(), "Ctrl with Shift adds the run from the anchor");
+	app->key_down(platform::keys::HOME, control);
+	assert_equal(true, selected() == "123" && app->_state.focus_item() == shown[0], "Ctrl+Home moves the focus alone");
 }
 
 static void should_route_focused_view_keyboard_commands()
@@ -5619,6 +6451,8 @@ static void should_not_claim_one_key_for_two_commands()
 
 	assert_equal(true, bound(commands::refresh, platform::keys::F5, 0), "F5 refreshes");
 	assert_equal(true, bound(commands::view_fullscreen, platform::keys::F11, 0), "F11 is fullscreen");
+	assert_equal(true, bound(commands::explore, platform::keys::F4, 0), "F4 opens Explore");
+	assert_equal(true, bound(commands::faces, platform::keys::F8, 0), "F8 opens Faces");
 	assert_equal(true, bound(commands::select_all, 'A', platform::keyboard_accelerator_t::control),
 	             "Ctrl+A selects all");
 	assert_equal(true, bound(commands::tool_delete, platform::keys::DEL, 0), "Delete deletes");
@@ -5649,15 +6483,18 @@ static void should_spell_keyboard_accelerators()
 }
 
 // Feature use records one bit per view, so a view added without a bit is never counted as opened
-// - which is how opening the Movie view went unrecorded.
+// - which is how opening the Movie view went unrecorded. Faces alone records none: face search counts nothing
+// it is used for (docs/faces.md#11-privacy-and-recovery).
 static void should_record_a_bit_for_every_view()
 {
 	assert_equal(0_z, static_cast<size_t>(features::view_bit(view_type::none)), "no view records nothing");
+	assert_equal(0_z, static_cast<size_t>(features::view_bit(view_type::faces)), "nor does Faces");
 
 	uint64_t seen = 0;
 
 	for (auto v = static_cast<int>(view_type::items); v <= static_cast<int>(view_type::options); ++v)
 	{
+		if (static_cast<view_type>(v) == view_type::faces) continue;
 		const auto bit = features::view_bit(static_cast<view_type>(v));
 		assert_equal(1, std::popcount(bit), std::format("view {} records one bit", v));
 		assert_equal(0_z, static_cast<size_t>(seen & bit), std::format("view {} has its own bit", v));
@@ -5748,15 +6585,15 @@ static void should_keep_the_items_controls_in_the_status_bar()
 	             "the totals stand directly beside the grouping");
 
 	// The bar starts under the sidebar with one toolbar: the Options cog, beside the overview of the
-	// collection Options opens on; Tools and Playback options; then Open, labelled with what is selected, as
-	// a file browser's status bar says it. Commands alone, so the frame builds them as a single toolbar.
+	// collection Options opens on; Tools, Playback options and Recent changes; then Open, labelled with what
+	// is selected, as a file browser's status bar says it. Commands alone, so the frame builds them as a single
+	// toolbar.
 	const std::vector<bar_entry> leading = {
-		commands::options,
-		commands::menu_tools,
-		commands::playback_menu,
+		commands::options,          commands::menu_tools, commands::playback_menu, commands::menu_recent_changes,
 		commands::menu_open_status,
 	};
-	assert_equal(true, declared.bottom_leading == leading, "the status bar starts with Options, Tools, Playback, Open");
+	assert_equal(true, declared.bottom_leading == leading,
+	             "the status bar starts with Options, Tools, Playback, Recent changes, Open");
 
 	for (const auto& entry : leading)
 	{
@@ -6729,6 +7566,42 @@ static void should_discard_a_superseded_completion()
 	assert_equal(1, second_delivered, "the newest pass is the one that lands");
 }
 
+static void should_predict_face_book_names_in_the_address_bar()
+{
+	null_state_strategy ss;
+	deferred_async_strategy as;
+	location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+	state.view_mode(view_type::items);
+	index.faces().configure(true, true, false);
+	index.faces().book().create("Robin Example");
+	index.faces().book().create("Wren");
+	const auto completes = make_search_auto_complete(state, [](const std::string&) {});
+	completes->initialise([](const ui::auto_complete_results&) {});
+
+	const auto offers = [&](const std::string& query, const std::string_view prediction)
+	{
+		ui::auto_complete_results results;
+		completes->search(query, [&results](const ui::auto_complete_results& r) { results = r; });
+		run_completion_worker(as);
+		as.drain_ui();
+		return std::ranges::any_of(results, [prediction](const auto& p) { return p->edit_text() == prediction; });
+	};
+
+	for (const std::string query : {"rob", "Robin Example", "person:rob", "exam", "person:exam"})
+	{
+		assert_equal(true, offers(query, "person:\"Robin Example\""),
+		             std::format("'{}' offers a face-book name before it has been written into files", query));
+	}
+
+	// docs/faces.md#8-searching: a name chosen is the whole name, quoted even where it is one word.
+	assert_equal(true, offers("wre", "person:\"Wren\""), "a one-word name is offered whole"sv);
+	assert_equal(true, offers("rob!", "person:\"Robin Example\"!"), "a completion preserves confirmed-only"sv);
+	assert_equal(true, offers("@photo person:\"Robin Ex", "@photo person:\"Robin Example\""),
+	             "completing a quoted name keeps the preceding filters"sv);
+}
+
 // design.md: each prediction says how many items it finds, and a suggestion that finds more ranks above
 // one of its kind that finds fewer. The number shown is the number running the search lists, and one
 // drawn from the collection's own words, tags and places that would find nothing is not offered.
@@ -6784,6 +7657,19 @@ static void should_count_address_completions(shared_test_context& stc)
 
 	assert_equal(true, counted > 1, "completions are counted");
 
+	run("#key1 @");
+	const auto combined = std::ranges::find_if(results, [](const auto& row)
+	{ return core::icmp(row->edit_text(), "#key1 @photo") == 0; });
+	assert_equal(true, combined != results.end(), "offers a kind from the matching items");
+	if (combined != results.end())
+		assert_equal(found_by("#key1 @photo"), (*combined)->count.value_or(0), "count is for both terms");
+
+	run("2012-09-14 cam");
+	assert_equal(true,
+	             std::ranges::any_of(results, [](const auto& row)
+	{ return row->edit_text() == "2012-09-14 camera:\"Canon EOS 7D\""; }),
+	             "complete the camera carried by the pictures from that day, quoting its whole value");
+
 	run("#key");
 
 	std::vector<uint64_t> tag_counts;
@@ -6805,6 +7691,65 @@ static void should_count_address_completions(shared_test_context& stc)
 	{
 		assert_equal(false, r->drop_when_empty, std::format("'{}' would find nothing", r->edit_text()));
 	}
+}
+
+static void should_deliver_address_portraits_without_replacing_the_prediction()
+{
+	null_state_strategy ss;
+	deferred_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	view_state state(ss, as, index, make_test_player());
+	const auto temp = test_temps.next_folder("prediction-portrait");
+	const auto path = temp.combine_file("offline.jpg");
+	database db(index);
+	db.open(temp, "index");
+	as.db = &db;
+	index.save_thumbnail(path, files().load(test_files_folder().combine_file("Test.jpg"), false).i, {},
+	                     core::date_t(2020, 1, 1));
+	db.perform_writes();
+
+	auto& faces = index.faces();
+	faces.configure(true, true, false);
+	faces::face_record record;
+	record.stamp = core::date_t(2020, 1, 1);
+	record.model = faces::model_id();
+	record.extent = {128, 128};
+	record.faces.emplace_back().box = {0.2, 0.2, 0.4, 0.4};
+	const std::array batch{faces::placement_batch{0, "Robin", {{path, record.faces.front().box, 0}}}};
+	faces.book().place(batch, faces::face_action::assign, faces.book().generation());
+	faces.load(path, faces::pack_record(record));
+	faces.loaded();
+	as.run_next(async_queue::faces_overview);
+	as.drain_ui();
+
+	int repaints = 0;
+	const auto completes = make_search_auto_complete(state, [](std::string) {}, [&] { ++repaints; });
+	const auto run = [&]
+	{
+		std::shared_ptr<text_match> row;
+		completes->search("rob", [&](const ui::auto_complete_results& results)
+		{
+			for (const auto& r : results)
+				if (r->edit_text() == "person:\"Robin\"") row = std::dynamic_pointer_cast<text_match>(r);
+		});
+		run_completion_worker(as);
+		as.drain_ui();
+		return row;
+	};
+
+	const auto stale = run();
+	assert_equal(true, stale && !stale->portrait, "the name is usable before its portrait is decoded");
+	completes->clear();
+	as.run_next(async_queue::thumbnail_decode);
+	as.drain_ui();
+	assert_equal(0, repaints, "closing the popup discards the queued portrait");
+
+	const auto current = run();
+	assert_equal(true, as.run_next(async_queue::thumbnail_decode), "a separate worker decodes the cached thumbnail");
+	as.drain_ui();
+	assert_equal(true, current && is_valid(current->portrait), "the same row receives its face without a source file");
+	assert_equal(1, repaints, "the popup repaints without replacing its results");
 }
 
 static void should_gate_application_alpha_effects()
@@ -6947,6 +7892,32 @@ static void should_clear_destination_completions_by_emptying_the_query()
 
 	assert_equal(0, stale_delivered, "clearing the box supersedes the in-flight completion");
 	assert_equal(1, recents_delivered, "the empty-query result remains current");
+}
+
+// A folder double-clicked in Copy or Move to folder is the destination chosen, as one typed is when OK is pressed.
+static void should_choose_a_destination_folder_with_a_double_click()
+{
+	null_state_strategy ss;
+	deferred_async_strategy as;
+	location_cache locations;
+	index_state index(as, locations);
+	view_state s(ss, as, index, make_test_player());
+	s.recent_folders.add("C:\\Recent");
+
+	const auto lifetime = std::make_shared<int>(1);
+	const auto dialog = std::make_shared<answered_test_frame>();
+	const auto completes = make_destination_folder_auto_complete_for_test(s, lifetime,
+	                                                                      std::make_shared<core::folder_counts>(), {},
+	                                                                      dialog);
+	ui::auto_complete_results recents;
+	completes->search({}, [&recents](const ui::auto_complete_results& r) { recents = r; });
+	assert_equal(1_z, recents.size(), "the recent destination is offered");
+	if (recents.empty()) return;
+
+	completes->selected(recents.front(), ui::complete_strategy_t::select_type::click);
+	assert_equal(false, dialog->cancelled.has_value(), "a click only chooses it");
+	completes->selected(recents.front(), ui::complete_strategy_t::select_type::double_click);
+	assert_equal(true, dialog->cancelled == false, "a double-click answers the dialog as OK does");
 }
 
 static void should_rank_destination_completions_after_combining_sources()
@@ -7513,6 +8484,53 @@ static void should_render_a_clips_sound_file()
 	assert_equal(false, movie_sound_is_quiet(pcm), "carrying the sound file's tone while the photo shows");
 }
 
+// Each item of a timeline made a YouTube Short of its own, into one folder: named for what it plays, never over a
+// file already there or one the run made before it, and a text screen passed over, being a page between clips.
+static void should_render_each_movie_item_as_a_short()
+{
+	movie_clip clip;
+	clip.path = test_files_folder().combine_file("Small.jpg");
+	clip.is_photo = true;
+	clip.is_missing = false;
+	clip.is_probed = true;
+	clip.end = 0.2;
+	clip.extent = {64, 64};
+
+	const auto folder = test_temps.next_folder("shorts");
+	write_test_file(folder.combine_file("Small.mp4"), "a file already there");
+
+	const auto made = render_movie_shorts({make_movie_text("Between", 1), clip, clip}, folder,
+	                                      [](size_t, size_t, double) {}, test_token);
+
+	// With no encoder - the Linux build has none - the run stops at its first Short, naming the one it could not make.
+	if (made.last.reason == movie_render_error::no_encoder)
+	{
+		assert_equal(true, made.made.empty() && made.failed_name == "Small (2).mp4",
+		             "nothing is made, and the Short it stopped at is named after the file already there");
+		return;
+	}
+
+	assert_equal(true, made.last.ok && made.made.size() == 2, "each clip is made a Short of its own");
+	assert_equal(true,
+	             made.made.size() == 2 && made.made[0] == folder.combine_file("Small (2).mp4") &&
+	                 made.made[1] == folder.combine_file("Small (3).mp4"),
+	             "named for what it plays, after the file already there and the one before it");
+	assert_equal("a file already there"s, read_test_file(folder.combine_file("Small.mp4")), "which is left alone");
+
+	for (const auto& path : made.made)
+	{
+		av_format_decoder decoder;
+		assert_equal(true, decoder.open(path, media_intent::metadata), "a Short opens");
+		decoder.init_streams(-1, -1, false, true, false);
+		assert_equal(true, decoder.info().display_dimensions == movie_short_extent, "standing upright");
+	}
+
+	std::atomic_bool stop = true;
+	const auto stopped = render_movie_shorts({clip}, test_temps.next_folder("stopped"), [](size_t, size_t, double) {},
+	                                         core::cancel_token(stop));
+	assert_equal(true, stopped.last.cancelled && stopped.made.empty(), "a run asked to stop makes nothing more");
+}
+
 static void should_refuse_a_movie_output_claimed_during_render()
 {
 	movie_clip clip;
@@ -7745,6 +8763,9 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	          should_open_a_view_s_menus_beside_what_opened_them);
 	tests.add("Should start the items status bar with one toolbar"s,
 	          should_start_the_items_status_bar_with_one_toolbar);
+	tests.add("Should relabel the faces commands in the status bar"s,
+	          should_relabel_the_faces_commands_in_the_status_bar);
+	tests.add("Should show one line of Faces status text"s, should_show_one_line_of_faces_status_text);
 	tests.add("Should draw the chrome with the app's glyphs"s, should_draw_the_chrome_with_the_app_glyphs);
 	tests.add("Should embed the app's assets"s, should_embed_the_app_assets);
 	tests.add("Should draw the logo"s, should_draw_the_logo);
@@ -7762,10 +8783,12 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should refuse a Movie output claimed during render"s,
 	          should_refuse_a_movie_output_claimed_during_render);
 	tests.add("Should render a Movie clip's sound file"s, should_render_a_clips_sound_file);
+	tests.add("Should render each Movie item as a Short"s, should_render_each_movie_item_as_a_short);
 	tests.add("Should read a tutorial script"s, should_read_a_tutorial_script);
 	tests.add("Should read a script's pointer and keyboard steps"s, should_read_a_script_s_pointer_and_keyboard_steps);
 	tests.add("Should invoke link commands and selection shortcuts"s,
 	          should_invoke_link_commands_and_selection_shortcuts);
+	tests.add("Should move through Items by the common keys"s, should_move_through_items_by_the_common_keys);
 	tests.add("Should route focused view keyboard commands"s, should_route_focused_view_keyboard_commands);
 	tests.add("Should give a running Commodore 64 the keyboard"s, should_give_a_running_commodore_64_the_keyboard);
 	tests.add("Should honor no-indexing for collection updates"s, should_honor_no_indexing_for_collection_updates);
@@ -7782,8 +8805,6 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	          should_commit_linux_ini_file_settings_from_owned_stage);
 #endif
 	tests.add("Should store an order an older build can read"s, should_store_an_order_an_older_build_can_read);
-	tests.add("Should bound advanced search hover thumbnail retries"s,
-	          should_bound_advanced_search_hover_thumbnail_retries);
 	tests.add("Should Rename with substitutions"s, should_rename_with_substitutions);
 	tests.add("Should rename name token without extension"s, should_rename_name_token_without_extension);
 	tests.add("Should reject duplicate rename targets"s, should_reject_duplicate_rename_targets);
@@ -7838,6 +8859,7 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should not convert over a destination changed since review"s,
 	          should_not_convert_over_a_destination_changed_since_review);
 	tests.add("Should convert to AVIF with its settings"s, should_convert_to_avif_with_its_settings);
+	tests.add("Should write metadata and dates in a batch"s, should_write_metadata_and_dates_in_a_batch);
 	tests.add("Should refuse Convert destination claimed during staged publication"s,
 	          should_refuse_convert_destination_claimed_during_staged_publication);
 	tests.add("Should refuse Convert replacement changed during staged publication"s,
@@ -7877,6 +8899,8 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should revalidate import rows"s, should_revalidate_import_rows);
 	tests.add("Should revalidate import sidecars"s, should_revalidate_import_sidecars);
 	tests.add("Should import a shared sidecar once"s, should_import_a_shared_sidecar_once);
+	tests.add("Should take face marks with a picture an import moves"s,
+	          should_take_face_marks_with_a_picture_an_import_moves);
 	// Release review: shared companions follow every resolved destination and every unfinished source.
 	tests.add("Should preserve shared Import sidecars after Auto-rename"s,
 	          should_preserve_shared_import_sidecars_after_auto_rename);
@@ -7884,6 +8908,8 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	          should_keep_shared_import_sidecars_for_unfinished_sources);
 	tests.add("Should keep import bookkeeping when a folder fails"s,
 	          should_keep_import_bookkeeping_when_a_folder_fails);
+	tests.add("Should set imported file created to when it was taken"s,
+	          should_set_imported_file_created_to_when_it_was_taken);
 	tests.add("Should revalidate replaced import destinations"s, should_revalidate_replaced_import_destinations);
 #ifdef _WIN32
 	tests.add("Should restore replaced Import sidecars when primary write fails"s,
@@ -7898,6 +8924,8 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should prepare Import from the selection snapshot"s, should_prepare_import_from_the_selection_snapshot);
 	tests.add("Should offer every removable drive with media for Import"s,
 	          should_offer_every_removable_drive_with_media_for_import);
+	tests.add("Should stage a device's files to Import"s, should_stage_a_devices_files_to_import);
+	tests.add("Should clear only abandoned device staging"s, should_clear_only_abandoned_device_staging);
 	tests.add("Should reject missing sync folder"s, should_reject_missing_sync_folder);
 	tests.add("Should reject overlapping sync folders"s, should_reject_overlapping_sync_folders);
 	tests.add("Should reject ambiguous sync roots"s, should_reject_ambiguous_sync_roots);
@@ -7923,13 +8951,20 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should calculate history span from start year"s, should_calculate_history_span_from_start_year);
 	tests.add("Should choose a history range that survives wrong dates"s,
 	          should_choose_a_history_range_that_survives_wrong_dates);
+	tests.add("Should retest the sidebar globe button when pointed at"s,
+	          should_retest_the_sidebar_globe_button_when_pointed_at);
+	tests.add("Should show the sidebar Faces button before previews"s,
+	          should_show_the_sidebar_faces_button_before_previews);
 	tests.add("Should pan year columns in the sidebar calendar"s, should_pan_year_columns_in_the_sidebar_calendar);
 	tests.add("Should fill the sidebar calendar with years"s, should_fill_the_sidebar_calendar_with_years);
 	tests.add("Should open a calendar month from the keyboard"s, should_open_a_calendar_month_from_the_keyboard);
 	tests.add("Should place sidebar and bar bubbles in screen coordinates"s,
 	          should_place_sidebar_and_bar_bubbles_in_screen_coordinates);
+	tests.add("Should hint the shortcut for the action under the pointer"s,
+	          should_hint_the_shortcut_for_the_action_under_the_pointer);
 	tests.add("Should wait for a still pointer before showing bubbles"s,
 	          should_wait_for_a_still_pointer_before_showing_bubbles);
+	tests.add("Should follow the pointer with fast hover bubbles"s, should_follow_pointer_with_fast_hover_bubbles);
 
 	tests.add("Should persist media filter"s, should_persist_media_filter);
 
@@ -7987,6 +9022,8 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should restore history selection"s, should_restore_history_selection);
 	tests.add("Should commit history navigation only after open is accepted"s,
 	          should_commit_history_navigation_only_after_open_is_accepted);
+	tests.add("Should step back into the view a search was opened from"s,
+	          should_step_back_into_the_view_a_search_was_opened_from);
 	tests.add("Should open an area found later without asking the view to give way"s,
 	          should_open_an_area_found_later_without_asking_the_view_to_give_way);
 	// Issue #267 - an external file open reuses normal navigation without hiding its target.
@@ -7999,6 +9036,8 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should select correctly"s, should_select_items);
 	tests.add("Should Enable based on selection"s, should_enable_based_on_selection);
 	tests.add("Should toggle rating"s, should_toggle_rating);
+	tests.add("Should keep the session changes in sight"s, should_keep_the_session_changes_in_sight);
+	tests.add("Should count copied items without their sidecars"s, should_count_copied_items_without_their_sidecars);
 	tests.add("Should leave the selection alone over empty space"s, should_leave_the_selection_alone_over_empty_space);
 	tests.add("Should target only visible items when filtered"s, should_target_only_visible_items_when_filtered);
 	tests.add("Should keep shuffle exclusive with sorting"s, should_keep_shuffle_exclusive_with_sorting);
@@ -8033,7 +9072,10 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should rank address completions"s, should_rank_address_completions);
 	tests.add("Should offer recent searches for an empty address"s, should_offer_recent_searches_for_an_empty_address);
 	tests.add("Should discard a superseded completion"s, should_discard_a_superseded_completion);
+	tests.add("Should predict face book names in the address bar"s, should_predict_face_book_names_in_the_address_bar);
 	tests.add("Should count address completions"s, should_count_address_completions);
+	tests.add("Should deliver address portraits without replacing the prediction"s,
+	          should_deliver_address_portraits_without_replacing_the_prediction);
 	// APP-007 - application-local fades must honor the shared alpha-animation gate.
 	tests.add("Should gate application alpha effects"s, should_gate_application_alpha_effects);
 	tests.add("Should snap app logo hover when animations are disabled"s,
@@ -8044,6 +9086,8 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	// APP-005 - destination-folder completion work is asynchronous and latest-wins.
 	tests.add("Should clear destination completions by emptying the query"s,
 	          should_clear_destination_completions_by_emptying_the_query);
+	tests.add("Should choose a destination folder with a double-click"s,
+	          should_choose_a_destination_folder_with_a_double_click);
 	tests.add("Should rank destination completions after combining sources"s,
 	          should_rank_destination_completions_after_combining_sources);
 	tests.add("Should skip stale destination completion work"s, should_skip_stale_destination_completion_work);
@@ -8064,6 +9108,8 @@ void register_app_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should step over items that cannot play"s, should_step_over_items_that_cannot_play);
 	// Issue #250 - the cursor reset instead of landing after the set that left
 	tests.add("Should land on what followed a removed set"s, should_land_on_what_followed_a_removed_set);
+	tests.add("Issue #265: Should land on a copy that stays after deleting copies"s,
+	          should_land_on_a_copy_that_stays_after_deleting_copies);
 	// Issue #265 - deleting a copy jumped the listing to the top, and could leave the deleted file listed until F5
 	tests.add("Should remove deleted items in place"s, should_remove_deleted_items_in_place);
 	tests.add("Should keep what a superseded open asked for"s, should_keep_what_a_superseded_open_asked_for);

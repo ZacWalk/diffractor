@@ -51,6 +51,8 @@ struct movie_project_report
 	size_t text_screens = 0;
 	size_t captions = 0;
 	size_t stabilize = 0;
+	// A YouTube Short: upright, and three minutes at most.
+	bool youtube_short = false;
 	double seconds = 0.0;
 	sizei size;
 	int frame_rate = 0;

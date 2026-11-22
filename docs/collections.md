@@ -1,37 +1,33 @@
 # Diffractor Collections
 
-This document owns the collection: what it is, how membership is decided and changed, what membership earns, and where the collection's edge is reported to the user. It states durable behavior, not class structure. Cross-cutting interaction rules live in [design.md](design.md); indexing architecture, threading, and data flow live in [implementation.md](implementation.md).
+This document owns the collection: what it is, how membership is decided and changed, what membership earns, and where its edge is reported. Interaction rules live in [design.md](design.md); indexing architecture, threading and data flow in [implementation.md](implementation.md).
 
-Both [primary design drivers](design.md#primary-design-drivers) apply without exception. The collection is the feature most able to violate them: it is the largest thing the application knows, it is built by walking storage the user controls, and it is the source of nearly every aggregate the user navigates by.
+Both [primary design drivers](design.md#primary-design-drivers) apply without exception: the collection is the largest thing the application knows, it is built by walking storage the user controls, and nearly every aggregate the user navigates by comes from it.
 
 ## 1. What a collection is
 
-**A collection is a declaration, not an accumulation.** It is a short list of included root folders plus a list of exclusions. It is not a record of per-file decisions, and nothing a user does while browsing quietly adds to it.
+**A collection is a declaration, not an accumulation**: a short list of included root folders plus a list of exclusions. It records no per-file decisions, and nothing a user does while browsing adds to it.
 
 ## 2. What follows from it
 
-1. **Membership belongs to the folder, not to the file.** A file is in the collection because it sits under an included root that is not excluded. Moving a file into such a folder joins the collection; moving it out leaves. There is no "add to library" step and no per-file membership state that could disagree with where the file actually is. The filesystem remains the user's organizing tool.
-
-   Import is not an exception. Import is a file operation — it copies or moves files into a folder structure built from metadata — and never a membership operation. Its results join the collection when, and only when, the destination folder is already a member; importing to a folder outside the collection adds nothing to it.
-2. **The declaration is small enough to read and reverse.** A user can see the whole collection definition at once, understand why any folder is or is not in it, and change it by editing a line. A definition that could only be inspected by querying it is not a mental model.
-3. **Everything derived is rebuildable.** The index is a cache over files that remain the authority. Deleting it costs time, not information. This is what makes membership changes safe: they change what is *known*, never what *exists*.
+1. **Membership belongs to the folder, not to the file.** A file is in the collection because it sits under an included root that is not excluded; moving it in or out joins or leaves. There is no "add to library" step, and the filesystem stays the user's organizing tool. Import is a file operation, not a membership one: its results join only when their destination folder is already a member.
+2. **The declaration is small enough to read and reverse.** A user sees the whole definition at once, can tell why any folder is or is not in it, and changes it by editing a line.
+3. **Everything derived is rebuildable.** The index is a cache over files that remain the authority; deleting it costs time, not information. A membership change therefore changes what is *known*, never what *exists*.
 
 ## 3. Deciding membership
 
 ### 3.1 Includes
 
-Roots come from two places, and they combine into one set:
+Roots come from two places and combine into one set:
 
-- **Well-known folders** offered as switches: Pictures, Videos, Music, Dropbox photos, and the OneDrive Pictures, Video, and Music folders. A switch for a folder the system does not have contributes nothing rather than failing.
-- **Other folders**, one entry per line, for anything else.
+- **Well-known folders** offered as switches: Pictures, Videos, Music, Dropbox photos, and OneDrive's Pictures, Video and Music. A switch for a folder the system does not have contributes nothing.
+- **Other folders**, one per line.
 
-An include is recursive: naming a folder names its subtree. Naming both a folder and its descendant is not an error and does not double-count.
-
-A "More folders" line that is not an existing path is not discarded, because the most common reason a path does not exist is that the storage is not attached right now. Such a line is resolved as a **device or volume label**, or as a **server name**. Labels matter for exactly the case where paths are worst: removable and network storage whose drive letter changes between sessions. A collection defined by label survives re-plugging; one defined by `E:\` does not.
+An include is recursive; naming a folder and its descendant does not double-count. A line that is not an existing path is read as a **device or volume label**, or a **server name**, because the usual reason a path is missing is that its storage is detached: a collection defined by label survives re-plugging a removable or network drive whose letter changes, and one defined by `E:\` does not.
 
 ### 3.2 Excludes
 
-An entry prefixed with `-` excludes rather than includes, in three forms:
+A line prefixed with `-` excludes, in three forms:
 
 | Form | Example | Meaning |
 |---|---|---|
@@ -39,142 +35,119 @@ An entry prefixed with `-` excludes rather than includes, in three forms:
 | Folder name | `-secret` | Any folder with that name, anywhere in the collection. |
 | Wildcard | `-proxy*` | Any folder whose name matches, anywhere in the collection. |
 
-Excludes are evaluated during the walk, so an excluded folder is never entered and its subtree never joins. Name and wildcard excludes are how a user removes a recurring by-product folder — caches, proxies, hidden dot-folders — without listing every instance.
-
-A full-path exclude is recorded **whether or not the path currently exists**. An exclude that silently disappeared while a drive was detached would let the next indexing pass pull in exactly the folder the user removed, so an exclude is a standing instruction rather than an observation.
+Excludes apply during the walk, so an excluded folder is never entered. Name and wildcard excludes remove recurring by-product folders - caches, proxies, dot-folders - without listing each one. A full-path exclude is recorded **whether or not the path exists**: one that vanished while its drive was detached would let the next walk pull in exactly the folder the user removed.
 
 ### 3.3 The resulting rule
 
-A folder is in the collection when it is an included root, or is reached from one by recursive walk without crossing an exclude. A file is in the collection when its folder is. Nothing else confers membership, and membership is never inferred from having viewed, searched, edited, or imported something.
-
-The walk is bounded. A collection definition that would enumerate an unreasonable number of folders stops rather than growing without limit, because an unbounded walk trades the first driver for nothing the user asked for.
+A folder is in the collection when it is an included root, or is reached from one without crossing an exclude; a file is in when its folder is. Nothing else confers membership - not viewing, searching, editing or importing. The walk is bounded: a definition that would enumerate an unreasonable number of folders stops rather than growing without limit.
 
 ### 3.4 Folders that are known but not members
 
-Browsing an external folder makes Diffractor aware of it, and that awareness is kept so navigation and completion stay useful. **Awareness is not membership.** A folder that has merely been visited contributes nothing to collection aggregates, is never a source of copies for redundancy reporting, and does not make its files report as being in the collection. The only way into the collection is the declaration; if browsing joined, the collection would drift into "everywhere I have ever looked", which answers no question at all.
+Browsing an outside folder makes Diffractor aware of it, and that awareness is kept for navigation and completion. **Awareness is not membership**: a visited folder adds nothing to collection aggregates, is never a source of copies for redundancy reporting, and does not make its files report as members. Otherwise the collection would drift into "everywhere I have ever looked".
 
 ### 3.5 What a folder holds
 
-A collection folder can also say what it holds, in [Options](design.md#options): films and TV shows, personal recordings, music, or — the default — whatever each file's name says. The type reaches every folder beneath the one it is set on, unless a deeper folder is given its own. It changes how a video is read — whether it is a film or an episode, and so which date it files under ([metadata.md](metadata.md#films-episodes-and-music)) — and never membership: a folder holds the same files whatever its type.
+A collection folder can also say what it holds, in [Options](design.md#options): films and TV shows, personal recordings, music, or - the default - whatever each file's name says. The setting reaches every folder beneath unless a deeper one has its own. It changes how a video is read - film or episode, and so the date it files under ([metadata.md](metadata.md#films-episodes-and-music)) - and never membership.
 
 ## 4. Changing a collection
 
-Changing the declaration changes what is known. It never moves, copies, renames, deletes, or writes to a file. Adding a folder makes its contents findable; removing one makes them unfindable from collection scope while leaving them exactly where they are and still reachable by browsing.
-
-Because the change is a re-derivation rather than a migration, it has no failure mode that loses user data and needs no confirmation on those grounds. It does have a cost — a new subtree must be walked and scanned — so it is progressive rather than modal: browsing stays usable while the change takes effect, and results improve as it does.
-
-Removing a root does not delete a folder that was named twice by different means, and re-adding a previously indexed folder is cheap, because cached knowledge for it is reconciled against the filesystem rather than rebuilt from nothing.
+Changing the declaration changes what is known; it never moves, copies, renames, deletes, or writes a file. A removed folder's files stay where they are and remain reachable by browsing. Because the change is a re-derivation rather than a migration, it cannot lose user data and needs no confirmation on those grounds. It does cost a walk and a scan, so it is progressive rather than modal: browsing stays usable and results improve as it takes effect. A folder named twice by different means stays until both are removed, and re-adding a folder the index still knows is cheap, because what is known is reconciled with the filesystem rather than rebuilt.
 
 ## 5. What membership earns
 
-Membership is not a label; it is the precondition for every whole-collection capability. Each of these is described in full by its owning document; what matters here is that each is defined over collection members and nothing else.
+Membership is the precondition for every whole-collection capability. Each is described by its owning document and defined over members and nothing else:
 
 | Capability | What membership provides |
 |---|---|
-| Search | Terms resolve against the index across every member folder at once, instead of against one folder's directory listing. |
-| Navigation aggregates | Dates, tags, ratings, labels, locations, media types, folders, and drives are counted over members, and the sidebar navigates by those counts. |
-| Duplicate search | Copies are identified over members only, so a duplicate claim always has a defined population. See [§7](#7-redundancy-one-relation-three-questions). |
-| [Related items](design.md#related-items) | An item's copies, album, series, capture time, and capture place are answered from members only, so "what else belongs with this?" has a defined population too. |
-| [Presence](design.md#collection-presence) | An outside file can be compared against members to answer "do I already have this?". |
-| Import and Sync | Both name a collection side, so their direction and effect are stated against a defined set rather than against an ad-hoc folder pair. |
-| Totals | "The collection contains N items" is meaningful because N has a definition the user can inspect. |
+| Search | Terms resolve against the index across every member folder at once. |
+| Navigation aggregates | Dates, tags, ratings, labels, locations, media types, folders and drives are counted over members. |
+| Duplicate search | Copies are identified over members only ([§7](#7-redundancy-one-relation-three-questions)). |
+| [Related items](design.md#related-items) | What else belongs with an item is answered from members only. |
+| [Presence](design.md#collection-presence) | An outside file is compared against members: "do I already have this?". |
+| Import and Sync | Each names a collection side, so its direction and effect are stated against a defined set. |
+| Totals | "The collection contains N items" means something because N has an inspectable definition. |
 
-The corollary is that a scope outside the collection cannot honestly offer these. When the current scope is not in the collection, that fact is reported plainly — the items shown are not from the collection. Where the report explains an empty or partial result, it also carries the action that would widen the collection, so the explanation and its remedy are the same surface. Silently returning empty or partial aggregates for a non-member scope would read as a broken product rather than as a scope distinction.
+A scope outside the collection cannot honestly offer these. When the current scope is not in the collection that is reported plainly, and where the report explains an empty or partial result it carries the action that would widen the collection. Silently empty aggregates would read as a broken product rather than a scope distinction.
 
 ## 6. The collection's edge
 
-The collection has an inside and an outside, and the interesting behavior is at the boundary. Two separate reports live there and must not be confused:
+Two reports live at the boundary and must not be confused:
 
-- **Membership** is a fact about a folder: this file is in the collection, or it is not. It is cheap, exact, and never probabilistic.
-- **[Presence](design.md#collection-presence)** is an assessment about content: for a file outside, are there likely copies inside, and are they newer or older? It is evidence-based and states its confidence as *possible*.
+- **Membership** is a fact about a folder: cheap, exact, never probabilistic.
+- **[Presence](design.md#collection-presence)** is an assessment of content: for an outside file, are there likely copies inside, newer or older? It is evidence-based and states its confidence as *possible*.
 
-Membership never implies uniqueness — a file being in the collection says nothing about whether three copies of it are also in the collection. That question belongs to [§7](#7-redundancy-one-relation-three-questions). Presence never implies a recommendation — it supports an import decision and is not a deletion verdict, does not choose a keeper, and never enlarges a command's target.
+Membership never implies uniqueness; whether a member has copies is [§7](#7-redundancy-one-relation-three-questions)'s question. Presence never implies a recommendation: it supports an import decision, is not a deletion verdict, chooses no keeper, and never enlarges a command's target.
 
-The honesty rule at this edge is absolute: **an incomplete collection may not publish an absence.** While indexing is incomplete the answer is "checking", not "not found". A confident wrong negative here is worse than a slow answer, because it is the exact input to a decision to delete or re-import.
+**An incomplete collection may not publish an absence.** While indexing is incomplete the answer is "checking", not "not found": a confident wrong negative is the exact input to a decision to delete or re-import.
 
 ## 7. Redundancy: one relation, three questions
 
-A declared collection accumulates copies. Files arrive by import, by sync, by a camera emptied into a member folder twice, and by folders being added to the declaration years after they were filled. Redundancy is the normal outcome of owning a collection in place, so managing it is part of the collection rather than a feature beside it.
-
-Three surfaces answer redundancy questions. They differ in exactly one thing — which population is compared against:
+A declared collection accumulates copies - by import, by sync, by a camera emptied twice, by folders added years after they were filled - so managing redundancy is part of the collection. Three surfaces answer it, differing only in what is compared:
 
 | Surface | Question | Compares |
 |---|---|---|
-| [Presence](design.md#collection-presence) | Do I already have this? | One file outside, against the whole collection. |
-| [Related items](design.md#related-items) | What else belongs with this one? | One member, against the whole collection. |
-| Duplicate search | Where is the collection redundant? | The collection, against itself. |
+| [Presence](design.md#collection-presence) | Do I already have this? | One outside file against the collection. |
+| [Related items](design.md#related-items) | What else belongs with this one? | One member against the collection. |
+| Duplicate search | Where is the collection redundant? | The collection against itself. |
 
-Boundary, item, whole. They are one relation asked at three scales, and the binding consequence is that **they may never disagree about a pair.** If two files are copies, every surface able to see both says so, at the same strength. A pair reported by one and denied by another is a defect, not a difference of feature — including when only one of the two files is a member, which is the case presence exists to cover.
+They are one relation at three scales and **may never disagree about a pair**: if two files are copies, every surface able to see both says so at the same strength, including when only one of them is a member.
 
 ### 7.1 Evidence grades
 
-A copy claim states how it was reached. There are exactly three grades, strongest first:
+A copy claim states how it was reached, in one of three grades, strongest first:
 
 | Grade | Evidence | Claim |
 |---|---|---|
-| **Identical** | The same bytes: equal size and equal checksum. | Certain. The files are interchangeable. |
-| **Same file** | The same name and the same capture time. For audio and video, the same name and size. | Near certain. One file in two places. |
-| **Same picture** | Different bytes, but the images match when compared as pictures, at the same capture time. Every quarter turn is compared, so a rotated copy is recognised. | Possible. A re-encode, re-save, resize, or rotation. |
+| **Identical** | Equal size and equal checksum. | Certain: the files are interchangeable. |
+| **Same file** | The same name and the same capture date - for a file that states none, its creation time. For audio and video, the same name and size. | Near certain: one file in two places. |
+| **Same picture** | Different bytes whose pictures match at the same capture time, compared at every quarter turn. | Possible: a re-encode, re-save, resize or rotation. |
 
-The grade is reported rather than collapsed into the single word "duplicate". *Certain* and *possible* support different decisions, and merging them costs the user the only information that separates a safe deletion from a judgement call. A rotated copy is claimed as a copy: a quarter turn is a common grading step, and the picture is the one the user already has. A cropped version is a different picture and is not claimed.
-
-Underneath the grades sits an explicit refusal: an image with too little detail to identify — a blank frame, a solid colour, a plain scanned page — is never claimed to match anything, because at that point every such image looks alike.
+The grade is reported, not collapsed into "duplicate": *certain* and *possible* support different decisions, and merging them hides what separates a safe deletion from a judgement call. A rotated copy is a copy - a quarter turn is a common grading step - but a crop is a different picture and is not claimed. An image with too little detail to identify - a blank frame, a solid colour, a plain scanned page - is never claimed to match anything.
 
 ### 7.2 Groups are proven; similarities are anchored
 
-This rule is what keeps redundancy honest, and it follows from what the grades are rather than from any threshold.
+Identity is transitive, so **the Identical and Same file grades form groups of any size**: a group asserts only what was established.
 
-Identity is transitive. If A and B are identical and B and C are identical, then A and C are identical, and presenting all three as one group asserts only what was established. **The Identical and Same file grades form groups of any size.**
-
-Similarity is not transitive. A may match B, and B may match C, while A and C are plainly different pictures. Joining those two findings end to end asserts something no comparison performed, and the set can then grow without limit while every individual comparison stayed comfortably inside its tolerance. How strict the comparison is does not control the outcome.
-
-The Same picture grade is therefore **anchored, not chained**. Every item presented alongside an anchor was compared against that anchor. This does not confine a finding to two items: an anchor may have many possible copies, and a set of them is a legitimate answer. That the user can only compare two at a time is a property of viewing, not a statement about how many copies exist. What is forbidden is the chain — an item that reached the set only by resembling another member rather than the anchor.
-
-Anchoring bounds how unlike one another the members of a set can be. It does not bound how many of them there are; that is [§7.3](#73-capture-time-is-not-identity)'s subject, and neither rule substitutes for the other.
+Similarity is not transitive: A may match B and B match C while A and C are plainly different, and joining findings end to end lets a set grow without limit however strict each comparison is. **Same picture is anchored, not chained**: every item presented with an anchor was compared against that anchor. An anchor may have many possible copies; what is forbidden is an item that joined only by resembling another member. Anchoring bounds how unlike the members are, not how many there are, which is [§7.3](#73-capture-time-is-not-identity)'s subject.
 
 ### 7.3 Capture time is not identity
 
-Capture time is recorded to the second, and cameras shoot faster than a second. Photographs sharing one exact capture time are therefore **not** evidence of copying: a burst produces many frames under one timestamp, and consecutive frames of one scene resemble each other at least as much as a re-encode resembles its original.
+Capture time is recorded to the second and cameras shoot faster, so a shared capture time is **not** evidence of copying: a burst's frames share one timestamp and resemble each other at least as much as a re-encode resembles its original.
 
-Two consequences bind:
+- **Frames from one burst are not copies of one another.** A picture matching many others *in the same orientation* under one timestamp is a burst frame: the size of the crowd, not the closeness of any pair, identifies it, and the whole capture time is declined rather than reported in part. A match that needed a quarter turn is never burst evidence, because continuous shooting does not produce a rotated frame.
+- **A shared capture time never stands alone.** It narrows what is worth comparing and is never itself a claim. Shape narrows further: a picture whose neighbours under one timestamp are all a different shape is not compared at all, and a transposed neighbour - a quarter turn swaps width and height - counts as the same shape.
 
-- **Frames from one burst are not copies of one another.** A picture that matches many others *in the same orientation* under a single timestamp is a burst frame, not a re-save: continuous shooting produces frames that resemble each other however strict the comparison is, so the size of the crowd — not the closeness of any pair — is what identifies it. A capture time that answers with a crowd is declined in full rather than reported in part, because reporting part of it would mean choosing which frames count. A match that needed a quarter turn is never burst evidence, because continuous shooting does not produce a rotated frame.
-- **A shared capture time never stands alone.** It narrows what is worth comparing. It is never itself a claim. Shape narrows it further: a picture whose neighbours under one timestamp are all a different shape cannot be a copy of any of them, and is not compared as a picture at all. A quarter turn transposes the stored extent, so a transposed neighbour still counts as the same shape.
-
-The refusal is symmetric: an outside file being assessed for [presence](design.md#collection-presence) is judged by the same crowd rule against the same capture time, so the boundary and the whole answer alike.
-
-This is the case redundancy reporting is most likely to get wrong, because the same narrowing that finds genuine re-encodes selects burst frames by construction.
+Presence judges an outside file by the same crowd rule against the same capture time, so the boundary and the whole answer alike. This is the case most likely to go wrong, because the narrowing that finds re-encodes selects burst frames by construction.
 
 ### 7.4 What redundancy reporting will not do
 
-- **It does not choose a keeper.** Which copy survives carries taste — a folder the user trusts, a filename they can read, the version they edited. Redundancy supplies evidence and stops. Its job is to put the candidates in front of the user, next to one another, and let them decide.
-- **It does not enlarge a target.** Being reported as a copy never adds an item to the set a command acts on. Targeting follows [design.md](design.md#user-mental-model) without exception.
-- **It does not publish an absence from an incomplete collection.** "No copy found" derived from a half-built index is the exact input to a wrong deletion, so while the answer is incomplete the answer is that it is incomplete. This is the same rule as [§6](#6-the-collections-edge), applied to all three surfaces.
-- **It does not persist a verdict.** Redundancy is recomputed from current evidence, never stored as a judgement that could outlive the files that justified it. Improving the comparison therefore changes the answers instead of leaving a stale one behind, and a grouping the user disagrees with is corrected by fixing the comparison, not by migrating data. A duplicate search on screen follows the recount too: a file whose last copy was deleted leaves it without a refresh, rather than staying listed as a copy for the user to delete.
-- **It offers no bulk automatic resolution.** There is no "remove all duplicates" command. Such a command would have to choose keepers, would act partly on claims graded *possible*, and could not be previewed item by item at the scale where it would be worth having.
+- **Choose a keeper.** Which copy survives carries taste - a trusted folder, a readable name, the edited version - so redundancy puts the candidates side by side and lets the user decide.
+- **Enlarge a target.** Being reported as a copy never adds an item to a command's target ([design.md](design.md#user-mental-model)).
+- **Publish an absence from an incomplete collection** ([§6](#6-the-collections-edge)), on any of the three surfaces.
+- **Persist a verdict.** Redundancy is recomputed from current evidence, so a better comparison changes the answers rather than leaving stale ones, and a disputed grouping is fixed in the comparison, not by migrating data. A duplicate search on screen follows the recount: a file whose last copy was deleted leaves it without a refresh.
+- **Resolve in bulk.** There is no "remove all duplicates": it would have to choose keepers, act partly on claims graded *possible*, and could not be previewed item by item at the scale where it would be worth having.
 
 ## 8. Truth, staleness, and honesty
 
-The collection is a cache over storage the user can change behind Diffractor's back. Three rules keep the cache from becoming a second, competing truth:
+The collection is a cache over storage the user can change behind Diffractor's back. Three rules keep it from becoming a second truth:
 
-1. **Files are authoritative; the index is derived.** Where they disagree, the file wins and the index is corrected. Metadata written to a file or sidecar is the record; the index merely remembers it.
-2. **Knowledge is retained when storage is not reachable.** A member folder on a detached or offline drive stays a member, and what is known about it stays known and searchable, marked as offline rather than deleted. Forgetting a collection because a drive was unplugged would make the collection less trustworthy than the folder tree it describes.
-3. **Incompleteness is disclosed, not hidden.** Indexing improves results progressively while browsing remains usable, and a surface whose results may be incomplete says so. Completed work replaces provisional results without requiring navigation or restart.
+1. **Files are authoritative; the index is derived.** Where they disagree the file wins and the index is corrected; metadata written to a file or sidecar is the record.
+2. **Knowledge is retained when storage is not reachable.** A member folder on a detached or offline drive stays a member, and what is known of it stays searchable, marked offline rather than deleted.
+3. **Incompleteness is disclosed, not hidden.** Results improve progressively while browsing stays usable, a surface whose results may be incomplete says so, and completed work replaces provisional results without navigation or restart.
 
-Presence wording and confidence values belong to [design.md](design.md#collection-presence), and the relations a related search reports belong to [design.md](design.md#related-items); the copy relation those surfaces share, its evidence grades, and the rules that keep them in parity are owned here in [§7](#7-redundancy-one-relation-three-questions). Place resolution over collection items belongs to [locations.md](locations.md). Index, summary, and scanning architecture belongs to [implementation.md](implementation.md#index-search-and-database). How a metadata write reaches disk belongs to [file-io.md](file-io.md).
+Presence wording and confidence belong to [design.md](design.md#collection-presence), and the relations a related search reports to [design.md](design.md#related-items); the copy relation they share, its grades and their parity are owned here. Place resolution belongs to [locations.md](locations.md), index and scanning architecture to [implementation.md](implementation.md#index-search-and-database), and how a metadata write reaches disk to [file-io.md](file-io.md).
 
 ## Where this lives
 
 | Collection subject | Source |
 |---|---|
-| The declared collection folders, includes and excludes, and what each folder holds | [app_settings.h](../src/app_settings.h), [app_settings.cpp](../src/app_settings.cpp); [view_options.cpp](../src/view_options.cpp) edits them |
-| Membership resolution, folder roots, the collection edge | [model_index.cpp](../src/model_index.cpp), [model_index.h](../src/model_index.h) — `index_state` |
-| The indexed record a member earns | [model_index.h](../src/model_index.h) — `df::index_file_item`, `df::index_folder_item` |
-| Duplicate grouping and the perceptual-hash stage | [model_index_duplicates.cpp](../src/model_index_duplicates.cpp) — `index_state::update_predictions`; [app_dup_report.cpp](../src/app_dup_report.cpp) measures it over a real library |
-| The bounded nearest-match sets a related search answers with | [model_related.h](../src/model_related.h) |
-| Presence evaluation for a file outside the collection | [model_index_duplicates.cpp](../src/model_index_duplicates.cpp) — `index_state::queue_update_presence`, [model_search.cpp](../src/model_search.cpp) |
+| The declared folders and what each holds | [app_settings.h](../src/app_settings.h)'s `settings_t::index_t` and [app_settings.cpp](../src/app_settings.cpp); [view_options.cpp](../src/view_options.cpp) edits them |
+| Roots, excludes and labels read from the declaration | [app_workers.cpp](../src/app_workers.cpp)'s `index_folders`, [app.cpp](../src/app.cpp)'s `parse_more_folders`, [app_util.cpp](../src/app_util.cpp)'s `core::is_excluded` |
+| The walk, membership and the collection edge | [model_index.cpp](../src/model_index.cpp), [model_index.h](../src/model_index.h) - `index_state` |
+| The indexed record a member earns | [model_items.h](../src/model_items.h) - `df::index_file_item`, `df::index_folder_item` |
+| Duplicate grouping and the perceptual stage | [model_index_duplicates.cpp](../src/model_index_duplicates.cpp) - `index_state::update_predictions`; [app_dup_report.cpp](../src/app_dup_report.cpp) measures it over a real library |
+| Presence for a file outside the collection | [model_index_duplicates.cpp](../src/model_index_duplicates.cpp) - `index_state::queue_update_presence` |
+| Related items | [model_search.cpp](../src/model_search.cpp)'s `search_matcher::evaluate_related`, and [model_related.h](../src/model_related.h)'s bounded nearest-match sets it answers with |
 | Persistence of the cached index | [model_db.cpp](../src/model_db.cpp), [model_db_pack.h](../src/model_db_pack.h) |
 
-The three redundancy surfaces in [§7](#7-redundancy-one-relation-three-questions) read one relation,
-so a change to the copy rules in `update_predictions` moves duplicate search, presence, and related
-items together.
+The three surfaces in [§7](#7-redundancy-one-relation-three-questions) apply the copy rules through three paths - `update_predictions` for duplicate search, presence's pass beside it, and `dup_match` in [model_index.h](../src/model_index.h) for related items - which share `same_picture_shape`, `max_duplicate_phash_distance` and the capture-time crowd limits. A change to the rules is made in all three.

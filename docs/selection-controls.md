@@ -1,8 +1,8 @@
 # Selection Controls
 
-This document owns the selection panel's current forms, content order, density, and responsive
-behavior. [Design](design.md) owns selection and command targeting; source owns exact APIs and
-control inventories.
+This document owns the selection panel - its forms, content and order, density and responsive behavior - and the
+stack of panels it heads in Items and Fullscreen. [Design](design.md) owns selection and command targeting; source
+owns exact APIs and control inventories.
 
 ## Forms
 
@@ -19,6 +19,9 @@ Comparison requires compatible file traits, not cardinality alone. Image pairs a
 video pairs are comparable; mixed types, folders, and unsupported pairs use the selection summary.
 An empty selection creates no panel.
 
+In Items the comparison and the multi-item summary name their form above the details. A single
+file leads with its own identity instead; Fullscreen does not repeat these headings over the media.
+
 ## Singular Media
 
 The regular panel presents applicable groups in this order:
@@ -30,118 +33,111 @@ The regular panel presents applicable groups in this order:
 5. File facts: the containing folder, as a link that opens it, when it is not a folder the view
    shows; then filename, dates, and size.
 6. Media facts: dimensions, codecs, camera, album, artist, and other populated properties.
-7. Location, tags, and descriptive fields.
+7. Who the picture names, each a link to the pictures naming them; where it was taken, ending with
+   Show in Explore where the item has a position; tags; and descriptive fields.
 
-Missing or inapplicable groups consume no space. Presence remains distinct from duplicate identity:
-the badge and its bubble can report related files and collection presence without adding those files
-to the command target. Tags are bounded to six visible values plus a remainder count.
+Missing or inapplicable groups consume no space. Presence remains distinct from duplicate identity: the badge and
+its bubble can report related files and collection presence without adding those files to the command target.
+Tags are bounded to six visible values plus a remainder count.
 
-Description, synopsis, and comment form one descriptive section. A single value is shown directly;
-multiple values use labeled rows, suppress repeated text, and share open, copy, and edit actions.
-Comparison keeps the fields separate so differences remain aligned.
+Description, synopsis, and comment form one descriptive section. A single value is shown directly; several use
+labeled rows, suppress repeated text, and share open, copy, and edit actions. Comparison keeps the fields separate
+so differences remain aligned.
 
 ## Grading Controls
 
-Rating, color label, reject, and to-do state are item grading controls. They show the current value,
-remain attached to the item they target, and appear only where that target is unambiguous. Comparison
-therefore gives each item its own controls; selected-set commands do not imply one shared grade.
+Rating, color label, reject, and to-do state are item grading controls. They show the current value, stay attached
+to the item they target, and appear only where that target is unambiguous, so a comparison gives each item its
+own; selected-set commands do not imply one shared grade.
 
 ## Verbose Metadata Blocks
 
-Items may show stream details and raw metadata below the primary panel. The user opens or closes
-this detail explicitly. It defaults to closed; an existing saved preference is respected.
-Rows are grouped by their source and omitted when empty; late scan results
-append below the stable primary block rather than changing its command order. Streams are hidden
-until opened and never claim space in the primary media budget, including in landscape panes.
+Items may show stream details and raw metadata below the primary panel, behind a toggle the user opens or closes;
+it starts closed, and a saved preference is respected. Rows are grouped by their source and omitted when empty,
+and late scan results append below the stable primary block rather than changing its command order. Streams never
+claim space in the primary media budget, landscape panes included.
 
-The detail says what Diffractor does with the picture as well as what the file states. A video stream's
-format names the matrix its colour is converted by - marked assumed where the stream states none - and
-full range where it is, and whether it is interlaced, with the field shown first where the stream says.
-An ICC profile's summary ends with how the colours it describes are shown: mapped to sRGB, as sRGB, without
-the profile where it cannot be applied, or by an HDR picture's own description instead
-([Rendering](rendering.md#colour-profiles)). A still's structure block names its coded colour - an HDR
-photo's PQ or HLG transfer among it - its light levels, and a gain map with its kind, size and headroom,
-as libfiles lists them: a HEIF's or AVIF's, a JPEG XL's, a PNG's, and a JPEG's gain map image, Apple's,
-Ultra HDR's or ISO 21496-1's.
+The detail says what Diffractor does with the picture as well as what the file states. A video stream's format
+names the matrix its colour is converted by - marked assumed where the stream states none - and full range where
+it is, and whether it is interlaced, with the field shown first where the stream says. An ICC profile's summary
+ends with how its colours are shown: mapped to sRGB, as sRGB, without the profile where it cannot be applied, or by
+an HDR picture's own description instead ([Rendering](rendering.md#colour-profiles)). A still's structure block
+names its coded colour - an HDR photo's PQ or HLG transfer among it - its light levels, and a gain map with its
+kind, size and headroom, as libfiles lists them: a HEIF's or AVIF's, a JPEG XL's, a PNG's, and a JPEG's gain map
+image, Apple's, Ultra HDR's or ISO 21496-1's.
 
 ## Other Singular Files
 
-A non-media file shows name, containing folder (a link, when the view is not showing it), size,
-created and modified dates, label/reject, Pin, Open, and Tools where applicable. It does not claim
-media navigation, playback, rotation, rating, tags, or editable media metadata.
+A non-media file shows name, containing folder (a link, when the view is not showing it), size, created and
+modified dates, label/reject, Pin, Open, and Tools where applicable. It does not claim media navigation, playback,
+rotation, rating, tags, or editable media metadata.
 
-Below them the panel shows the file's first MiB, read only, with a note when the file is longer.
-Text, Markdown, CSV and dumps use the same inset document panel and scroll with the pane:
+Below them the panel shows the file's first MiB, read only, with a note when the file is longer. Text, Markdown,
+CSV and dumps use the same inset document panel and scroll with the pane:
 
-- Bytes that read as text are shown as text: UTF-8 or UTF-16 with a byte order mark, UTF-8 without
-  one where the bytes are valid as such, and Windows-1252 otherwise. A NUL without a byte order mark,
-  or control characters past one byte in a hundred, leave the file a hex dump. Source lines wrap at word
-  boundaries to the pane's width in the code font; tabs reach stops of four, and a control character
-  shows as a dot.
-- C and C++, Rust, Python and PowerShell are coloured by their extension, with
-  libdesktop's highlighters. Plain text is not coloured.
-- Markdown uses libdesktop's document view for headings, links and pipe tables; CSV uses its aligned
-  table view, including quoted commas and escaped quotes. Their header dividers use the
-  [common column gestures](design.md#guided-operations); column sizes and selection survive the
-  panel being rebuilt around the document. Web and mail links open on a click, not a selection drag.
-- Anything else is the hex dump: offset, hex and ASCII columns, as many bytes a row, in fours up to
-  32, as fit. A Commodore program's dump follows the panel, under the listing above it, and a raw
-  metadata block's detail is a dump of the block.
+- Bytes that read as text are shown as text: UTF-8 or UTF-16 with a byte order mark, UTF-8 without one where the
+  bytes are valid as such, and Windows-1252 otherwise. A NUL without a byte order mark, or control characters past
+  one byte in a hundred, leave the file a hex dump. Lines wrap at word boundaries to the pane's width in the code
+  font; tabs reach stops of four, and a control character shows as a dot.
+- C and C++, Rust, Python and PowerShell are coloured by their extension, with libdesktop's highlighters. Plain
+  text is not coloured.
+- Markdown uses libdesktop's document view for headings, links and pipe tables; CSV uses its aligned table view,
+  including quoted commas and escaped quotes. Their header dividers use the
+  [common column gestures](design.md#guided-operations); column sizes and selection survive the panel being
+  rebuilt around the document. Web and mail links open on a click, not a selection drag.
+- Anything else is the hex dump: offset, hex and ASCII columns, as many bytes a row, in fours up to 32, as fit. A
+  Commodore program's dump follows the panel, under the listing above it, and a raw metadata block's detail is a
+  dump of the block.
 
-A drag selects text, a double click selects a word, and Shift extends the selection; while the
-document has the keyboard, Escape clears it. Copy takes the text as written, with Windows line
-breaks, or a dump's rows as drawn; [design](design.md#selection-and-viewing) owns when Copy, Cut and
-Select all target the document rather than the items. Nothing is written to the file, and nothing
-about it is indexed.
+A drag selects text, a double click selects a word, and Shift extends the selection; while the document has the
+keyboard, Escape clears it. Copy takes the text as written, with Windows line breaks, or a dump's rows as drawn;
+[design](design.md#selection-and-viewing) owns when Copy, Cut and Select all target the document rather than the
+items. Nothing is written to the file, and nothing about it is indexed.
 
-An archive's contents are listed under headings - name, modified date, size, and the packed size where
-the archive's reader knows it - and a file's streams under number, type, title, codec, FourCC and
-format: a FourCC only where the tag is four printable letters, and a turned stream's rotation among its
-format. In a narrow pane the title, codec and format wrap rather than squeeze one another out. The
-headings sort the rows and size the columns as [display tables](design.md#guided-operations) do. A
-file-group summary keeps its icons, colours and numeric alignment unheaded, and so draws no dividers on
-its first row.
+An archive's contents are listed under headings - name, modified date, size, and the packed size where the
+archive's reader knows it - and a file's streams under number, type, title, codec, FourCC and format: a FourCC only
+where the tag is four printable letters, and a turned stream's rotation among its format. In a narrow pane the
+title, codec and format wrap rather than squeeze one another out. The headings sort the rows and size the columns
+as [display tables](design.md#guided-operations) do. A file-group summary keeps its icons, colours and numeric
+alignment unheaded, so it draws no dividers on its first row.
 
-A Commodore 64 disk's, tape's or program file's listing stands above the panel, where media does, and
-its rows run what they name in an emulated Commodore 64 that then stands there instead. A cartridge
-is drawn there as one, its title on its label, with Start under it
-([design](design.md#selection-and-viewing)).
+A Commodore 64 disk's, tape's or program file's listing stands above the panel, where media does, and its rows run
+what they name in an emulated Commodore 64 that then stands there instead. A cartridge is drawn there as one, its
+title on its label, with Start under it ([design](design.md#selection-and-viewing)).
 
 ## Comparison
 
-The two names head the comparison's columns, and under each name are that item's own label/reject,
-rating, Pin, Delete, and Unselect controls, so what keeps, grades or discards a file is read with
-its name. Shared commands whose target would be ambiguous are omitted. Rows align sizes, dates,
-media facts, location, tags, and descriptive fields, with the equality result above the table. The
-folder row appears only when one of the two is away from the folders the view shows, as links. Rows
-with no value on either side are omitted.
+The two names head the comparison's columns, and under each name are that item's own label/reject, rating, Pin,
+Delete, and Unselect controls, so what keeps, grades or discards a file is read with its name. Shared commands
+whose target would be ambiguous are omitted. Rows align sizes, dates, media facts, location, tags, and descriptive
+fields, with the equality result above the table. The folder row appears, as links, only when one of the two is
+away from the folders the view shows. Rows with no value on either side are omitted.
 
-A fact the same in both is stated once: the second column shows `=`, so what differs between the
-two is what stands out. Sizes, dates and dimensions always show both values. Copy counts stay
-attached to each title. Rank color may distinguish larger dimensions or size and later dates, but
-does not claim that larger or later is better.
+A fact the same in both is stated once: the second column shows `=`, so what differs between the two stands out.
+Sizes, dates and dimensions always show both values. Copy counts stay attached to each title. Rank color may
+distinguish larger dimensions or size and later dates, but does not claim that larger or later is better.
 
 ## Selection Summary
 
-The summary shows folder and file counts, a file-type and size breakdown, the folders the selected
-items are in when they are not folders the view shows (as links, three at most and a count of the
-rest), applicable selected-set commands, and the pinned item when one exists. Three or more files
-may add a thumbnail collage, a panel above the summary bounded to 24 cells with an overflow count.
-A failed thumbnail contributes to the remainder rather than creating a blank cell.
+The summary shows folder and file counts, a file-type and size breakdown, the folders the selected items are in
+when they are not folders the view shows (as links, three at most and a count of the rest), applicable
+selected-set commands, and the pinned item when one exists. Three or more files add a thumbnail collage, a panel
+above the summary bounded to 24 cells with an overflow count; a failed thumbnail joins the remainder rather than
+leaving a blank cell.
 
-The summary describes the selected set; it is not a degraded comparison and does not infer common
-metadata that the model has not computed.
+The summary describes the selected set; it is not a degraded comparison and does not infer common metadata that
+the model has not computed.
 
 ## Presentation
 
-Items and Fullscreen present a selection as one stack of panels, built once for both: what the
-selection is shown as stands above the selection panel, the description follows it, and in Items
-the content that can run on for screens stacks below.
+Items and Fullscreen present a selection as one stack of panels, built once for both: what the selection is shown
+as stands above the selection panel, the description follows it, and in Items the content that can run on for
+screens stacks below.
 
 | Selection | Above the panel | Below it, in Items |
 | --- | --- | --- |
 | Photo, video, running Commodore 64 | The picture | Description |
-| Two comparable files | The two side by side | Description |
+| Two comparable files | The two side by side | - (the comparison's rows hold their descriptions) |
 | Two files that do not compare | - | - |
 | SID tune | The monitor's panels: tunes, voices, output, filter, registers | Description |
 | Tracker module | The monitor's pattern panel | Description, sample and instrument bank |
@@ -153,36 +149,31 @@ the content that can run on for screens stacks below.
 | Several files | The thumbnail collage | - |
 | Folders | - | - |
 
-Every part of the stack is a panel in libdesktop's common background and inner inset, as wide as
-the column, with one uniform gap between panels and no spacer elements or panel-specific outside
-margins; a monitor draws its own parts in that same background. A truncation note stays inside its
-document panel.
+Every part of the stack is a panel in libdesktop's common background and inner inset, as wide as the column, with
+one uniform gap between panels and no spacer elements or panel-specific outside margins; a monitor draws its own
+parts in that same background. A truncation note stays inside its document panel.
 
-Items centers the primary block - what stands above the panel, and the panel - while it fits; when
-it overflows, the column starts at the top and scrolls. Media retains at least half of the pane where
-possible, so metadata cannot reduce it to a strip. A listing or document that can run on for
-screens holds nothing above the fold, and the column scrolls as one. Late detail is appended below
-the primary block.
+Items centers the primary block - what stands above the panel, and the panel - while it fits; when it overflows,
+the column starts at the top and scrolls. Media keeps at least half of the pane where possible, so metadata cannot
+reduce it to a strip. A listing or document that can run on for screens holds nothing above the fold, and the
+column scrolls as one. Late detail is appended below the primary block.
 
-Fullscreen gives a picture - a photo, a video, a running Commodore 64, a comparison - the screen,
-with the compact panel floating over it and its description beside it. The overlay height is
-bounded; overlay controls stay visible for paused media and may fade while playback or image
-viewing is active. Everything else is the stack, centred and no wider than a line is comfortably
-read across, with the compact panel and its description, never fading. Fullscreen does not scroll:
-a disk's listing and a document are left to Items, and what stands above the panel is fitted to the
-screen.
+Fullscreen gives a picture - a photo, a video, a running Commodore 64, a comparison - the screen, with the compact
+panel floating over it and, for one item, its description beside it. The overlay height is bounded; overlay
+controls stay visible for paused media and may fade while playback or image viewing is active. Everything else is
+the stack, centred and no wider than a line is comfortably read across, with the compact panel and its
+description, never fading. Fullscreen does not scroll: a disk's listing and a document are left to Items, and what
+stands above the panel is fitted to the screen.
 
-A monitor or the visualizer fits the space the stack gives it rather than pushing the panels below
-it away. The SID monitor is drawn smaller, then gives up its register grid, filter, output and ADSR
-row in turn; the tracker's pattern shows fewer rows; the visualizer gives up cover art before its
-bars. A panel that takes less than its slot leaves no gap: the stack closes up behind it.
+A monitor or the visualizer fits the space the stack gives it rather than pushing the panels below it away. The
+SID monitor is drawn smaller, then gives up its register grid, filter, output and ADSR row in turn; the tracker's
+pattern shows fewer rows; the visualizer gives up cover art before its bars. A panel that takes less than its slot
+leaves no gap: the stack closes up behind it.
 
-Compact uses fewer facts: it keeps identity and subject facts and removes most container facts.
-Compact and regular forms preserve the same command targets.
-
-Layout uses natural-height regions, cohesive wrapping command groups, and equal comparison value
-columns. Width changes may wrap groups or stack comparison values but must not change the chosen
-form or command target.
+Compact uses fewer facts: it keeps identity and subject facts - when, who and where - and removes most container
+facts, with the same command targets as the regular form. Layout uses natural-height regions, cohesive wrapping
+command groups, and equal comparison value columns. Width changes may wrap groups or stack comparison values but
+must not change the chosen form or command target.
 
 ## Where this lives
 

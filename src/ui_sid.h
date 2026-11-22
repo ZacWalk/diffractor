@@ -38,21 +38,24 @@ struct sid_monitor_layout
 	recti filter;
 	bool filter_wraps = false; // the mode and routing badges take a row of their own below the meters
 	recti registers;
+	// Upright, the grid stands beside the voices: a column for each voice's registers, the filter's below them.
+	bool registers_by_voice = false;
 	int height = 0; // of all the panels and the gaps between them
 };
 
 // bounds is where the element sits; scale the display scale; mc supplies the user's font metrics;
 // button_text the width of the wider of the mute and solo labels. detail says how much to show when space is
 // short: 4 is everything, 3 drops the register grid, 2 the filter as well, 1 the output, and 0 is compact. Without
-// controls there is no tune selector and no mute or solo.
+// controls there is no tune selector and no mute or solo. upright, as a Short's frame is, stacks the voices, all one
+// width, with the register grid down their right side, and the output and the filter across the column below.
 sid_monitor_layout layout_sid_monitor(recti bounds, double scale, int songs, render::measure_context& mc,
-                                      int detail = 4, int button_text = 0, bool controls = true);
+                                      int detail = 4, int button_text = 0, bool controls = true, bool upright = false);
 
 // The fullest layout that fits bounds, at its top: at full size if it can be, as large as fits down to three
 // quarters of it if that is enough, and with fewer parts, in detail's order, only when it is not. used_scale is
 // the scale it was laid out at. Its height says what it took; a compact monitor still too tall is cut off.
 sid_monitor_layout fit_sid_monitor(recti bounds, double scale, int songs, render::measure_context& mc, int button_text,
-                                   double& used_scale, bool controls = true);
+                                   double& used_scale, bool controls = true, bool upright = false);
 
 // How far the register grid's highlight has faded for each register: 1 for one written with a new value in
 // the frame shown, falling to 0 over the frames before it. frames are oldest first, the shown frame last.
@@ -127,6 +130,9 @@ public:
 	// controls to do so.
 	explicit sid_monitor_control(display_state_ptr display);
 
+	// A Short's upright frame stacks the voices beside the register grid; see layout_sid_monitor.
+	void arrange_upright(bool upright);
+
 	sizei measure(render::measure_context& mc, int width_limit) const override;
 	void layout(render::measure_context& mc, recti bounds) override;
 	void render(render::draw_context& dc, pointi element_offset) const override;
@@ -144,6 +150,7 @@ private:
 	// Null for a monitor drawn apart from any view.
 	view_state* _state = nullptr;
 	display_state_ptr _display;
+	bool _upright = false;
 	mutable view_elements_ptr _panels;
 	mutable recti _layout_bounds;
 	mutable double _layout_scale = 0;
@@ -151,6 +158,7 @@ private:
 	mutable int _layout_line_height = 0;
 	mutable int _layout_button_width = 0;
 	mutable int _layout_songs = 0;
+	mutable bool _layout_upright = false;
 
 	// The layout last drawn, for the clicks to find their targets in. UI thread only.
 	mutable sid_monitor_layout _drawn;

@@ -233,7 +233,9 @@ class Sweep:
                  ("items, all selected", items + [("select", {"all": True})]),
                  ("a photo shown", view_of(PHOTO)),
                  ("a tune shown", view_of("tune.wav")),
-                 ("a document shown", view_of("notes.md"))] +
+                 ("a document shown", view_of("notes.md")),
+                 ("the Explore view", items + [("command_run", {"command": "explore"})]),
+                 ("the Faces view", items + [("command_run", {"command": "faces"})])] +
                 [(f"the {t} task", items + [("select", {"names": [PHOTO]}), ("command_run", {"command": t})])
                  for t in tasks])
 
@@ -400,6 +402,9 @@ class Sweep:
 
     def outside(self, control):
         command = control.get("command", "")
+        if control["scope"] == "sidebar" and control["label"] == "sidebar_drive_element":
+            self.skipped[control["id"]] = "browses a host drive outside the fixture"
+            return True
         if command in OUTSIDE:
             self.skipped[command] = OUTSIDE[command]
             return True
@@ -495,7 +500,15 @@ class Sweep:
                 continue
             self.pressed.add(key)
             open_menu()
-            self.act(f"choose {key}", "menu_respond", {"choose": " > ".join(path)})
+            answer = self.act(f"choose {key}", "menu_respond", {"choose": " > ".join(path)}, expect_error=True)
+            if answer and answer.get("isError"):
+                refused = text_of(answer)
+                # Putting the window back restores what it shows, not the history Back and Forward step through, so
+                # a row listed as enabled can be disabled by the time a row before it has been pressed.
+                if "is disabled" in refused:
+                    self.skipped[key] = "disabled by the time it was reached: putting the window back keeps no history"
+                else:
+                    self.find("error", f"choose {key}", refused[:400])
             self.back_home()
 
     def run_commands(self):
@@ -606,7 +619,11 @@ def main():
             c["name"] + (f" [{c['needs']}]" if c.get("needs") else "") + ("" if c.get("enabled") else " (disabled)")
             for c in not_run))
     if sweep.skipped:
-        print("Not pressed, as they act outside the window: " + ", ".join(sorted(sweep.skipped)))
+        by_reason = {}
+        for name, why in sweep.skipped.items():
+            by_reason.setdefault(why, []).append(name)
+        for why, names in sorted(by_reason.items()):
+            print(f"Not pressed ({why}): " + ", ".join(sorted(names)))
     if sweep.not_opened:
         print(f"Asked to open another program {len(sweep.not_opened)} times, and the session opened none: "
               + "; ".join(sweep.not_opened[:8]) + (" ..." if len(sweep.not_opened) > 8 else ""))

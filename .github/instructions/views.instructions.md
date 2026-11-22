@@ -27,6 +27,7 @@ so recording it cannot be forgotten, and never restate the same rectangles after
 arithmetic. See [implementation](../../docs/implementation.md#hit-testing).
 
 ## Absent handles
+
 A `ui::frame_ptr` member that can be unset is reached **only** through its accessor, which answers
 `ui::no_frame()` rather than null. Callers do not test it. A raw `_frame->` on such a member
 outside that accessor is a lint failure.
@@ -54,8 +55,9 @@ write back to the captured control.
 
 ## Testing without a window
 
-`view_state` runs headless with `null_state_strategy`, `null_async_strategy` and a null
-`view_host_base_ptr` — see `browsing_fixture` in [test_app.cpp](../../src/test_app.cpp). Where a
+`view_state` runs headless on `null_state_strategy` and `null_async_strategy`, driven through a null
+`view_host_base_ptr` — see `browsing_fixture` in [test_fixtures.h](../../src/test_fixtures.h) and
+[testing](../../docs/testing.md#testing-behavior-without-a-window). Where a
 decision is trapped inside a method that also performs it, **extract the decision** rather than
 building a window; zoom, playback advance, the address-box session and the accelerator table are
 tested that way.

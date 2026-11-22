@@ -17,8 +17,11 @@
 #include "av_tracker.h"
 
 #include "model.h"
+#include "model_db_faces.h"
 #include "model_db_pack.h"
+#include "model_faces_search.h"
 #include "model_index.h"
+#include "crypto_sha.h"
 
 static std::atomic<int> db_fails = 0;
 
@@ -430,7 +433,28 @@ static std::string load_create_sql()
 // transparency - joined the record, and Commodore images were indexed by their listing. Pictures and videos are
 // asked to be re-scanned, and answer meanwhile; a Commodore image, never scanned before, is read when the index
 // next reaches it.
-constexpr int db_metadata_version = 8;
+// 9: whom a picture's metadata names, and where its face regions are (docs/faces.md#21-reading-names), joined
+// the record. Pictures are asked to be re-scanned, and answer meanwhile.
+constexpr int db_metadata_version = 9;
+
+// What each version since 3 changed in the cached record, by the kinds of file it changed it for. An upgrade from
+// before a version asks those files alone to be read again, while their rows answer meanwhile. A new version adds
+// its row here - a test holds the last row to db_metadata_version, so one cannot be forgotten - and a release that
+// corrects how something is read never has to read the whole collection again.
+struct metadata_change
+{
+	int version;
+	bool (*admits)(std::string_view name);
+};
+
+static constexpr std::array<metadata_change, 6> metadata_changes{{
+	{4, database::is_audio_or_video_metadata},
+	{5, database::is_audio_or_video_metadata},
+	{6, database::is_audio_or_video_metadata},
+	{7, database::is_tracker_module},
+	{8, database::is_picture_or_video},
+	{9, database::is_picture},
+}};
 
 // Only the metadata is dropped. Thumbnails, hashes, playback positions, and import history
 // stay, so the re-index re-reads files but never re-encodes a thumbnail.
@@ -483,16 +507,26 @@ bool database::request_rescan(const std::function<bool(std::string_view name)>& 
 }
 
 // The files whose cached metadata some version after `stored_version` changed, so an upgrade from it asks those
-// alone to be read again, in one pass over the table: audio and video from 3 to 5, tracker modules for 6, which
-// the audio of 3 to 5 covers, and pictures and videos for 7.
+// alone to be read again, in one pass over the table.
 bool database::request_rescan_since(const int stored_version) const
 {
 	return request_rescan([stored_version](const std::string_view name)
 	{
-		if (stored_version <= 5 && is_audio_or_video_metadata(name)) return true;
-		if (stored_version == 6 && is_tracker_module(name)) return true;
-		return stored_version <= 7 && is_picture_or_video(name);
+		return std::ranges::any_of(metadata_changes, [stored_version, name](const metadata_change& change)
+		{ return change.version > stored_version && change.admits(name); });
 	});
+}
+
+std::vector<int> database_test_seams::metadata_change_versions()
+{
+	std::vector<int> result;
+	for (const auto& change : metadata_changes) result.push_back(change.version);
+	return result;
+}
+
+int database_test_seams::metadata_version()
+{
+	return db_metadata_version;
 }
 
 bool database::is_audio_or_video_metadata(const std::string_view name)
@@ -511,6 +545,11 @@ bool database::is_picture_or_video(const std::string_view name)
 {
 	const auto* const ft = files::file_type_from_name(name);
 	return ft->has_trait(file_traits::bitmap) || ft->has_trait(file_traits::video_metadata);
+}
+
+bool database::is_picture(const std::string_view name)
+{
+	return files::file_type_from_name(name)->has_trait(file_traits::bitmap);
 }
 
 void database::upgrade_cached_metadata()
@@ -547,12 +586,13 @@ void database::upgrade_cached_metadata()
 	// Version 1 rows can answer while they wait for the re-scan: they predate the pack and carry the two
 	// plain date records this build still reads. Version 2 was stamped mid-branch against an unversioned
 	// pack, which this build refuses and which has no legacy copy beside it, so keeping those rows would
-	// leave every one of them dateless until a scan happened to reach it. Later versions each changed what
-	// one kind of file records, so only the files a version since the stored one changed are asked to be
-	// read again.
-	const auto upgraded = stored_version == 1                          ? request_date_pack_rescan()
-	                      : stored_version >= 3 && stored_version <= 7 ? request_rescan_since(stored_version)
-	                                                                   : invalidate_cached_metadata();
+	// leave every one of them dateless until a scan happened to reach it. Every version since changed what
+	// some kinds of file record, so only the files a version since the stored one changed are asked to be
+	// read again: a version is never a full re-index, and the face records the rows carry are kept.
+	const auto upgraded = stored_version == 1 ? request_date_pack_rescan()
+	                      : stored_version >= 3 && stored_version < db_metadata_version
+	                          ? request_rescan_since(stored_version)
+	                          : invalidate_cached_metadata();
 
 	if (!upgraded)
 	{
@@ -1154,13 +1194,27 @@ inline void metadata_packer::pack(const prop::item_metadata_ptr& md)
 
 	if (!prop::is_null(md->audio_sample_rate)) write(prop::audio_sample_rate_full.id, md->audio_sample_rate);
 
-	// What a picture or a video is coded as, and the names a Commodore disk or tape lists, added in v1.27.4.
-	if (!prop::is_null(md->color_profile)) write(prop::color_profile.id, md->color_profile);
-	if (md->hdr != prop::hdr_kind::none) write(prop::hdr.id, static_cast<uint8_t>(md->hdr));
+	// What a picture or a video is coded as, and the names a Commodore disk or tape lists, added in v1.27.4. Its colour
+	// is kept as the file states it, and its profile and HDR read from that as the record is read; a record from
+	// before it was kept so held what was read from it, and keeps that until its file is read again.
+	if (md->has_stated_colour())
+	{
+		if (!prop::is_null(md->icc_profile)) write(prop::icc_profile.id, md->icc_profile);
+		if (md->colour_primaries != 0 || md->colour_transfer != 0)
+			write(prop::colour_coding.id, static_cast<uint16_t>(md->colour_primaries | md->colour_transfer << 8));
+	}
+	else
+	{
+		if (!prop::is_null(md->color_profile)) write(prop::color_profile.id, md->color_profile);
+		if (md->hdr != prop::hdr_kind::none) write(prop::hdr.id, static_cast<uint8_t>(md->hdr));
+	}
 	if (md->bit_depth != 0) write(prop::bit_depth.id, md->bit_depth);
 	if (md->frame_rate > 0.0f) write(prop::frame_rate.id, md->frame_rate);
 	if (md->picture_flags != 0) write(prop::picture_flags.id, md->picture_flags);
 	if (!prop::is_null(md->contents)) write(prop::contents.id, md->contents);
+	// Whom a picture's metadata names, and its face regions, added in v1.27.4 after the fields above.
+	if (!prop::is_null(md->people)) write(prop::person.id, md->people);
+	if (!prop::is_null(md->face_regions)) write(prop::face_regions.id, md->face_regions);
 }
 
 void database::clean(const std::vector<core::file_path>& indexed_items) const
@@ -1327,8 +1381,22 @@ void metadata_unpacker::unpack(const prop::item_metadata_ptr& md)
 		else if (t == prop::frame_rate) read_val(md->frame_rate);
 		else if (t == prop::picture_flags) read_val(md->picture_flags);
 		else if (t == prop::contents) read_val(md->contents);
+		else if (t == prop::person) read_val(md->people);
+		else if (t == prop::face_regions) read_val(md->face_regions);
+		else if (t == prop::icc_profile) read_val(md->icc_profile);
+		else if (t == prop::colour_coding)
+		{
+			// A byte each, in the order they were added - primaries, then transfer - so a later release can add more.
+			uint64_t coding = 0;
+			read_val_widening(coding);
+			md->colour_primaries = static_cast<uint8_t>(coding & 0xff);
+			md->colour_transfer = static_cast<uint8_t>(coding >> 8 & 0xff);
+		}
 		else skip_val(); // written by a newer build - step over it rather than truncate the record
 	}
+
+	// What the colour a file states is called, and whether it makes the file HDR, is read here rather than kept.
+	if (md->has_stated_colour()) md->read_colour();
 
 	// Only where no pack was read, which means a row written before the pack existed or one this
 	// build refuses. Where a pack was read these records are the copy written for an older build and
@@ -1350,6 +1418,7 @@ void database::load_index_values() const
 	core::folder_path last_group_name;
 	db_items_t cached_items;
 	cached_items.reserve(1000);
+	const auto load_faces = _state.faces().is_enabled();
 
 	const db_statement items(
 		_db,
@@ -1419,6 +1488,20 @@ void database::load_index_values() const
 				}
 			}
 
+			// docs/faces.md#52-the-face-store: a picture's faces are loaded with it, only while face search is on.
+			if (load_faces && has_properties)
+			{
+				try
+				{
+					if (const auto record = metadata_find_blob_property(properties, prop::cache::faces))
+						_state.faces().load(core::file_path(folder, name), {record->data, record->size});
+				}
+				catch (const metadata_property_error& e)
+				{
+					core::log(__FUNCTION__, e.what());
+				}
+			}
+
 			cached_items.emplace_back(std::move(i));
 		}
 	}
@@ -1431,7 +1514,198 @@ void database::load_index_values() const
 		cached_items.clear();
 	}
 
+	if (load_faces) _state.faces().loaded();
 	_state.cache_load_complete();
+}
+
+void database::load_face_records(faces::face_search& faces) const
+{
+	core::assert_true(is_db_thread());
+	if (!is_open()) return;
+
+	const db_statement items(_db, "select folder, name, properties from item_properties where properties IS NOT NULL"s);
+	if (!items.is_valid()) return;
+
+	while (items.read() && !platform::is_closing)
+	{
+		const auto properties = items.data(2);
+
+		try
+		{
+			if (const auto record = metadata_find_blob_property(properties, prop::cache::faces))
+				faces.load(core::file_path(core::folder_path(items.text(0)), items.text(1)),
+				           {record->data, record->size});
+		}
+		catch (const metadata_property_error& e)
+		{
+			core::log(__FUNCTION__, e.what());
+		}
+	}
+}
+
+void database::delete_face_records() const
+{
+	core::assert_true(is_db_thread());
+	if (!is_open()) return;
+
+	// A batch of rows at a time, by rowid, each read and then written, so the records rewritten are held a batch at a
+	// time rather than the whole collection's at once; and all in one transaction, so data the user deleted is deleted
+	// whole, or left whole to delete. Not cut short when Diffractor closes, for the same reason.
+	constexpr int batch = 1000;
+	const db_statement items(_db, std::format("select rowid, properties from item_properties where rowid > ? and "
+	                                          "properties IS NOT NULL order by rowid limit {}",
+	                                          batch));
+	const db_statement update(_db, "update item_properties set properties = ? where rowid = ?"s);
+	if (!items.is_valid() || !update.is_valid()) return;
+
+	// docs/faces.md#11-privacy-and-recovery: what the rows give up is overwritten, not left in the file's free space,
+	// and the checkpoint after carries the overwritten pages from the log into the file.
+	db_exec(_db, "PRAGMA secure_delete = ON;"s);
+	const core::scope_exit restore([this]
+	{
+		db_exec(_db, "PRAGMA secure_delete = OFF;"s);
+		db_exec(_db, "PRAGMA wal_checkpoint(TRUNCATE);"s);
+	});
+
+	transaction t(_db);
+	int64_t after = 0;
+
+	for (auto read = batch; read == batch;)
+	{
+		std::vector<std::pair<int64_t, core::blob>> rewritten;
+		read = 0;
+		items.bind(1, after);
+
+		while (items.read())
+		{
+			++read;
+			after = items.int64(0);
+			const auto properties = items.data(1);
+
+			try
+			{
+				if (metadata_find_blob_property(properties, prop::cache::faces))
+				{
+					rewritten.emplace_back(after, metadata_replace_blob_property(properties, prop::cache::faces,
+					                                                             std::nullopt));
+				}
+			}
+			catch (const metadata_property_error& e)
+			{
+				core::log(__FUNCTION__, e.what());
+			}
+		}
+
+		items.reset();
+
+		for (const auto& [rowid, properties] : rewritten)
+		{
+			update.bind(1, core::cspan{properties.data(), properties.size()});
+			update.bind(2, rowid);
+			update.exec();
+			update.reset();
+		}
+	}
+
+	t.commit();
+}
+
+namespace
+{
+	// One name for each face database, which every Diffractor process on the profile asks for.
+	std::string face_writer_lock_name(const core::file_path path)
+	{
+		return std::format("Diffractor.Faces.{}", crypto::to_sha256(core::to_lower(path.str())));
+	}
+}
+
+void database::open_faces(const core::file_path path)
+{
+	_face_db = std::make_unique<face_database>();
+	_face_path = path;
+	auto& faces = _state.faces();
+	auto claim = platform::try_lock_instance(face_writer_lock_name(path));
+
+	if (!claim.lock && claim.already_running)
+	{
+		// docs/faces.md#64-the-face-database: another Diffractor window writes this profile's face book. This one
+		// reads it, and takes it over once that window closes.
+		const auto read = _face_db->open(path, face_database::access::read) && _face_db->load(faces.book());
+		if (!read) _face_db->close();
+		faces.book_opened(path, faces::book_keeping::shared);
+		return;
+	}
+
+	if (!claim.lock)
+		core::log(__FUNCTION__, std::format("The face database's writer could not be claimed: {}", claim.error));
+	_face_writer = std::move(claim.lock);
+	const auto kept = _face_db->open(path) && _face_db->load(faces.book());
+	if (!kept) _face_db->close();
+	_face_unsaved = false;
+	_face_written = 0;
+	faces.book_opened(path, kept ? faces::book_keeping::kept : faces::book_keeping::memory);
+}
+
+void database::write_faces(const faces::book_write& write)
+{
+	if (!_face_db || !_face_db->is_open() || _face_db->is_read_only()) return;
+	// Already in the file: a write of the whole book made after it held it.
+	if (write.generation && write.generation <= _face_written) return;
+	if (!_face_unsaved && _face_db->write(write)) return;
+
+	// This change, or one before it, could not be written. A change written alone after a lost one could refer to
+	// what was lost, so the book is written whole instead, replacing what the file holds.
+	write_faces_whole();
+}
+
+void database::write_faces_whole()
+{
+	auto& faces = _state.faces();
+	const auto whole = faces.book().whole();
+
+	if (_face_db->write(whole))
+	{
+		if (_face_unsaved) core::log(__FUNCTION__, "The face book was written whole after a failed write");
+		_face_unsaved = false;
+		_face_written = whole.generation;
+		faces.book_written(true);
+		return;
+	}
+
+	if (!_face_unsaved) core::log(__FUNCTION__, "A change to the face book could not be written to the face database");
+	_face_unsaved = true;
+	faces.book_written(false);
+}
+
+void database::poll_faces()
+{
+	auto& faces = _state.faces();
+
+	if (_face_unsaved)
+	{
+		if (_face_db && _face_db->is_open() && !_face_db->is_read_only()) write_faces_whole();
+		return;
+	}
+
+	if (faces.book_state() != faces::book_keeping::shared || !_face_db) return;
+
+	if (auto claim = platform::try_lock_instance(face_writer_lock_name(_face_path)); claim.lock)
+	{
+		// The window that wrote the face book has closed: this one writes it from now on, as that window left it.
+		_face_db->close();
+		_face_writer = std::move(claim.lock);
+		const auto kept = _face_db->open(_face_path) && _face_db->load(faces.book());
+		if (!kept) _face_db->close();
+		_face_unsaved = false;
+		_face_written = 0;
+		faces.book_opened(_face_path, kept ? faces::book_keeping::kept : faces::book_keeping::memory);
+		return;
+	}
+
+	// Still written elsewhere: what that window changed is read again, so this one shows the book as it stands.
+	if (!_face_db->is_open() && !_face_db->open(_face_path, face_database::access::read)) return;
+	if (_face_db->changed_elsewhere() && _face_db->load(faces.book()))
+		faces.book_opened(_face_path, faces::book_keeping::shared);
 }
 
 database::db_thumbnail database::load_thumbnail(const core::file_path id) const
@@ -1687,6 +1961,9 @@ void database::perform_writes()
 	// pile up while the index scans would spend memory on writes that can never be made.
 	perform_writes(_state.db_writes().dequeue_all());
 
+	// The face book's changes, in the order they were made, to the face database's own file.
+	for (const auto& write : _state.faces().take_book_writes()) write_faces(write);
+
 	// SQLite documents this for connections that stay open, which this one does for the whole
 	// session: statistics gathered when the index was empty would otherwise be all the planner ever
 	// sees. It is nearly a no-op on the days it finds nothing to re-analyse.
@@ -1744,6 +2021,8 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 	const db_statement insert_thumbnails(
 		_db,
 		"insert or replace into item_thumbnails (folder, name, bitmap, cover_art, last_scanned) values (?, ?, ?, ?, ?)"s);
+	const db_statement update_properties(_db,
+	                                     "update item_properties set properties = ? where folder = ? and name = ?"s);
 	metadata_packer packer;
 
 	for (auto&& write : writes)
@@ -1818,6 +2097,79 @@ void database::perform_writes(std::deque<item_db_write> writes) const
 			write.media_position.reset();
 
 			++_state.stats.items_saved;
+		}
+
+		// After the metadata above, which carries the record it found forward: docs/faces.md#51-the-face-record. A
+		// row with no properties yet has nothing to carry a record, which the scan makes again once it has. A record
+		// face search wrote in a session since ended - turned off, or its data deleted - is not written, so nothing
+		// queued before a delete undoes it.
+		const auto write_faces = write.faces.has_value() && write.faces_session == _state.faces().session();
+
+		if (write_faces || write.restamp_faces.has_value())
+		{
+			previous_properties.bind(1, path.folder().text());
+			previous_properties.bind(2, path.name());
+			core::blob current;
+			if (previous_properties.read_checked())
+			{
+				const auto data = previous_properties.data_checked(0);
+				current.assign(data.data, data.data + data.size);
+			}
+			previous_properties.reset();
+
+			if (!current.empty())
+			{
+				try
+				{
+					core::blob updated;
+					updated.assign(current.begin(), current.end());
+					auto changed = false;
+
+					if (write_faces)
+					{
+						updated = metadata_replace_blob_property(updated, prop::cache::faces,
+						                                         write.faces->empty()
+						                                             ? std::nullopt
+						                                             : std::optional{core::cspan{write.faces->data(),
+						                                                                         write.faces->size()}});
+						changed = true;
+					}
+
+					if (write.restamp_faces.has_value())
+					{
+						if (const auto found = metadata_find_blob_property(updated, prop::cache::faces))
+						{
+							auto record = faces::unpack_record({found->data, found->size});
+							const auto& restamp = *write.restamp_faces;
+
+							if (record && record->stamp == restamp.from)
+							{
+								record->stamp = restamp.to;
+								if (restamp.orientation_from != restamp.orientation_to)
+									*record = faces::turn_record(std::move(*record), restamp.orientation_from,
+									                             restamp.orientation_to);
+								const auto repacked = faces::pack_record(*record);
+								updated = metadata_replace_blob_property(updated, prop::cache::faces,
+								                                         core::cspan{repacked.data(), repacked.size()});
+								changed = true;
+							}
+						}
+					}
+
+					if (changed)
+					{
+						update_properties.bind(1, core::cspan{updated.data(), updated.size()});
+						update_properties.bind(2, path.folder().text());
+						update_properties.bind(3, path.name());
+						update_properties.exec();
+						update_properties.reset();
+					}
+				}
+				catch (const metadata_property_error& e)
+				{
+					core::log(__FUNCTION__, e.what());
+				}
+			}
 		}
 
 		if (write.metadata_scanned.has_value())

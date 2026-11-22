@@ -13,6 +13,7 @@
 #include "pch.h"
 
 #include "model_search_index.h"
+#include "model_locations.h"
 #include "files.h"
 
 namespace
@@ -213,12 +214,15 @@ std::string df::search_index::current_format_signature()
 	                   platform::utc_to_local(date_t(2024, 7, 15, 12)).to_int64());
 }
 
-std::shared_ptr<const df::search_index> df::search_index::build(const folder_list& folders, const uint64_t generation,
+std::shared_ptr<const df::search_index> df::search_index::build(const folder_list& folders, const location_cache& locations,
+                                                                const uint64_t generation,
                                                                 const std::function<bool()>& abandon)
 {
 	auto result = std::make_shared<search_index>();
 	auto& index = *result;
 	index._generation = generation;
+	index._location_version = locations.search_names_version();
+	gps_search_names gps_names;
 	index._format_signature = current_format_signature();
 	index._date_day = core::utc_now().to_days();
 
@@ -249,6 +253,8 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 	value_docs_builder formatted_docs;
 	value_docs_builder split_docs;
 	value_docs_builder tag_docs;
+	hash_map<std::string, uint32_t> person_ids;
+	value_docs_builder person_docs;
 
 	// What a rating or label value term reads of a document: whether it has metadata, and the value.
 	constexpr auto no_metadata = std::numeric_limits<uint32_t>::max();
@@ -283,6 +289,7 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 	const auto split_fields = text_split_fields();
 	std::vector<hash_map<uint32_t, std::vector<uint32_t>>> split_memo(split_fields.size());
 	hash_map<uint32_t, std::vector<uint32_t>> tag_memo;
+	hash_map<uint32_t, std::vector<uint32_t>> people_memo;
 
 	const auto add_text = [&index, &text_ids, &text_docs](const core::cached value, const uint32_t doc)
 	{
@@ -335,6 +342,13 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 			{
 				const auto& metadata = *md;
 
+				if (metadata.has_gps())
+					for (const auto name : gps_names.at(locations, metadata.coordinate))
+						if (!name.is_empty()) add_text(name, doc);
+				if (const auto id = gps_names.parent_of(locations, metadata.location_place, metadata.location_state,
+				                                        metadata.location_country))
+					add_text(locations.find_by_id(id).place, doc);
+
 				for (const auto& field : text_contains_fields())
 				{
 					const auto value = metadata.*field.member;
@@ -381,6 +395,27 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 
 					for (const auto id : parts) tag_docs.add(id, doc);
 				}
+
+				// As compare_text splits them: each name trimmed, found by the start of any of its words.
+				if (!metadata.people.is_empty())
+				{
+					const auto [found, inserted] = people_memo.try_emplace(metadata.people.id);
+					auto& parts = found->second;
+
+					if (inserted)
+					{
+						split2(metadata.people, true, [&index, &person_ids, &parts](const std::string_view part)
+						{
+							const auto [id, added] = person_ids.try_emplace(std::string(core::trim(part)),
+							                                                static_cast<uint32_t>(
+																				index._person_names.size()));
+							if (added) index._person_names.emplace_back(id->first);
+							parts.emplace_back(id->second);
+						});
+					}
+
+					for (const auto id : parts) person_docs.add(id, doc);
+				}
 			}
 
 			index._files.emplace_back(&file);
@@ -405,6 +440,7 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 	index._formatted_docs = formatted_docs.freeze(static_cast<uint32_t>(index._formatted_ids.size()));
 	index._split_docs = split_docs.freeze(static_cast<uint32_t>(index._split_ids.size()));
 	index._tag_docs = tag_docs.freeze(static_cast<uint32_t>(index._tag_ids.size()));
+	index._person_docs = person_docs.freeze(static_cast<uint32_t>(index._person_names.size()));
 	index._ratings.docs = rating_docs.freeze(static_cast<uint32_t>(index._ratings.representatives.size()));
 	index._labels.docs = label_docs.freeze(static_cast<uint32_t>(index._labels.representatives.size()));
 
@@ -420,6 +456,12 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 
 	index._text_trigrams.freeze();
 
+	auto person_name_bytes = index._person_names.capacity() * sizeof(std::string);
+	for (const auto& name : index._person_names)
+	{
+		if (name.capacity() > sizeof(std::string)) person_name_bytes += name.capacity();
+	}
+
 	index._bytes = sizeof(search_index) + index._folders.capacity() * sizeof(folder_entry) +
 	               index._folder_by_node.bucket_count() * sizeof(void*) +
 	               index._folder_by_node.size() *
@@ -432,7 +474,8 @@ std::shared_ptr<const df::search_index> df::search_index::build(const folder_lis
 	               index._text_values.capacity() * sizeof(core::cached) + index._text_docs.byte_size() +
 	               index._text_trigrams.byte_size() + key_map_bytes(index._formatted_ids) +
 	               index._formatted_docs.byte_size() + key_map_bytes(index._split_ids) + index._split_docs.byte_size() +
-	               key_map_bytes(index._tag_ids) + index._tag_docs.byte_size() + index._ratings.docs.byte_size() +
+	               key_map_bytes(index._tag_ids) + index._tag_docs.byte_size() + person_name_bytes +
+	               index._person_docs.byte_size() + index._ratings.docs.byte_size() +
 	               index._ratings.representatives.capacity() * sizeof(uint32_t) + index._labels.docs.byte_size() +
 	               index._labels.representatives.capacity() * sizeof(uint32_t) +
 	               index._date_keys.capacity() * sizeof(uint32_t) + index._date_values.capacity() * sizeof(date_t);
@@ -479,7 +522,8 @@ bool df::search_index::is_indexed_term(const search_term& term, const bool forma
 	if (term.type == search_term_type::text) return formats_current;
 
 	// A tag: term compares equality, which no ordering modifier changes the meaning of.
-	return term.type == search_term_type::value && term.key == prop::tag && !term.modifiers.greater_than &&
+	return term.type == search_term_type::value && (term.key == prop::tag || term.key == prop::person) &&
+	       !term.modifiers.greater_than &&
 	       !term.modifiers.less_than;
 }
 
@@ -548,6 +592,13 @@ df::doc_set df::search_index::evaluate_term(const search_matcher& matcher, const
 
 	if (is_indexed_term(term, formats_current, dates_current))
 	{
+		if (term.key == prop::person)
+		{
+			doc_set result(doc_count());
+			add_people(result, matcher, term, token);
+			if (!term.modifiers.positive) result.invert();
+			return result;
+		}
 		return term.type == search_term_type::text ? evaluate_text(matcher, term, token) : evaluate_tag(term);
 	}
 
@@ -601,6 +652,10 @@ df::doc_set df::search_index::evaluate_text(const search_matcher& matcher, const
 		_split_docs.add_to(result, found->second);
 	}
 
+	// docs/faces.md#8-searching: a person a document names, by the start of any word of their name, and a person the
+	// face book names in a picture, each as match_term finds them.
+	add_people(result, matcher, term, token);
+
 	for (const auto& folder : _folders)
 	{
 		const auto folder_name = folder.path.text();
@@ -612,6 +667,26 @@ df::doc_set df::search_index::evaluate_text(const search_matcher& matcher, const
 
 	if (!term.modifiers.positive) result.invert();
 	return result;
+}
+
+void df::search_index::add_people(doc_set& result, const search_matcher& matcher, const search_term& term,
+                                  const cancel_token& token) const
+{
+	for (uint32_t id = 0; id < _person_names.size(); ++id)
+	{
+		if ((id & 255u) == 0 && token.is_cancelled()) return;
+		if (!term_names_person(term, matcher.canonical_person(_person_names[id]))) continue;
+		for (const auto doc : _person_docs.docs(id))
+		{
+			if (matcher.file_name_allowed(_folders[_doc_folder[doc]].path.text(), _files[doc]->name, _person_names[id]))
+				result.set(doc);
+		}
+	}
+	matcher.for_each_face_named(term, token, [this, &result](const core::file_path path)
+	{
+		if (const auto folder = find_folder(path.folder()))
+			if (const auto doc = find_doc(*folder, path.name())) result.set(*doc);
+	});
 }
 
 df::doc_set df::search_index::evaluate_tag(const search_term& term) const
@@ -762,6 +837,12 @@ df::doc_set df::search_index_evaluator::leaf_docs(const search_matcher& matcher,
 
 df::doc_set df::search_index_evaluator::evaluate(const search_matcher& matcher, const cancel_token& token)
 {
+	// This evaluator can outlive a book edit. A free-text leaf sees people too, not just person: terms.
+	if (matcher.face_people() != _leaf_people)
+	{
+		_leaves.clear();
+		_leaf_people = matcher.face_people();
+	}
 	const auto& terms = matcher.search().terms();
 	if (terms.empty()) return doc_set(_index->doc_count());
 

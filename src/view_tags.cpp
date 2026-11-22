@@ -205,8 +205,8 @@ void tags_view::refresh()
 
 	const tag_set add_tags(_adds);
 	const tag_set remove_tags(_removes);
-	const auto unchanged_color = core::darken(ui::style::colors.view_text, 0.22f);
-	const auto changed_color = core::lighten(ui::style::colors.dialog_selected_background, 0.55f);
+	const auto unchanged_color = ui::style::tone_text(ui::style::tone::muted);
+	const auto changed_color = ui::style::tone_text(ui::style::tone::accent);
 
 	std::vector<row_element_ptr> rows;
 	rows.reserve(items.size());
@@ -234,8 +234,7 @@ void tags_view::refresh()
 		row->_text[2] = changed ? after : std::string(tt.tags_unchanged.sv());
 		row->_text_color[2] = changed ? changed_color : unchanged_color;
 		if (changed) row->_icons[1] = icon_index::next;
-		row->_order = count++;
-		row->_work_index = row->_order;
+		row->_work_index = count++;
 		rows.emplace_back(row);
 
 		if (changed) ++changes;
@@ -322,7 +321,7 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	};
 
 	std::vector<view_element_ptr> controls;
-	controls.emplace_back(create_view_info_element(tt.tag_info));
+	controls.emplace_back(std::make_shared<view_info_element>(icon_index::tag, tt.tags_title, tt.tag_info));
 	controls.emplace_back(selection_thumbnails);
 	controls.emplace_back(std::make_shared<text_element>(format_plural_text(tt.tag_info_fmt, items)));
 	controls.emplace_back(std::make_shared<divider_element>());
@@ -333,8 +332,6 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 		refresh();
 		refresh_words();
 	}));
-	controls.emplace_back(std::make_shared<text_element>(tt.help_tag1));
-	controls.emplace_back(std::make_shared<text_element>(tt.help_tag2));
 	controls.emplace_back(std::make_shared<text_element>(tt.help_tag_add_remove));
 
 	// Interned, not views into setting.favorite_tags: that string is reassigned by the
@@ -354,8 +351,7 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	if (!_favorite_words.empty())
 	{
 		controls.emplace_back(std::make_shared<divider_element>());
-		controls.emplace_back(std::make_shared<text_element>(tt.tags_favorite_label, render::font_face::title,
-		                                                     render::text_style::multiline, view_element_options{}));
+		controls.emplace_back(std::make_shared<ui::title_control>(tt.tags_favorite_label));
 		controls.emplace_back(
 			std::make_shared<ui::recommended_words_control>(frame, _favorite_words, add_tag, is_add, _word_refresh));
 	}
@@ -381,8 +377,7 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	if (!_common_words.empty())
 	{
 		controls.emplace_back(std::make_shared<divider_element>());
-		controls.emplace_back(std::make_shared<text_element>(tt.tags_common_label, render::font_face::title,
-		                                                     render::text_style::multiline, view_element_options{}));
+		controls.emplace_back(std::make_shared<ui::title_control>(tt.tags_common_label));
 		controls.emplace_back(
 			std::make_shared<ui::recommended_words_control>(frame, _common_words, add_tag, is_add, _word_refresh));
 	}
@@ -393,11 +388,14 @@ view_controls_host_ptr tags_view::controls(const ui::frame_ptr& owner)
 	if (!_existing_words.empty())
 	{
 		controls.emplace_back(std::make_shared<divider_element>());
-		controls.emplace_back(std::make_shared<text_element>(tt.tags_remove_label, render::font_face::title,
-		                                                     render::text_style::multiline, view_element_options{}));
+		controls.emplace_back(std::make_shared<ui::title_control>(tt.tags_remove_label));
 		controls.emplace_back(std::make_shared<ui::recommended_words_control>(frame, _existing_words, remove_tag,
 		                                                                      is_remove, _word_refresh));
 	}
+
+	controls.emplace_back(std::make_shared<divider_element>());
+	controls.emplace_back(std::make_shared<text_element>(tt.help_tag1));
+	controls.emplace_back(std::make_shared<text_element>(tt.help_tag2));
 
 	for (const auto& c : controls)
 	{

@@ -101,6 +101,9 @@ struct movie_clip
 	// heard from the in point `sound_checked_at`. A trim since then leaves it unknown, which counts as sound.
 	double sound_checked_at = -1;
 	bool sound_is_quiet = false;
+	// Measured, not saved: where a SID tune starts again, in seconds of its source, when its scan found it to
+	// repeat; zero for anything else. A Short of that tune alone ends there, so YouTube's loop of it is seamless.
+	double loop_end = 0;
 
 	double duration() const { return std::max(0.0, end - start); }
 
@@ -182,6 +185,31 @@ inline constexpr int movie_default_frame_rate = 30;
 inline constexpr sizei movie_audio_extent{1920, 1080};
 inline constexpr int movie_audio_frame_rate = 30;
 
+// What a movie is made for. A YouTube Short stands upright, runs three minutes at most, and keeps what matters clear
+// of what YouTube lays over it. docs/movie.md#youtube-shorts owns the rules.
+enum class movie_kind
+{
+	movie,
+	youtube_short,
+};
+
+// A Short is upright HD whatever shape its sources are: one of another shape sits whole in the middle over a
+// blurred, darkened copy of itself that fills the frame, and an audio clip is drawn upright.
+inline constexpr sizei movie_short_extent{1080, 1920};
+// YouTube takes a vertical video of three minutes or less as a Short. A Short ends this far inside that, so the
+// encoder's rounding of the last frame and its sound's priming cannot carry it over.
+inline constexpr double movie_short_max_seconds = 179.5;
+// A Short moves as smoothly as its sources were made to, up to 60 frames a second: a PAL SID tune's monitor at 50,
+// an NTSC one's at 60, a video at its own rate. An audio clip's frame_rate is the rate its pictures move at, which
+// only a Short uses; a movie counts every audio clip at movie_audio_frame_rate.
+inline constexpr std::array movie_short_frame_rates{60, 50, 30, 25, 24};
+inline constexpr int movie_short_still_frame_rate = 30;
+// What of a Short YouTube covers: the bottom fifth with the title, the channel and the progress bar, and the
+// right edge with its buttons. Words keep clear of both; an audio clip's picture fills the frame beneath them, as a
+// video's does.
+inline constexpr double movie_short_bottom_reserve = 0.2;
+inline constexpr double movie_short_side_reserve = 0.12;
+
 // The rate a video's frames come at. A phone's variable-rate video declares a rate of 60 or 120 while
 // its frames come 30 a second, and one such clip must not make every frame of a movie twice over; a
 // video whose frames do come as fast as it declares keeps its rate. Either may be unknown, as zero.
@@ -206,7 +234,7 @@ inline constexpr int64_t movie_max_frames = 24ll * 60ll * 60ll * movie_max_frame
 // number no integer can hold.
 inline constexpr double movie_max_clip_seconds = static_cast<double>(movie_max_frames) / movie_max_frame_rate;
 
-movie_output derive_movie_output(const std::vector<movie_clip>& clips);
+movie_output derive_movie_output(const std::vector<movie_clip>& clips, movie_kind kind = movie_kind::movie);
 
 // Seconds two neighbouring items overlap: the crossfade, held to half the shorter of the two, so a
 // crossfade longer than the item it joins shortens rather than consuming it, and no item can be eaten
@@ -234,9 +262,19 @@ struct movie_timing
 	double duration = 0;
 	// In the order they begin.
 	std::vector<movie_text_span> captions;
+	// Whether the movie fades in from black and out to it, which a Short that loops seamlessly does not.
+	bool fades = true;
+	// A Short whose items run past three minutes ends there, fading out as any movie does; `whole` is how long
+	// its items would have run.
+	bool cut = false;
+	double whole = 0;
 };
 
-movie_timing calc_movie_timing(const std::vector<movie_clip>& clips);
+movie_timing calc_movie_timing(const std::vector<movie_clip>& clips, movie_kind kind = movie_kind::movie);
+
+// A Short of one SID tune that repeats within three minutes, played from its start: it ends where the tune
+// starts again, with no fade at either end, so YouTube's loop of it never shows a join.
+bool movie_loops_seamlessly(const std::vector<movie_clip>& clips, movie_kind kind);
 
 // One item's contribution to one frame.
 struct movie_frame_source
@@ -331,6 +369,7 @@ struct movie_load_result
 	movie_load_status status = movie_load_status::unreadable;
 	std::vector<movie_clip> clips;
 	std::vector<movie_load_problem> problems;
+	movie_kind kind = movie_kind::movie;
 
 	explicit operator bool() const { return status == movie_load_status::ok; }
 };
@@ -338,7 +377,8 @@ struct movie_load_result
 // The project file: a .dfv, plain text with one item per line in the order they play, which a person or
 // an agent can write by hand. docs/movie.md#6-project-files owns the grammar. A path beneath the
 // project's folder is written relative to it, so the two move together; any other is written whole.
-std::string write_dfv(const std::vector<movie_clip>& clips, core::folder_path project_folder);
+std::string write_dfv(const std::vector<movie_clip>& clips, core::folder_path project_folder,
+                      movie_kind kind = movie_kind::movie);
 // Reads every line it can. A line it cannot use is skipped and named in `problems`; a file with
 // problems and no item at all is not a project.
 movie_load_result read_dfv(std::string_view text, core::folder_path project_folder);
@@ -387,8 +427,9 @@ public:
 	// Sorted, and empty only when the timeline is. A command that acts on "the items" acts on this.
 	const std::vector<size_t>& selected() const { return _selected; }
 	bool is_selected(size_t i) const;
-	// One click's worth of selection: plain replaces, `extend` runs from the anchor, `toggle` adds
-	// or removes one. Focus always lands on `index` whichever it was.
+	// One click's worth of selection, by the rules every list selects by: plain replaces, `extend` runs from the
+	// anchor - with `toggle` too, adding the run - and `toggle` alone adds or removes one. Focus always lands on
+	// `index` whichever it was.
 	void select(size_t index, bool extend, bool toggle);
 	// Moves focus without changing the selected set. Used while a press inside an existing
 	// multi-selection may become a block drag.
@@ -420,6 +461,10 @@ public:
 	// item's own is not an edit, and typing in one item's box and then another's is two steps.
 	void text(size_t at, std::string_view words, movie_edit_group group = movie_edit_group::none);
 
+	// What the movie is made for. A change is an edit, undone with the rest.
+	movie_kind kind() const { return _kind; }
+	void kind(movie_kind kind);
+
 	// A photo's or a text screen's length is its end, from a start of zero. Equal ranges are not an
 	// edit, so a handle pressed and released in place costs nothing.
 	void trim(size_t at, double start, double end, movie_edit_group group = movie_edit_group::none);
@@ -428,7 +473,7 @@ public:
 	// a step of its own.
 	void end_edit_group();
 
-	void reset(std::vector<movie_clip> clips, core::file_path path);
+	void reset(std::vector<movie_clip> clips, core::file_path path, movie_kind kind = movie_kind::movie);
 	void mark_saved(core::file_path path, uint64_t edit_revision);
 
 	// A timeline just built from a selection has no state before itself, so there is nothing to
@@ -440,10 +485,10 @@ public:
 	// nothing left to lose, so leaving Movie has nothing to ask.
 	void undo();
 
-	movie_timing timing() const { return calc_movie_timing(_clips); }
+	movie_timing timing() const { return calc_movie_timing(_clips, _kind); }
 	// What the movie shows and plays at `time`, captions included.
-	movie_frame frame(const double time) const { return calc_movie_frame(_clips, time); }
-	movie_output output() const { return derive_movie_output(_clips); }
+	movie_frame frame(const double time) const { return calc_movie_frame(_clips, timing(), time); }
+	movie_output output() const { return derive_movie_output(_clips, _kind); }
 
 private:
 	struct undo_entry
@@ -452,6 +497,7 @@ private:
 		std::vector<size_t> selected;
 		size_t current = 0;
 		size_t anchor = 0;
+		movie_kind kind = movie_kind::movie;
 	};
 
 	void push_undo();
@@ -463,6 +509,7 @@ private:
 	std::vector<movie_clip> _clips;
 	std::vector<undo_entry> _undo;
 	core::file_path _path;
+	movie_kind _kind = movie_kind::movie;
 	std::vector<size_t> _selected;
 	size_t _current = 0;
 	size_t _anchor = 0;

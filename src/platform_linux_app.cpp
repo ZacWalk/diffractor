@@ -6,10 +6,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: The application's Linux glue: no hardware video decode for FFmpeg to use - the counterpart
-// of platform_win_av.cpp - no screen recorder in a Debug build, which platform_win_record.cpp is on Windows,
-// and no platform tests to register, since the Windows-only subject file is not built here. The entry point
-// and generated icon-font registration are shared in app.cpp, which calls libdesktop's UI runner on both
-// platforms.
+// of platform_win_av.cpp - no screen recorder, which platform_win_record.cpp is on Windows, because Linux has
+// no movie writer to record with, and no platform tests to register, since the Windows-only subject file is
+// not built here. The entry point and generated icon-font registration are shared in app.cpp, which calls
+// libdesktop's UI runner on both platforms.
 
 #include "pch.h"
 #include "app_record.h"

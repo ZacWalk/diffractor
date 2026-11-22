@@ -15,7 +15,7 @@
 
 using view_controls_host_ptr = std::shared_ptr<view_controls_host>;
 
-class rename_view final : public list_view, public std::enable_shared_from_this<rename_view>
+class rename_view final : public review_list, public std::enable_shared_from_this<rename_view>
 {
 	std::vector<rename_item> _renames;
 	std::string _title;
@@ -25,7 +25,7 @@ class rename_view final : public list_view, public std::enable_shared_from_this<
 	bool _reviewing = false;
 
 public:
-	rename_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host)) { col_count = 3; }
+	rename_view(view_state& state, view_host_ptr host) : review_list(state, std::move(host)) { col_count = 3; }
 
 	std::array<text_t, max_col_count> col_titles() override
 	{
@@ -52,7 +52,7 @@ public:
 
 	void activate(const sizei extent) override
 	{
-		list_view::activate(extent);
+		review_list::activate(extent);
 		refresh();
 	}
 

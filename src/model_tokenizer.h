@@ -14,6 +14,7 @@ struct search_part
 {
 	df::search_term_modifier modifier;
 	bool literal = false;
+	bool confirmed_person = false;
 
 	// the user wrote a comma before this part, which binds it to the preceding term
 	bool after_comma = false;
@@ -26,6 +27,7 @@ struct search_part
 	void clear()
 	{
 		literal = false;
+		confirmed_person = false;
 		after_comma = false;
 		modifier.clear();
 		scope.clear();
@@ -98,7 +100,7 @@ class search_tokenizer
 			// A quoted word is the word, not the operator. Without the literal test a search for
 			// "and" or "or" as text - a band, a film, an ordinary word in Dutch or Danish - rewrote
 			// the query's own logic instead of matching what the user had quoted.
-			if (current_term.scope.empty() && !current_term.literal)
+			if (current_term.scope.empty() && !current_term.literal && !current_term.confirmed_person)
 			{
 				if (core::icmp(current_text, "or") == 0 || core::icmp(current_text, tt.query_or) == 0)
 				{
@@ -151,6 +153,19 @@ public:
 		for (size_t pos = 0; pos < text.size(); ++pos)
 		{
 			const auto c = text[pos];
+
+			// Only a trailing, adjacent bang qualifies a person. A leading bang still negates,
+			// and a bang inside quotes, a path, or another property's value remains literal.
+			if (c == '!' && !current_text.empty() &&
+			    (st == parse_state::text || (st == parse_state::scanning && pos && text[pos - 1] == quote_char)) &&
+			    (pos + 1 == text.size() || is_ascii_space(text[pos + 1]) || is_delimiter(text[pos + 1])) &&
+			    (current_term.scope.empty() || prop::from_prefix(current_term.scope) == prop::person) &&
+			    !core::is_path(current_text))
+			{
+				current_term.confirmed_person = true;
+				st = parse_state::scanning;
+				continue;
+			}
 
 			if (st == parse_state::text)
 			{

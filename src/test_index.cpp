@@ -18,6 +18,8 @@
 
 #include "test_fixtures.h"
 #include "model_db_pack.h"
+#include "model_faces.h"
+#include "model_faces_search.h"
 #include "model_postings.h"
 #include "util_crash_files_db.h"
 #include "app_util.h"
@@ -645,9 +647,9 @@ static void should_keep_answering_while_upgrading_to_the_date_pack()
 	assert_equal("test", item_md->album.sv(), "the rest of the cached metadata is untouched");
 }
 
-// Versions 3, 4 and 5 each changed only what an audio or video scan records, and 7 what a picture or a video is coded
-// as, so each upgrade asks those items alone to be re-scanned, and every row keeps answering meanwhile. A Commodore
-// disk is a kind no upgrade since 3 changed.
+// Versions 3, 4 and 5 each changed only what an audio or video scan records, 7 what a picture or a video is coded
+// as, and 8 whom a picture names, so each upgrade asks those items alone to be re-scanned, and every row keeps
+// answering meanwhile. A Commodore disk is a kind no upgrade since 3 changed.
 static void should_keep_answering_while_upgrading_metadata(const int stored_version)
 {
 	const auto index_path = test_temps.next_path();
@@ -718,6 +720,20 @@ static void should_keep_answering_while_upgrading_metadata(const int stored_vers
 	assert_equal("audio", audio_md->album.sv(), "audio metadata still answers");
 	assert_equal("disk", disk_md->album.sv(), "disk metadata still answers");
 	assert_equal(65535u, audio_md->audio_sample_rate, "legacy saturated sample rate remains readable meanwhile");
+}
+
+// Every version of the cached record since 3 says which files it changed, so an upgrade reads only those again and a
+// release that corrects how something is read never reads the whole collection again. A version added without its
+// row fails here rather than becoming a full re-index, and so does a gap between versions.
+static void should_know_what_every_version_of_the_cached_record_changed()
+{
+	const auto versions = database_test_seams::metadata_change_versions();
+	assert_equal(false, versions.empty(), "versions say what they changed");
+	if (versions.empty()) return;
+	assert_equal(4, versions.front(), "from the first after 3");
+	assert_equal(database_test_seams::metadata_version(), versions.back(), "to the current one");
+	for (size_t i = 1; i < versions.size(); ++i)
+		assert_equal(versions[i - 1] + 1, versions[i], std::format("with none left out after {}", versions[i - 1]));
 }
 
 // Version 6 recorded libopenmpt's stand-in for a missing song message - the module's sample and instrument
@@ -857,7 +873,7 @@ static void should_reclaim_a_cache_written_by_a_newer_build()
 		}
 	}
 
-	assert_equal(8, stamped, "the stamp comes back down to what this build writes");
+	assert_equal(9, stamped, "the stamp comes back down to what this build writes");
 }
 
 // A cache file this build cannot read must be replaced, not refused. Everything it holds can be
@@ -984,6 +1000,10 @@ static void should_pack_item_properties()
 	const auto md = extract_properties(file_path);
 	md->album = "test"_c;
 	md->orientation = core::orientation::bottom_right;
+	md->people = core::cache(core::combine(std::vector<std::string>{"Jane Doe", "Ann"}));
+	md->face_regions = faces::pack_regions(std::vector<faces::stored_region>{{"Jane Doe",
+	                                                                          rectd{0.25, 0.5, 0.125, 0.25}}},
+	                                       sizei{4000, 3000});
 
 	metadata_packer packer;
 	packer.pack(md);
@@ -995,6 +1015,8 @@ static void should_pack_item_properties()
 
 	assert_metadata(*md, *unpacked, "index");
 	assert_equal(md->orientation, unpacked->orientation, "index orientation");
+	assert_equal(md->people.sv(), unpacked->people.sv(), "whom the picture names");
+	assert_equal(true, md->face_regions == unpacked->face_regions, "and where");
 
 	md->audio_sample_rate = 192000;
 	md->audio_channels = 6;
@@ -1056,7 +1078,11 @@ static void should_pack_item_properties()
 	assert_equal(true, pano_unpacked->is_panorama(), "and it reads back as a panorama");
 	assert_equal(false, unpacked->is_panorama(), "while a file that declared none stays none");
 
-	// How a picture is coded, and what a disk holds, are written after them, for the same reason.
+	// How a picture is coded, and what a disk holds, are written after them, for the same reason. A record from before
+	// colour was kept as the file states it holds the names read from it, and they still read.
+	md->icc_profile = {};
+	md->colour_primaries = 0;
+	md->colour_transfer = 0;
 	md->color_profile = "Display P3"_c;
 	md->hdr = prop::hdr_kind::hlg;
 	md->bit_depth = 10;
@@ -1079,6 +1105,39 @@ static void should_pack_item_properties()
 	assert_equal("ACE OF ACES+\nA1", coding->contents.sv(), "contents round trip");
 	assert_equal(false, unpacked->is_hdr() || unpacked->is_animated() || unpacked->has_alpha(),
 	             "while a file that says none of these reads back none");
+
+	// The colour a file states is kept as it states it, and what it is called read as the record is, so naming it
+	// better later needs no file read again.
+	const auto stated = std::make_shared<prop::item_metadata>();
+	stated->colour_primaries = 12;
+	stated->colour_transfer = 18;
+	stated->picture_flags = prop::picture_flag::gain_map;
+	stated->read_colour();
+	assert_equal("Display P3", stated->color_profile.sv(), "primaries named");
+	assert_equal(static_cast<int>(prop::hdr_kind::hlg), static_cast<int>(stated->hdr), "and HDR by its transfer");
+
+	metadata_packer stated_packer;
+	stated_packer.pack(stated);
+	const auto stated_read = std::make_shared<prop::item_metadata>();
+	metadata_unpacker stated_unpacker(stated_packer.cdata());
+	stated_unpacker.unpack(stated_read);
+	assert_equal(12, static_cast<int>(stated_read->colour_primaries), "the primaries as stated");
+	assert_equal(18, static_cast<int>(stated_read->colour_transfer), "the transfer as stated");
+	assert_equal("Display P3", stated_read->color_profile.sv(), "named as it is read");
+	assert_equal(static_cast<int>(prop::hdr_kind::hlg), static_cast<int>(stated_read->hdr), "HDR as it is read");
+	assert_equal(true, (stated_read->picture_flags & prop::picture_flag::gain_map) != 0,
+	             "with the gain map an HLG transfer outranks still kept");
+
+	stated->icc_profile = "Adobe RGB (1998)"_c;
+	stated->colour_primaries = 1;
+	stated->colour_transfer = 0;
+	stated->picture_flags = prop::picture_flag::video;
+	stated->read_colour();
+	assert_equal("Adobe RGB (1998)", stated->color_profile.sv(), "an ICC profile is named by its own name");
+	stated->icc_profile = {};
+	stated->read_colour();
+	assert_equal("BT.709", stated->color_profile.sv(), "and a video's sRGB primaries as BT.709");
+	assert_equal(static_cast<int>(prop::hdr_kind::none), static_cast<int>(stated->hdr), "standard range");
 }
 
 static void should_write_pack_rows_a_rollback_build_can_read()
@@ -2185,6 +2244,179 @@ static void should_not_reread_after_metadata_write()
 	assert_equal(false, item->should_load_thumbnail(), "the written item does not re-request its thumbnail");
 	assert_equal(false, index.needs_scan(item), "the cached record does not report needing a scan");
 	assert_equal(scans_before + 1, df::file_perf.scans.load(), "publishing the write costs no extra read");
+}
+
+// A write of metadata alone leaves the pixels a face record was measured on as they were, so the record is
+// stamped with the file's new time rather than read again - and turned, where the write turned the picture's
+// declared orientation - in the store and in the index alike.
+static void should_stamp_a_face_record_afresh_across_a_metadata_write()
+{
+	const auto index_path = test_temps.next_path();
+	const auto temp_folder = test_temps.next_folder("face-restamp");
+	const auto file_path = test_temps.next_path_in(temp_folder, ".jpg");
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, false);
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	index.faces().configure(true, true, false);
+	database db(index);
+	db.open(index_path.folder(), index_path.file_name_without_extension());
+
+	const auto item = load_item(index, file_path, false);
+	const auto read_at = item->file_modified();
+
+	faces::face_record record;
+	record.model = faces::model_id();
+	record.stamp = read_at;
+	record.extent = {400, 300};
+	faces::found_face face;
+	face.box = {0.1, 0.2, 0.3, 0.4};
+	face.marks[0] = {0.15, 0.3};
+	record.faces.push_back(face);
+	index.save_face_record(file_path, faces::pack_record(record), index.faces().session());
+	db.perform_writes();
+	db.load_face_records(index.faces());
+	index.faces().loaded();
+	assert_equal(true, index.faces().store()->record(file_path).has_value(), "the record is loaded");
+
+	const auto request = index_state::make_scan_request(item, false, false);
+	const auto xmp = detect_xmp_sidecar(file_path);
+	metadata_edits edits;
+	edits.orientation = core::orientation::right_top;
+	files ff;
+	const auto result = ff.update(file_path, edits, {}, {}, false, xmp,
+	                              index_state::make_rescan_spec(request, xmp, false, false));
+	assert_equal(true, result.success() && result.scanned, "the write succeeds and scans back"sv);
+	index.apply_write_scan(request, result, true);
+
+	// The JPEG is patched in place, so the file's new time is learned by the scan that follows the write.
+	df::item_set written;
+	written.add(item);
+	index.scan_items(written, false, true, false, false, test_token, false);
+	db.perform_writes();
+
+	const auto written_at = index.find_item(file_path).file_modified.load();
+	assert_equal(true, written_at != read_at, "the write gave the file a new time"sv);
+	const auto turned = faces::turn_record(record, core::orientation::top_left, core::orientation::right_top);
+	const auto stored = index.faces().store()->record(file_path);
+	assert_equal(true, stored.has_value() && stored->stamp == written_at, "the store's record has the new time"sv);
+	assert_near(turned.faces[0].box.X, stored->faces[0].box.X, 1e-4, "and is turned with the picture"sv, "left"sv);
+	assert_near(turned.faces[0].box.Y, stored->faces[0].box.Y, 1e-4, "and is turned with the picture"sv, "top"sv);
+
+	index_state reloaded(as, locations);
+	reloaded.faces().configure(true, true, false);
+	database db2(reloaded);
+	db2.open(index_path.folder(), index_path.file_name_without_extension());
+	db2.load_index_values();
+	const auto saved = reloaded.faces().store()->record(file_path);
+	assert_equal(true, saved.has_value() && saved->stamp == written_at, "so has the index's"sv);
+	assert_near(turned.faces[0].box.X, saved->faces[0].box.X, 1e-4, "turned alike"sv, "left"sv);
+	assert_near(turned.faces[0].box.Y, saved->faces[0].box.Y, 1e-4, "turned alike"sv, "top"sv);
+
+	// A write that changes pixels leaves the record as it was, for the scan to read again.
+	file_scan_result sr;
+	sr.success = true;
+	index.apply_scan_now(request, sr, true, written_at.add_day(1));
+	db.perform_writes();
+	assert_equal(true, index.faces().store()->record(file_path)->stamp == written_at, "a pixel write stamps nothing"sv);
+}
+
+// A face record queued by a scan that turning face search off - as deleting its data does - has since ended is not
+// written, so a delete is never undone by work queued before it.
+static void should_not_write_a_face_record_from_a_session_since_ended()
+{
+	const auto index_path = test_temps.next_path();
+	const auto temp_folder = test_temps.next_folder("face-session");
+	const auto file_path = test_temps.next_path_in(temp_folder, ".jpg");
+	platform::copy_file(test_files_folder().combine_file("Test.jpg"), file_path, false, false);
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	index.faces().configure(true, true, false);
+	database db(index);
+	db.open(index_path.folder(), index_path.file_name_without_extension());
+	load_item(index, file_path, false);
+	db.perform_writes();
+
+	faces::face_record record;
+	record.model = faces::model_id();
+	record.extent = {400, 300};
+	faces::found_face face;
+	face.box = {0.1, 0.2, 0.3, 0.4};
+	record.faces.push_back(face);
+
+	const auto ended = index.faces().session();
+	index.save_face_record(file_path, faces::pack_record(record), ended);
+	index.faces().turn_off();
+	db.perform_writes();
+
+	index.faces().configure(true, true, false);
+	db.load_face_records(index.faces());
+	index.faces().loaded();
+	assert_equal(false, index.faces().store()->record(file_path).has_value(),
+	             "a record from a session since ended is not written");
+
+	index.save_face_record(file_path, faces::pack_record(record), index.faces().session());
+	db.perform_writes();
+	db.load_face_records(index.faces());
+	index.faces().loaded();
+	assert_equal(true, index.faces().store()->record(file_path).has_value(), "while one from the session is");
+}
+
+// A metadata change can affect the next person search without the Faces view ever opening.
+static void should_suggest_faces_from_an_import_without_the_source_picture()
+{
+	faces::face_vector original{};
+	original[0] = 1;
+	faces::face_vector near{};
+	near[0] = 0.8f;
+	near[1] = 0.6f;
+	faces::face_book source, imported;
+	const faces::face_signature signature{faces::model_id(), faces::quantize(original)};
+	const faces::face_ref ref{test_temps.next_path(".jpg"), {0.1, 0.1, 0.2, 0.2}, 0, signature};
+	const std::array batch{faces::placement_batch{0, "Ann", {ref}}};
+	source.place(batch, faces::face_action::assign, source.generation());
+	assert_equal(true, imported.import_csv(source.to_csv()).ok, "portable sample imports");
+	const auto store = std::make_shared<faces::face_store>();
+	faces::face_record record;
+	record.model = faces::model_id();
+	auto& detected = record.faces.emplace_back();
+	detected.box = ref.box;
+	detected.hash = faces::quantize(near);
+	store->add(test_temps.next_path(".jpg"), record);
+	store->publish();
+	const auto o = faces::make_overview(store, [](const core::file_path) -> faces::picture_evidence { return {{}}; },
+	                                    imported, [] { return false; });
+	const auto* p = o->find_person("Ann");
+	assert_equal(true, p && p->confirmed.empty() && p->suggested.size() == 1 && p->suggested[0].face == 0,
+	             "a similar but nonidentical photo is a suggestion with no matching original in the library");
+}
+
+static void should_group_faces_again_only_when_something_changed()
+{
+	deferred_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	index.faces().configure(true, true, false);
+	index.faces().loaded();
+
+	assert_equal(1_z, as.pending_worker_count(async_queue::faces_overview), "the loaded store is compared");
+	as.run_next(async_queue::faces_overview);
+	assert_equal(true, index.faces().current_overview() != nullptr, "and the people published");
+
+	index.faces().queue_overview_if_stale();
+	assert_equal(0_z, as.pending_worker_count(async_queue::faces_overview),
+	             "with nothing changed, it is not grouped again");
+
+	index.faces().names_may_have_changed();
+	assert_equal(1_z, as.pending_worker_count(async_queue::faces_overview),
+	             "index changes trigger comparison without a view");
+	as.run_next(async_queue::faces_overview);
+
+	index.faces().queue_overview_if_stale();
+	assert_equal(0_z, as.pending_worker_count(async_queue::faces_overview), "and then not again");
 }
 
 static void should_clear_hashes_after_coherent_content_change()
@@ -4377,7 +4609,8 @@ static void should_answer_searches_from_the_search_index_as_a_scan_does(shared_t
 		     "artist:\"Counting Crows\"", "@remote", "@panorama", "@movie", "@episode", "@inprogress",
 		     "size:1mb", "> size:1mb", "loc:London", "place:London", "country:\"United Kingdom\"",
 		     "#\"tag with space\"", "\"tag with space\"", "camera:canon", "Canon", "london", "**test**",
-		     "caf\xc3\xa9", "\xed\x95\x9c\xea\xb5\xad", "-\xed\x95\x9c\xea\xb5\xad", "with:tag or @video"
+		     "caf\xc3\xa9", "\xed\x95\x9c\xea\xb5\xad", "-\xed\x95\x9c\xea\xb5\xad", "with:tag or @video",
+		     "person:ja", "person:\"Jana\"", "ja", "-ja", "with:person"
 	     })
 	// clang-format on
 	{
@@ -4449,6 +4682,79 @@ static void should_confirm_what_the_trigram_index_suggests()
 	assert_equal(uint64_t{0}, count("ananan", index_state::search_execution::automatic),
 	             "nor does the search index, though the name holds each of the term's trigrams");
 	assert_equal(true, df::query_perf.index_answers.load() > answers_before, "the search index answered");
+}
+
+// docs/faces.md#8-searching: free text and person: find a person the face book names in a picture by the start of any
+// word of their name, as they find one its metadata names, and the search index finds them as a scan does.
+static void should_find_the_face_books_names_through_the_search_index_as_a_scan_does()
+{
+	const auto folder = test_temps.next_folder("search-index-face-names");
+	for (const auto name : {"IMG_0001.jpg", "IMG_0002.jpg", "IMG_0003.jpg"})
+		platform::copy_file(test_files_folder().combine_file("Test.jpg"), folder.combine_file(name), false, true);
+
+	files ff;
+	metadata_edits edits;
+	edits.faces = face_name_edits{{{face_name_edit::kind::name, rectd{0.1, 0.1, 0.2, 0.2}, "Ronan Quill", {}}},
+	                              {},
+	                              core::orientation::top_left};
+	assert_equal(true, ff.update(folder.combine_file("IMG_0003.jpg"), edits, {}, {}, false, {}).success(),
+	             "an explicitly contradicted name is still present in the file");
+
+	null_async_strategy as;
+	const location_cache locations;
+	index_state index(as, locations);
+	make_search_index_collection(folder, index);
+	index.update_search_index();
+	assert_equal(true, index.search_index() != nullptr, "the collection was read into a search index");
+
+	const auto overview = std::make_shared<faces::overview>();
+	overview->people = {{1, "Ronan Quill"}, {2, "Ivy Quill"}};
+	overview->picture_people[folder.combine_file("IMG_0001.jpg")] = {{0, true}};
+	overview->picture_people[folder.combine_file("IMG_0002.jpg")] = {{0, false}, {1, false}};
+	overview->contradicted[folder.combine_file("IMG_0003.jpg")] = {"ronan quill"};
+	const auto previous = faces::active_overview();
+	const core::scope_exit restore([previous] { faces::set_active_overview(previous); });
+	faces::set_active_overview(overview);
+
+	const auto answers_before = df::query_perf.index_answers.load();
+	const std::pair<std::string_view, uint64_t> found_by[] = {{"ronan", 2},
+	                                                          {"quill", 2},
+	                                                          {"quill!", 1},
+	                                                          {"!quill", 1},
+	                                                          {"-quill!", 2},
+	                                                          {"ivy!", 0},
+	                                                          {"person:\"Ronan Quill\"!", 1},
+	                                                          {"\"quill!\"", 0},
+	                                                          {"ronan quill", 2},
+	                                                          {"ivy", 1},
+	                                                          {"-quill", 1},
+	                                                          {"uill", 0},
+	                                                          {"person:qui", 2},
+	                                                          {"person:ronan person:ivy", 1},
+	                                                          {"person:\"Ronan\"", 0},
+	                                                          {"person:\"ronan quill\"", 2}};
+
+	for (const auto& [query, expected] : found_by)
+	{
+		const auto search = df::search_t::parse(query);
+		assert_equal(true, df::search_t::parse(search.format_terms()).terms() == search.terms(),
+		             std::format("the terms of '{}' round-trip", query));
+		const auto scanned = index.count_matches(search, test_token, index_state::search_execution::scan);
+		const auto indexed = index.count_matches(search, test_token, index_state::search_execution::automatic);
+		assert_equal(expected, scanned.total_items().count, std::format("what a scan finds for '{}'", query));
+		assert_equal(expected, indexed.total_items().count, std::format("what the index finds for '{}'", query));
+	}
+	assert_equal(true, df::query_perf.index_answers.load() > answers_before, "the search index answered");
+
+	faces::set_active_overview(nullptr);
+	assert_equal(uint64_t{1}, count_found(index, "Ronan!"), "with recognition off the file still names him");
+
+	auto& book = index.faces().book();
+	assert_equal(true, book.combine("Ronan Quill", "Ivy Quill", book.generation()).has_value(), "combine locally");
+	const auto merged = df::search_t::parse("person:\"Ivy Quill\"!");
+	for (const auto execution : {index_state::search_execution::scan, index_state::search_execution::automatic})
+		assert_equal(uint64_t{1}, index.count_matches(merged, test_token, execution).total_items().count,
+		             "the surviving name finds unchanged file metadata without scanning faces");
 }
 
 // A folder that changed after the search index read it is asked item by item, so a search answers with
@@ -4932,8 +5238,8 @@ static void should_skip_unneeded_thumbnail_staging()
 	const auto item = std::make_shared<df::item_element>(core::file_path("c:\\staging.jpg"), file);
 
 	item->stage_thumbnail_surface(async);
-	assert_equal(0_z, async.pending_worker_count(async_queue::render),
-	             "missing thumbnail should not queue render work");
+	assert_equal(0_z, async.pending_worker_count(async_queue::thumbnail_stage),
+	             "missing thumbnail should not queue a decode");
 }
 
 static void should_reuse_cached_thumbnail_surface()
@@ -4949,7 +5255,7 @@ static void should_reuse_cached_thumbnail_surface()
 
 	deferred_async_strategy deferred;
 	item->stage_thumbnail_surface(deferred);
-	assert_equal(0_z, deferred.pending_worker_count(async_queue::render),
+	assert_equal(0_z, deferred.pending_worker_count(async_queue::thumbnail_stage),
 	             "cached thumbnail surface should not be staged again");
 }
 
@@ -5818,7 +6124,7 @@ static void should_replan_thumbnails_the_thumbnailing_thread_has_not_reached()
 	assert_equal(false, b->has_thumb() || b->is_loading_thumbnail(), "nothing is read for an item no longer wanted");
 	assert_equal(true, a->has_cached_surface() && c->has_cached_surface(),
 	             "an item takes the surface its thumbnail was encoded from");
-	assert_equal(0_z, async.pending_worker_count(async_queue::render), "so the render queue decodes nothing again");
+	assert_equal(0_z, async.pending_worker_count(async_queue::thumbnail_stage), "so nothing decodes it again");
 }
 
 // A plan made while the database's answer is on its way does not scan for it: the answer may be the
@@ -6165,7 +6471,7 @@ static void should_discard_stale_thumbnail_surface()
 	deferred.drain_ui();
 
 	item->thumbnail({}, {});
-	assert_equal(true, deferred.run_next(async_queue::render), "render work was queued");
+	assert_equal(true, deferred.run_next(async_queue::thumbnail_stage), "a decode was queued");
 	deferred.drain_ui();
 
 	assert_equal(false, item->has_cached_surface(), "stale surface was discarded");
@@ -6221,15 +6527,26 @@ static void should_find_a_file_s_record_only_once_it_has_been_read()
 	index.index_roots(roots);
 	index.index_folders(test_token);
 
+	const auto face_candidates = [&]
+	{
+		std::vector<core::file_path> photos;
+		index.visit_collection_pictures(true, true, [&](const core::file_path path, const df::index_file_item&, bool)
+		{ photos.push_back(path); });
+		return photos;
+	};
 	assert_equal(true, index.find_item(file_path).ft != nullptr, "the folder lists the file");
 	assert_equal(true, index.find_scanned_item(file_path).ft == nullptr, "which has not been read");
+	assert_equal(true, face_candidates().empty(), "discovery alone does not let face search read it");
 
 	index.scan_uncached(test_token);
 	const auto scanned = index.find_scanned_item(file_path);
 	assert_equal(true, scanned.ft != nullptr, "once it has, its record answers");
 	assert_equal(true, scanned.metadata.load() != nullptr, "with what was read");
+	assert_equal(true, face_candidates() == std::vector{file_path}, "the completed metadata makes the photo eligible");
 	assert_equal(true, index.find_scanned_item(folder.combine_file("missing.jpg")).ft == nullptr,
 	             "and a file the index does not hold has none");
+	index.forget_cached_metadata();
+	assert_equal(true, face_candidates().empty(), "face search waits again when the metadata needs rereading");
 }
 
 // An item taken without a place takes the one taken nearest it in time, before or after it, but only within the gap,
@@ -6288,6 +6605,8 @@ void register_index_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should answer searches from the search index as a scan does"s,
 	          should_answer_searches_from_the_search_index_as_a_scan_does);
 	tests.add("Should confirm what the trigram index suggests"s, should_confirm_what_the_trigram_index_suggests);
+	tests.add("Should find the face book's names through the search index as a scan does"s,
+	          should_find_the_face_books_names_through_the_search_index_as_a_scan_does);
 	tests.add("Should scan folders changed since the search index was read"s,
 	          should_scan_folders_changed_since_the_search_index_was_read);
 	tests.add("Should read the search index again once no search would use it"s,
@@ -6345,6 +6664,10 @@ void register_index_tests(view_state& /*state*/, test_registry& tests)
 	          should_keep_answering_while_upgrading_tracker_comments);
 	tests.add("Should keep answering while upgrading to picture coding"s,
 	          [] { should_keep_answering_while_upgrading_metadata(7); });
+	tests.add("Should keep answering while upgrading to people named in pictures"s,
+	          [] { should_keep_answering_while_upgrading_metadata(8); });
+	tests.add("Should know what every version of the cached record changed"s,
+	          should_know_what_every_version_of_the_cached_record_changed);
 	tests.add("Should reclaim a cache written by a newer build"s, should_reclaim_a_cache_written_by_a_newer_build);
 	tests.add("Should replace an unreadable database"s, should_replace_an_unreadable_database);
 	tests.add("Should run without a database"s, should_run_without_a_database);
@@ -6411,6 +6734,14 @@ void register_index_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should not reread after metadata write"s, should_not_reread_after_metadata_write);
 	// SRC-051 - coherent post-write scans must invalidate revision-dependent hashes.
 	tests.add("Should clear hashes after coherent content change"s, should_clear_hashes_after_coherent_content_change);
+	tests.add("Should stamp a face record afresh across a metadata write"s,
+	          should_stamp_a_face_record_afresh_across_a_metadata_write);
+	tests.add("Should not write a face record from a session since ended"s,
+	          should_not_write_a_face_record_from_a_session_since_ended);
+	tests.add("Should group faces again only when something changed"s,
+	          should_group_faces_again_only_when_something_changed);
+	tests.add("Should suggest faces from an import without the source picture"s,
+	          should_suggest_faces_from_an_import_without_the_source_picture);
 	tests.add("Should count overlapping write claims"s, should_count_overlapping_write_claims);
 	tests.add("Should detect rotation"s, should_detect_rotation);
 	tests.add("Should parse roots"s, should_parse_roots);

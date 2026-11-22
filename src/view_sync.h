@@ -13,7 +13,7 @@
 #include "view_list.h"
 #include "app_util.h"
 
-class sync_view final : public list_view, public std::enable_shared_from_this<sync_view>
+class sync_view final : public review_list, public std::enable_shared_from_this<sync_view>
 {
 	bool _select_other_folder = false;
 	std::string _title;
@@ -26,7 +26,7 @@ class sync_view final : public list_view, public std::enable_shared_from_this<sy
 	void invalidate_analysis();
 
 public:
-	sync_view(view_state& state, view_host_ptr host) : list_view(state, std::move(host)) { col_count = 4; }
+	sync_view(view_state& state, view_host_ptr host) : review_list(state, std::move(host)) { col_count = 4; }
 
 	std::array<text_t, max_col_count> col_titles() override
 	{

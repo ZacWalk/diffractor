@@ -16,8 +16,11 @@
 #include "app_mcp_json.h"
 #include "files.h"
 #include "model_db.h"
+#include "model_faces_search.h"
 #include "model_index.h"
 #include "model.h"
+#include "model_display.h"
+#include "model_search.h"
 #include "ui_dialog.h"
 #include "view_list.h"
 #include "app_command_line.h"
@@ -104,7 +107,7 @@ namespace
 	{
 		struct button_part
 		{
-			ui::control_ptr control;
+			ui::button_ptr control;
 			std::string text;
 			bool is_default = false;
 			bool enabled = true;
@@ -112,7 +115,7 @@ namespace
 
 		struct check_part
 		{
-			ui::control_ptr control;
+			ui::button_ptr control;
 			std::string text;
 			bool checked = false;
 			bool radio = false;
@@ -130,11 +133,23 @@ namespace
 		};
 
 		std::shared_ptr<dialog> owner;
+		// A prompt the system put up in front, rather than one of Diffractor's dialogs: answered through the platform,
+		// by its buttons alone.
+		uintptr_t system_prompt = 0;
 		std::vector<std::string> titles;
 		std::vector<std::string> texts;
 		std::vector<button_part> buttons;
 		std::vector<check_part> checks;
 		std::vector<field_part> fields;
+		// A list a search fills - Copy to folder's folders, the people naming a face offers - each row by its text.
+		struct row_part
+		{
+			std::shared_ptr<ui::results_list> list;
+			ui::auto_complete_match_ptr match;
+			std::string text;
+			bool selected = false;
+		};
+		std::vector<row_part> rows;
 		// What was read last on the way to the next field.
 		std::string read_before;
 	};
@@ -238,6 +253,15 @@ namespace
 			                        here_enabled && date->enabled});
 			parts.read_before.clear();
 		}
+		else if (const auto list = std::dynamic_pointer_cast<ui::results_list>(e))
+		{
+			for (const auto& r : list->_results)
+			{
+				if (!r) continue;
+				const auto selected = list->_completes && list->_completes->selected() == r;
+				parts.rows.push_back({list, r, r->edit_text(), selected});
+			}
+		}
 
 		e->visit_children([&](const view_element_ptr& child) { collect(child, here_label, here_enabled, parts); });
 	}
@@ -255,6 +279,25 @@ namespace
 			dialog_parts parts;
 			parts.owner = d;
 			for (const auto& c : d->_controls) collect(c, {}, true, parts);
+			result.push_back(std::move(parts));
+		}
+
+		return result;
+	}
+
+	// Diffractor's dialogs, then what the system has put up in front of them all - a shell confirmation or error, a
+	// message box - read as a screen reader reads it, since nobody is there to answer it but the agent.
+	std::vector<dialog_parts> dialogs_and_prompts()
+	{
+		auto result = open_dialog_parts();
+
+		for (auto& prompt : platform::system_prompts())
+		{
+			dialog_parts parts;
+			parts.system_prompt = prompt.id;
+			parts.titles.push_back(std::move(prompt.title));
+			parts.texts = std::move(prompt.texts);
+			for (auto& b : prompt.buttons) parts.buttons.push_back({nullptr, std::move(b), false, true});
 			result.push_back(std::move(parts));
 		}
 
@@ -320,6 +363,7 @@ namespace
 	{
 		json.object();
 		json.text("title", parts.titles.empty() ? std::string{} : parts.titles.front());
+		if (parts.system_prompt != 0) json.boolean("system", true);
 		json.key("text").array();
 		for (size_t i = 1; i < parts.titles.size(); ++i) json.text(parts.titles[i]);
 		for (const auto& t : parts.texts) json.text(t);
@@ -334,6 +378,13 @@ namespace
 
 		json.end_array();
 		write_checks_and_fields(json, parts);
+		if (!parts.rows.empty())
+		{
+			json.key("rows").array();
+			for (const auto& r : parts.rows)
+				json.object().text("text", r.text).boolean("selected", r.selected).end_object();
+			json.end_array();
+		}
 		json.end_object();
 	}
 
@@ -350,10 +401,17 @@ namespace
 
 		for (const auto& d : dialogs)
 		{
-			text += std::format("\nDialog: {}", d.titles.empty() ? "(untitled)"s : d.titles.front());
+			text += std::format("\n{}: {}", d.system_prompt != 0 ? "Windows' dialog"sv : "Dialog"sv,
+			                    d.titles.empty() ? "(untitled)"s : d.titles.front());
 			for (size_t i = 1; i < d.titles.size(); ++i) text += "\n  " + d.titles[i];
 			for (const auto& t : d.texts) text += "\n  " + t;
 			text += checks_and_fields_text(d);
+
+			if (!d.rows.empty())
+			{
+				text += "\n  rows:";
+				for (const auto& r : d.rows) text += std::format(" [{}]{}", r.text, r.selected ? " (chosen)" : "");
+			}
 
 			if (!d.buttons.empty())
 			{
@@ -524,6 +582,18 @@ namespace
 		}
 
 		json.end_array();
+
+		// The media shown: where it is and whether it plays, and docs/faces.md#8-searching: the parts of a video the faces
+		// the search found it by are seen in, which its scrubber marks.
+		const auto& display = state._display;
+		if (display && display->is_one() && display->_item1 && display->_item1->file_type()->has_trait(file_traits::av))
+		{
+			json.key("media").object().number("position", std::round(display->media_pos() * 1000.0) / 1000.0);
+			json.boolean("playing", display->is_playing_media()).key("found").array();
+			for (const auto& s : df::face_spans_found(state.search(), display->_item1->path()))
+				json.array().number(s.start / 1000.0).number(s.end / 1000.0).end_array();
+			json.end_array().end_object();
+		}
 	}
 
 	std::string view_text(const app_frame& app, const size_t listed)
@@ -544,9 +614,10 @@ namespace
 		t.name = "ui_state";
 		t.title = "What the window shows";
 		t.description = "What the window shows now: the view, the folder or search, how many items it finds and "
-						"shows, the first of them and of the selection, whether it is busy, and any dialog in front - "
-						"its text, buttons, check boxes and fields, for dialog_respond - menu open - its rows, for "
-						"menu_respond - recording or steps being acted out.";
+						"shows, the first of them and of the selection, the media shown - where it is, whether it "
+						"plays, and the parts of a video where faces the search found it by are seen - whether it is "
+						"busy, and any dialog in front - its text, buttons, check boxes and fields, for dialog_respond "
+						"- menu open - its rows, for menu_respond - recording or steps being acted out.";
 		t.input_schema = std::format(R"({{"type":"object","properties":{{{}}},"additionalProperties":false}})",
 		                             list_property);
 		t.annotations.read_only = true;
@@ -555,7 +626,7 @@ namespace
 		{
 			auto& app = host.app();
 			const auto listed = static_cast<size_t>(call->number("list").value_or(20));
-			const auto dialogs = open_dialog_parts();
+			const auto dialogs = dialogs_and_prompts();
 			const auto busy = agent_window_busy(app);
 			const auto bounds = app._app_frame->window_bounds();
 
@@ -676,6 +747,19 @@ namespace
 		case commands::tool_run:
 		case commands::tool_save_current_video_frame:
 		case commands::tool_share: return {command_need::write, changes};
+
+		// docs/faces.md#6-the-face-book: what the user tells Diffractor about faces is theirs, as their files are.
+		case commands::face_confirm:
+		case commands::face_hide:
+		case commands::face_import:
+		case commands::face_name:
+		case commands::face_name_picture:
+		case commands::face_reject:
+		case commands::face_rename_person:
+		case commands::face_undo_placement:
+		case commands::face_show_again: return {command_need::write, "changes the user's face book"};
+		case commands::face_export:
+		case commands::face_save_names: return {command_need::write, changes};
 
 		default: return {};
 		}
@@ -965,24 +1049,20 @@ namespace
 					if (!seen.insert(name).second) continue;
 
 					// A full path names one item where a name alone can name several in a search across folders.
-					const auto by_path = core::is_path(name);
-					const auto path = by_path ? core::file_path(name) : core::file_path{};
-					const auto selected = std::ranges::any_of(state.selected_items().items(),
-					                                          [by_path, path, &name](const auto& item)
-					{ return by_path ? item->path() == path : core::icmp(item->path().name().sv(), name) == 0; });
-					if (selected && !replace) continue;
+					const auto item = core::is_path(name) ? state.find_displayed_item_by_path(core::file_path(name))
+					                                      : state.find_displayed_item_by_name(name);
 
-					const auto item = by_path ? state.find_displayed_item_by_path(path)
-					                          : state.find_displayed_item_by_name(name);
-
-					if (item)
+					if (!item)
+					{
+						missing.push_back(name);
+					}
+					// Asked of the item, not of selected_items(), which catches up only as the view next updates:
+					// selecting the first name has just deselected the rest the list still holds, and each after
+					// the first is added by toggling it.
+					else if (replace || !item->is_selected())
 					{
 						state.select(view, item, !replace, false, false);
 						replace = false;
-					}
-					else
-					{
-						missing.push_back(name);
 					}
 				}
 			}
@@ -1164,18 +1244,22 @@ namespace
 		core::mcp::tool t;
 		t.name = "dialog_respond";
 		t.title = "Answer a dialog";
-		t.description = "Answers the dialog in front, as ui_state shows it: fills fields by their label - a date as "
-						"yyyy-mm-dd hh:mm:ss - and sets check boxes and radio buttons by their text, then presses a "
-						"button by its text - or cancels the dialog, as Escape does. A session that may not write can "
-						"only cancel: the rest can change files. Answers once the dialog has closed or another has "
-						"opened, with what is in front then.";
+		t.description =
+			"Answers the dialog in front, as ui_state shows it: fills fields by their label - a date as "
+			"yyyy-mm-dd hh:mm:ss - and sets check boxes and radio buttons by their text, then presses a "
+			"button by its text - or cancels the dialog, as Escape does. choose picks a row of the list a "
+			"search fills - Copy to folder's folders, the people naming a face offers - by its text, as a "
+			"click picks it, and then presses the button named, or else the default one. One Windows puts up "
+			"itself, marked system, is answered by its buttons or cancelled. A session that may not write can "
+			"only cancel: the rest can change files. Answers once the dialog has closed or another has "
+			"opened, with what is in front then.";
 		t.input_schema = std::format(
-			R"({{"type":"object","properties":{{"button":{{"type":"string","description":"The text of the button to press"}},"cancel":{{"type":"boolean"}},"checks":{{"type":"object","additionalProperties":{{"type":"boolean"}},"description":"Check boxes and radio buttons, by their text"}},"fields":{{"type":"object","additionalProperties":{{"type":"string"}},"description":"Fields, by their label"}},{}}},"additionalProperties":false}})",
+			R"({{"type":"object","properties":{{"button":{{"type":"string","description":"The text of the button to press"}},"choose":{{"type":"string","description":"The text of a row of the dialog's list"}},"cancel":{{"type":"boolean"}},"checks":{{"type":"object","additionalProperties":{{"type":"boolean"}},"description":"Check boxes and radio buttons, by their text"}},"fields":{{"type":"object","additionalProperties":{{"type":"string"}},"description":"Fields, by their label"}},{}}},"additionalProperties":false}})",
 			wait_property);
 		t.handler = [&host](const core::mcp::call_ptr& call)
 		{
 			auto& app = host.app();
-			auto dialogs = open_dialog_parts();
+			auto dialogs = dialogs_and_prompts();
 			const auto refuse = [&call](std::string why)
 			{
 				call->finish(core::mcp::tool_result::error(std::move(why)));
@@ -1190,19 +1274,57 @@ namespace
 			auto& target = dialogs.back();
 			const auto cancel = call->flag("cancel", false);
 			const auto button = call->text("button");
+			const auto choose = call->text("choose");
 			const auto* const checks = named_values(call->arguments(), "checks");
 			const auto* const fields = named_values(call->arguments(), "fields");
 
-			if (cancel && !button.empty()) return refuse("Press a button, or cancel: not both");
-			if (!cancel && button.empty() && !checks && !fields)
+			if (cancel && (!button.empty() || !choose.empty()))
+				return refuse("Press a button or choose a row, or cancel: not both");
+			if (!cancel && button.empty() && choose.empty() && !checks && !fields)
 			{
-				return refuse("Say what to do: fields or checks to set, a button to press, or cancel");
+				return refuse("Say what to do: fields or checks to set, a row to choose, a button to press, or cancel");
 			}
 
-			if ((!button.empty() || checks || fields) && !host.options().allow.write)
+			if ((!button.empty() || !choose.empty() || checks || fields) && !host.options().allow.write)
 			{
-				return refuse("This session can only cancel a dialog: pressing a button, setting a check box or "
-				              "filling a field can change files, which needs -mcp-allow:write");
+				return refuse("This session can only cancel a dialog: pressing a button, choosing a row, setting a "
+				              "check box or filling a field can change files, which needs -mcp-allow:write");
+			}
+
+			// Windows' own: pressed by its button's text, or cancelled, through the platform; it has nothing else this
+			// session can set. The answer waits for it to go, or for what it asks to have been answered.
+			if (const auto prompt = target.system_prompt; prompt != 0)
+			{
+				if (checks || fields || !choose.empty())
+				{
+					return refuse("Nothing was changed: a dialog Windows shows is answered by its buttons alone." +
+					              dialogs_text({target}));
+				}
+
+				if (!button.empty() && std::ranges::none_of(target.buttons, [&button](const auto& b)
+				{ return core::icmp(b.text, button) == 0; }))
+				{
+					return refuse(
+						std::format("Nothing was changed: there is no button '{}'.{}", button, dialogs_text({target})));
+				}
+
+				platform::run_ui([prompt, button] { platform::answer_system_prompt(prompt, button); });
+				answer_when(host, call, "dialog_respond", [prompt] { return !platform::system_prompt_shown(prompt); },
+				            0.2, mcp_host::wait_seconds(*call), false, [&app](const bool settled)
+				{
+					const auto now = dialogs_and_prompts();
+					json_writer json;
+					json.object().boolean("closed", settled);
+					write_dialogs(json, now);
+					write_view(json, app, 0);
+					json.end_object();
+
+					auto text = now.empty() ? "The dialog has closed. " + view_text(app, 0)
+					                        : "In front now:" + dialogs_text(now);
+					if (!settled) text = "The dialog is still open. " + text;
+					return structured_result(std::move(text), json.str());
+				});
+				return;
 			}
 
 			// Everything is found before anything is touched, so a wrong name changes nothing.
@@ -1223,6 +1345,25 @@ namespace
 				else press = &*found;
 			}
 
+			// A row is chosen as a click chooses it; the dialog is then answered by its default button, where no other
+			// is named.
+			const dialog_parts::row_part* chosen = nullptr;
+			if (!choose.empty())
+			{
+				const auto found = std::ranges::find_if(target.rows, [&choose](const auto& r)
+				{ return core::icmp(r.text, choose) == 0; });
+
+				if (found == target.rows.end()) problems.push_back(std::format("there is no row '{}'", choose));
+				else chosen = &*found;
+
+				if (chosen && button.empty())
+				{
+					const auto answer_button = std::ranges::find_if(target.buttons, [](const auto& b)
+					{ return b.is_default && b.enabled; });
+					if (answer_button != target.buttons.end()) press = &*answer_button;
+				}
+			}
+
 			if (!problems.empty())
 			{
 				return refuse(
@@ -1232,9 +1373,9 @@ namespace
 			fill_fields(answer);
 			tick_checks(answer);
 
-			if (!press && !cancel)
+			if (!press && !cancel && !chosen)
 			{
-				const auto now = open_dialog_parts();
+				const auto now = dialogs_and_prompts();
 				json_writer json;
 				json.object();
 				write_dialogs(json, now);
@@ -1246,7 +1387,17 @@ namespace
 			const std::weak_ptr<dialog> answered = target.owner;
 
 			// A task of its own: what a button does may open another dialog, whose loop runs there.
-			if (press)
+			if (chosen)
+			{
+				platform::run_ui(
+					[list = chosen->list, match = chosen->match, answered, control = press ? press->control : nullptr]
+				{
+					list->selected(match, ui::complete_strategy_t::select_type::click);
+					// A click on a row can answer the dialog itself, as Open with's does.
+					if (const auto d = answered.lock(); control && d && front_dialog() == d) control->click();
+				});
+			}
+			else if (press)
 			{
 				platform::run_ui([control = press->control] { control->click(); });
 			}
@@ -1263,14 +1414,16 @@ namespace
 				});
 			}
 
+			// Answered once the dialog has gone, or another is in front of it - Windows' own among them, as a delete's
+			// confirmation can be.
 			answer_when(host, call, "dialog_respond",
 			            [answered]
 			{
 				const auto d = answered.lock();
-				return !d || front_dialog() != d;
+				return !d || front_dialog() != d || platform::system_prompt_shown();
 			}, 0.2, mcp_host::wait_seconds(*call), false, [&app](const bool settled)
 			{
-				const auto now = open_dialog_parts();
+				const auto now = dialogs_and_prompts();
 				json_writer json;
 				json.object().boolean("closed", settled);
 				write_dialogs(json, now);
@@ -1340,7 +1493,7 @@ namespace
 
 	// The review of a task that is reviewed before it runs - or, after a run, what it did to each row - into an open
 	// object, and as text.
-	void write_review(json_writer& json, std::string& text, list_view& list, const rows_wanted& wanted)
+	void write_review(json_writer& json, std::string& text, review_list& list, const rows_wanted& wanted)
 	{
 		const auto titles = list.column_titles();
 		std::vector<int> columns;
@@ -1362,7 +1515,7 @@ namespace
 			std::erase_if(searched, [&](const int c) { return core::icmp(titles[c].sv(), wanted.column) != 0; });
 		}
 
-		std::vector<const list_view::row_element*> matching;
+		std::vector<const review_list::row_element*> matching;
 
 		for (const auto& row : list._rows)
 		{
@@ -1475,7 +1628,7 @@ namespace
 			{
 				const auto* const id = std::get_if<commands>(&entry);
 				const auto command = id ? app.find_command(*id) : nullptr;
-				if (!command) continue;
+				if (!command || !command->visible) continue;
 
 				const auto name = command_name(*id);
 				const auto rule = rule_of(*id);
@@ -1512,7 +1665,7 @@ namespace
 		for (const auto& t : parts.texts) text += "\n  " + t;
 		text += checks_and_fields_text(parts);
 
-		if (const auto list = std::dynamic_pointer_cast<list_view>(view)) write_review(json, text, *list, wanted);
+		if (const auto list = std::dynamic_pointer_cast<review_list>(view)) write_review(json, text, *list, wanted);
 
 		json.end_object();
 		return structured_result(std::move(text), json.str());
@@ -1944,14 +2097,14 @@ std::string describe_dialogs_json(app_frame& /*app*/)
 {
 	json_writer json;
 	json.array();
-	for (const auto& parts : open_dialog_parts()) write_dialog(json, parts);
+	for (const auto& parts : dialogs_and_prompts()) write_dialog(json, parts);
 	json.end_array();
 	return json.str();
 }
 
 std::string describe_dialogs_text(app_frame& /*app*/)
 {
-	return dialogs_text(open_dialog_parts());
+	return dialogs_text(dialogs_and_prompts());
 }
 
 std::string_view agent_command_need(const commands id)
@@ -1992,7 +2145,7 @@ std::vector<std::string> dialogs_showing_work()
 
 bool dialog_awaits_answer()
 {
-	return std::ranges::any_of(open_dialogs(), [](const std::weak_ptr<dialog>& weak)
+	return platform::system_prompt_shown() || std::ranges::any_of(open_dialogs(), [](const std::weak_ptr<dialog>& weak)
 	{
 		const auto d = weak.lock();
 		return d && d->frame()->is_visible() && !d->_shows_work;
@@ -2017,4 +2170,5 @@ void add_ui_tools(mcp_host& host)
 	add_debug_action(host);
 #endif
 	add_control_tools(host);
+	add_face_tools(host);
 }

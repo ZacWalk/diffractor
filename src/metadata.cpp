@@ -1,4 +1,4 @@
-﻿// This file is part of the Diffractor photo and video organizer
+// This file is part of the Diffractor photo and video organizer
 // Copyright 2026  Zac Walker
 //
 // This Source Code Form is subject to the terms of the Mozilla Public
@@ -14,6 +14,7 @@
 
 #include "metadata.h"
 #include "files.h"
+#include "model_faces.h"
 #include "model_location.h"
 #include "model_property.h"
 
@@ -455,8 +456,469 @@ static void record_xmp_error(const std::string_view context, const std::string_v
 	core::log_once(context, message);
 }
 
+// ---- Face regions: docs/faces.md#10-saving-names-to-files --------------------------------------------------------------
+
+namespace face_xmp
+{
+	constexpr std::string_view regions = "http://www.metadataworkinggroup.com/schemas/regions/";
+	constexpr std::string_view area = "http://ns.adobe.com/xmp/sType/Area#";
+	constexpr std::string_view microsoft = "http://ns.microsoft.com/photo/1.2/";
+	constexpr std::string_view microsoft_info = "http://ns.microsoft.com/photo/1.2/t/RegionInfo#";
+	constexpr std::string_view microsoft_region = "http://ns.microsoft.com/photo/1.2/t/Region#";
+
+	// One item of a region list, of any type, as the packet holds it and as the edit leaves it.
+	struct region
+	{
+		std::string path;
+		bool face = false;
+		std::optional<std::string> name;
+		// Left, top, width and height as fractions, in the space the packet measured it in.
+		std::optional<rectd> area;
+		// Written in pixels, which the dimensions written for every region would no longer measure.
+		bool pixels = false;
+		// Written in a unit Diffractor does not read: its area is left as it is.
+		bool foreign_unit = false;
+		bool renamed = false;
+		bool removed = false;
+	};
+
+	std::optional<std::string> held(const libfiles::xmp::meta& m, const std::string_view schema,
+	                                const std::string& path)
+	{
+		std::string value;
+		libfiles::xmp::option_bits options = 0;
+		if (!m.get_property(schema, path, &value, &options) || (options & libfiles::xmp::composite_mask) != 0)
+			return {};
+		return value;
+	}
+
+	std::optional<double> real_at(const libfiles::xmp::meta& m, const std::string_view schema, const std::string& path)
+	{
+		const auto text = held(m, schema, path);
+		if (!text) return {};
+		const auto trimmed = core::trim(*text);
+		auto value = 0.0;
+		const auto* const end = trimmed.data() + trimmed.size();
+		const auto [stop, error] = std::from_chars(trimmed.data(), end, value);
+		if (error != std::errc{} || stop != end || !std::isfinite(value)) return {};
+		return value;
+	}
+
+	bool same_name(const std::optional<std::string>& a, const std::string_view b)
+	{
+		return a && core::icmp(core::trim(*a), core::trim(b)) == 0;
+	}
+
+	std::string number(const double v)
+	{
+		return std::format("{:.6f}", std::clamp(v, -1.0, 2.0));
+	}
+
+	// An area as the guidelines write one: its centre and its size, as fractions.
+	void write_area(libfiles::xmp::meta& m, const std::string& rs, const std::string& st, const std::string& item,
+	                const rectd& a)
+	{
+		const auto at = item + "/" + rs + "Area/" + st;
+		m.set_property(regions, at + "x", number(a.X + a.Width / 2.0));
+		m.set_property(regions, at + "y", number(a.Y + a.Height / 2.0));
+		m.set_property(regions, at + "w", number(a.Width));
+		m.set_property(regions, at + "h", number(a.Height));
+		m.set_property(regions, at + "unit", "normalized");
+	}
+
+	// The names a packet states without an area, rewritten.
+	void edit_people_in_image(libfiles::xmp::meta& m, const std::function<void(std::vector<std::string>&)>& edit)
+	{
+		std::vector<std::string> names;
+		const auto count = m.count_array_items(xmp_ns::iptc_ext, "PersonInImage");
+		for (auto i = 1; i <= count; ++i)
+		{
+			std::string name;
+			if (m.get_array_item(xmp_ns::iptc_ext, "PersonInImage", i, &name)) names.push_back(std::move(name));
+		}
+
+		const auto before = names;
+		edit(names);
+
+		std::vector<std::string> unique;
+		for (auto& name : names)
+		{
+			if (core::trim(name).empty()) continue;
+			if (std::ranges::none_of(unique, [&name](const std::string& u) { return core::icmp(u, name) == 0; }))
+				unique.push_back(std::move(name));
+		}
+
+		if (unique == before) return;
+		m.delete_property(xmp_ns::iptc_ext, "PersonInImage");
+		for (const auto& name : unique)
+			m.append_array_item(xmp_ns::iptc_ext, "PersonInImage", libfiles::xmp::value_is_array, name);
+	}
+}
+
+// Rewrites whom a packet's face regions name, keeping every region a name does not concern and everything else
+// the packet holds, and writing every area it keeps in the space of the picture as stored.
+static void apply_face_names(libfiles::xmp::meta& meta, const face_name_edits& edits)
+{
+	using namespace face_xmp;
+	namespace lx = libfiles::xmp;
+
+	const auto rs = lx::register_namespace(regions, "mwg-rs");
+	const auto st = lx::register_namespace(area, "stArea");
+	const auto dim = lx::register_namespace(xmp_ns::xmp_dimensions, "stDim");
+	const auto list = "Regions/" + rs + "RegionList";
+	const auto applied = "Regions/" + rs + "AppliedToDimensions/" + dim;
+
+	sizei applied_to;
+	const auto aw = real_at(meta, regions, applied + "w");
+	const auto ah = real_at(meta, regions, applied + "h");
+	if (aw && ah && *aw >= 1.0 && *ah >= 1.0 && *aw < 1e9 && *ah < 1e9)
+		applied_to = {static_cast<int>(std::lround(*aw)), static_cast<int>(std::lround(*ah))};
+
+	std::vector<region> list_items;
+	const auto count = meta.count_array_items(regions, list);
+
+	for (auto i = 1; i <= count; ++i)
+	{
+		region r;
+		r.path = std::format("{}[{}]", list, i);
+		const auto item = r.path + "/" + rs;
+		const auto type = held(meta, regions, item + "Type");
+		r.face = type && core::icmp(core::trim(*type), "Face") == 0;
+		r.name = held(meta, regions, item + "Name");
+
+		const auto at = item + "Area/" + st;
+		const auto x = real_at(meta, regions, at + "x");
+		const auto y = real_at(meta, regions, at + "y");
+		const auto w = real_at(meta, regions, at + "w");
+		const auto h = real_at(meta, regions, at + "h");
+		const auto unit = held(meta, regions, at + "unit");
+
+		if (x && y && w && h && *w > 0.0 && *h > 0.0)
+		{
+			if (!unit || core::icmp(core::trim(*unit), "normalized") == 0)
+			{
+				r.area = rectd{*x - *w / 2.0, *y - *h / 2.0, *w, *h};
+			}
+			else if (core::icmp(core::trim(*unit), "pixel") == 0 && !applied_to.is_empty())
+			{
+				const auto sx = 1.0 / applied_to.cx;
+				const auto sy = 1.0 / applied_to.cy;
+				r.area = rectd{(*x - *w / 2.0) * sx, (*y - *h / 2.0) * sy, *w * sx, *h * sy};
+				r.pixels = true;
+			}
+			else
+			{
+				r.foreign_unit = true;
+			}
+		}
+
+		list_items.push_back(std::move(r));
+	}
+
+	const auto space = faces::space_of_regions(applied_to, edits.stored, edits.orientation);
+	const auto has_areas = std::ranges::any_of(list_items, [](const region& r) { return r.area || r.foreign_unit; });
+	// Only an edit that places a face reads the areas: a rename, or a name taken out of the whole file, does not.
+	const auto places_faces = std::ranges::any_of(edits.edits, [](const face_name_edit& e)
+	{ return e.what != face_name_edit::kind::rename && e.area.has_value(); });
+	if (space == faces::region_space::stale && has_areas && places_faces)
+		throw app_exception("the face regions in this file no longer fit its picture");
+
+	// Microsoft's regions, which name a face in the picture as stored, from its left and top.
+	struct ms_region
+	{
+		std::string path;
+		std::optional<std::string> name;
+		std::optional<rectd> area;
+		bool renamed = false;
+		bool removed = false;
+	};
+
+	std::vector<ms_region> microsoft_items;
+	std::string mp_info;
+	std::string mp_region;
+	std::string mp_list;
+
+	if (lx::namespace_prefix(microsoft_info, &mp_info) && lx::namespace_prefix(microsoft_region, &mp_region) &&
+	    meta.exists(microsoft, "RegionInfo"))
+	{
+		mp_list = "RegionInfo/" + mp_info + "Regions";
+		const auto mp_count = meta.count_array_items(microsoft, mp_list);
+
+		for (auto i = 1; i <= mp_count; ++i)
+		{
+			ms_region r;
+			r.path = std::format("{}[{}]", mp_list, i);
+			r.name = held(meta, microsoft, r.path + "/" + mp_region + "PersonDisplayName");
+
+			if (const auto rectangle = held(meta, microsoft, r.path + "/" + mp_region + "Rectangle"))
+			{
+				std::vector<double> values;
+				for (const auto part : core::split(*rectangle, false, [](const char c) { return c == ','; }))
+				{
+					auto value = 0.0;
+					const auto t = core::trim(part);
+					if (std::from_chars(t.data(), t.data() + t.size(), value).ec != std::errc{}) break;
+					values.push_back(value);
+				}
+				if (values.size() == 4 && values[2] > 0.0 && values[3] > 0.0)
+					r.area = rectd{values[0], values[1], values[2], values[3]};
+			}
+
+			microsoft_items.push_back(std::move(r));
+		}
+	}
+
+	// Areas in the stored picture's space, as every region is written; one in pixels stays as it is written.
+	const auto stored_area = [&](const region& r) -> std::optional<rectd>
+	{
+		if (!r.area) return {};
+		return space == faces::region_space::upright ? faces::to_stored(*r.area, edits.orientation) : *r.area;
+	};
+
+	// A file whose names are in Microsoft's regions alone gets them in mwg-rs too, once a name is written there, so
+	// no reader that prefers mwg-rs loses them.
+	std::vector<region> added;
+	const auto has_mwg_face = std::ranges::any_of(list_items, [](const region& r) { return r.face; });
+	const auto names_a_face = std::ranges::any_of(edits.edits, [](const face_name_edit& e)
+	{ return e.what == face_name_edit::kind::name; });
+
+	if (!has_mwg_face && names_a_face)
+	{
+		for (const auto& m : microsoft_items)
+		{
+			if (!m.name || core::trim(*m.name).empty()) continue;
+			region r;
+			r.face = true;
+			r.name = std::string(core::trim(*m.name));
+			r.area = m.area;
+			added.push_back(std::move(r));
+		}
+	}
+
+	const auto names_anywhere = [&](const std::string_view name)
+	{
+		const auto named = [name](const region& r)
+		{
+			return r.face && !r.removed && same_name(r.name, name);
+		};
+		return std::ranges::any_of(list_items, named) || std::ranges::any_of(added, named);
+	};
+
+	// The region over a face, by how much they overlap: one already in the list, or one added since.
+	const auto region_at = [&](const rectd& face, const std::optional<std::string_view> named) -> region*
+	{
+		region* best = nullptr;
+		auto best_overlap = 0.0;
+
+		const auto consider = [&](region& r, const std::optional<rectd>& a)
+		{
+			if (!r.face || r.removed || !a) return;
+			if (named && !same_name(r.name, *named)) return;
+			if (const auto overlap = faces::region_overlap(face, *a); overlap > best_overlap)
+			{
+				best = &r;
+				best_overlap = overlap;
+			}
+		};
+
+		for (auto& r : list_items) consider(r, stored_area(r));
+		for (auto& r : added) consider(r, r.area);
+		return best;
+	};
+
+	const auto microsoft_at = [&](const rectd& face, const std::string_view named) -> ms_region*
+	{
+		ms_region* best = nullptr;
+		auto best_overlap = 0.0;
+		for (auto& m : microsoft_items)
+		{
+			if (m.removed || !m.area || !same_name(m.name, named)) continue;
+			if (const auto overlap = faces::region_overlap(face, *m.area); overlap > best_overlap)
+			{
+				best = &m;
+				best_overlap = overlap;
+			}
+		}
+		return best;
+	};
+
+	auto areas_written = false;
+
+	for (const auto& edit : edits.edits)
+	{
+		switch (edit.what)
+		{
+		case face_name_edit::kind::name:
+		{
+			if (!edit.area || core::trim(edit.name).empty()) break;
+			const auto face = faces::to_stored(*edit.area, edits.orientation);
+
+			if (auto* const r = region_at(face, {}))
+			{
+				const auto previous = r->name;
+				r->name = std::string(core::trim(edit.name));
+				r->renamed = true;
+
+				// The face's other names, where the packet states them, follow it.
+				if (previous && !same_name(previous, edit.name))
+				{
+					if (auto* const m = microsoft_at(face, *previous))
+					{
+						m->name = r->name;
+						m->renamed = true;
+					}
+
+					if (!names_anywhere(*previous))
+					{
+						edit_people_in_image(meta, [&previous](std::vector<std::string>& names) {
+							std::erase_if(names, [&previous](const std::string& n) { return same_name(previous, n); });
+						});
+					}
+				}
+			}
+			else
+			{
+				region named;
+				named.face = true;
+				named.name = std::string(core::trim(edit.name));
+				named.area = face;
+				added.push_back(std::move(named));
+				areas_written = true;
+			}
+			break;
+		}
+
+		case face_name_edit::kind::remove:
+		{
+			if (edit.area)
+			{
+				const auto face = faces::to_stored(*edit.area, edits.orientation);
+				if (auto* const r = region_at(face, edit.name)) r->removed = true;
+				if (auto* const m = microsoft_at(face, edit.name)) m->removed = true;
+			}
+			else
+			{
+				// No face to find it by: the name goes from every region stating it.
+				for (auto& r : list_items)
+					if (r.face && same_name(r.name, edit.name)) r.removed = true;
+				std::erase_if(added, [&edit](const region& r) { return same_name(r.name, edit.name); });
+				for (auto& m : microsoft_items)
+					if (same_name(m.name, edit.name)) m.removed = true;
+			}
+
+			if (!names_anywhere(edit.name))
+			{
+				edit_people_in_image(meta, [&edit](std::vector<std::string>& names)
+				{ std::erase_if(names, [&edit](const std::string& n) { return core::icmp(n, edit.name) == 0; }); });
+			}
+			break;
+		}
+
+		case face_name_edit::kind::rename:
+		{
+			if (core::trim(edit.to).empty()) break;
+			const auto to = std::string(core::trim(edit.to));
+
+			for (auto& r : list_items)
+			{
+				if (r.face && same_name(r.name, edit.name))
+				{
+					r.name = to;
+					r.renamed = true;
+				}
+			}
+
+			for (auto& r : added)
+			{
+				if (same_name(r.name, edit.name)) r.name = to;
+			}
+
+			for (auto& m : microsoft_items)
+			{
+				if (same_name(m.name, edit.name))
+				{
+					m.name = to;
+					m.renamed = true;
+				}
+			}
+
+			edit_people_in_image(meta, [&edit, &to](std::vector<std::string>& names)
+			{
+				for (auto& n : names)
+					if (core::icmp(core::trim(n), core::trim(edit.name)) == 0) n = to;
+			});
+			break;
+		}
+		}
+	}
+
+	// A region copied from Microsoft's or named above whose face was then taken out again is not written.
+	std::erase_if(added, [](const region& r) { return r.removed; });
+	areas_written |= !added.empty();
+	// Regions measured on the picture as shown are turned to the stored picture, which the dimensions written
+	// beside them name, and those written in pixels are written as fractions.
+	const auto turn_areas = areas_written && space == faces::region_space::upright;
+
+	for (auto& r : list_items)
+	{
+		if (r.removed) continue;
+		if (r.renamed && r.name) meta.set_property(regions, r.path + "/" + rs + "Name", *r.name);
+		if (r.area && areas_written && (turn_areas || r.pixels)) write_area(meta, rs, st, r.path, *stored_area(r));
+	}
+
+	for (auto& m : microsoft_items)
+	{
+		if (!m.removed && m.renamed && m.name)
+			meta.set_property(microsoft, m.path + "/" + mp_region + "PersonDisplayName", *m.name);
+	}
+
+	// Removed from the last, so the indices of those before stay true.
+	for (auto i = static_cast<int>(list_items.size()) - 1; i >= 0; --i)
+	{
+		if (list_items[i].removed) meta.delete_property(regions, list_items[i].path);
+	}
+
+	for (auto i = static_cast<int>(microsoft_items.size()) - 1; i >= 0; --i)
+	{
+		if (microsoft_items[i].removed) meta.delete_property(microsoft, microsoft_items[i].path);
+	}
+
+	if (!added.empty())
+	{
+		if (!meta.exists(regions, "Regions")) meta.set_composite(regions, "Regions", lx::value_is_struct);
+		if (!meta.exists(regions, list)) meta.set_composite(regions, list, lx::value_is_array);
+
+		for (const auto& r : added)
+		{
+			const auto item = std::format("{}[{}]", list, meta.count_array_items(regions, list) + 1);
+			meta.set_composite(regions, item, lx::value_is_struct);
+			meta.set_property(regions, item + "/" + rs + "Type", "Face");
+			if (r.name) meta.set_property(regions, item + "/" + rs + "Name", *r.name);
+			if (r.area)
+			{
+				meta.set_composite(regions, item + "/" + rs + "Area", lx::value_is_struct);
+				write_area(meta, rs, st, item, *r.area);
+			}
+		}
+	}
+
+	if (areas_written && !edits.stored.is_empty() && meta.exists(regions, "Regions"))
+	{
+		const auto dims = "Regions/" + rs + "AppliedToDimensions";
+		if (!meta.exists(regions, dims)) meta.set_composite(regions, dims, lx::value_is_struct);
+		meta.set_property(regions, applied + "w", std::to_string(edits.stored.cx));
+		meta.set_property(regions, applied + "h", std::to_string(edits.stored.cy));
+		meta.set_property(regions, applied + "unit", "pixel");
+	}
+}
+
 void metadata_edits::apply(libfiles::xmp::meta& meta) const
 {
+	if (faces.has_value() && !faces->edits.empty())
+	{
+		apply_face_names(meta, *faces);
+	}
+
 	if (location_coordinate.has_value())
 	{
 		const auto position = location_coordinate.value();

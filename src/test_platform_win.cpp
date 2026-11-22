@@ -6,9 +6,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 // Purpose: Tests for Windows platform integration. These are the only tests whose subject is the
-// operating system itself -- extended path syntax, DXGI device loss, adapter classification and the
-// texture budget taken from it, the adapter the decode device is made on, texture recycling, the
-// crash-guard recovery session, the system font stack, the registry settings store, time zone
+// operating system itself -- the application manifest, extended path syntax, DXGI device loss, adapter
+// classification and the texture budget taken from it, the adapter the decode device is made on, texture
+// recycling, the crash-guard recovery session, the system font stack, the registry settings store, time zone
 // conversion, the shell drag data object and the snap-layouts caption button.
 // Keeping them here is what lets every other test file stay free of system headers.
 
@@ -298,6 +298,38 @@ static void should_convert_utf8_to_ansi()
 	const std::string cjk = "D:\\\xe5\x8b\x95\xe7\x94\xbb\\\xe6\x9d\xb1\xe4\xba\xac\xe6\x97\x85\xe8\xa1\x8c"
 							"\xe3\x81\xae\xe6\x80\x9d\xe3\x81\x84\xe5\x87\xba.mp4";
 	assert_equal(cjk, platform::utf8_to_a(cjk), "a name of three-byte characters converts whole");
+}
+
+// The manifest makes Windows report its own version, which Share and the snap layouts are offered by, lends the
+// process Common Controls 6 for its task dialogs, makes its code page UTF-8 and declares per-monitor DPI. Windows
+// reads it for an executable only as resource 1: under any other number the program still built and ran, as if on
+// Windows 8 and with none of them.
+static void should_run_under_the_application_manifest()
+{
+	assert_equal(true, FindResourceW(nullptr, CREATEPROCESS_MANIFEST_RESOURCE_ID, RT_MANIFEST) != nullptr,
+	             "the manifest is the resource Windows reads for a process");
+
+	// RtlGetVersion answers the version whatever the manifest says, so it is what the manifest is held to.
+	using rtl_get_version_fn = LONG(WINAPI*)(OSVERSIONINFOW*);
+	const auto ntdll = GetModuleHandleW(L"ntdll.dll");
+	const auto rtl_get_version = ntdll ? reinterpret_cast<rtl_get_version_fn>(GetProcAddress(ntdll, "RtlGetVersion"))
+	                                   : nullptr;
+	OSVERSIONINFOW actual = {};
+	actual.dwOSVersionInfoSize = sizeof(actual);
+	if (!rtl_get_version || rtl_get_version(&actual) != 0) return;
+
+#pragma warning(push)
+#pragma warning(disable : 4996)
+	OSVERSIONINFOW reported = {};
+	reported.dwOSVersionInfoSize = sizeof(reported);
+	GetVersionExW(&reported);
+#pragma warning(pop)
+	assert_equal(static_cast<uint32_t>(actual.dwMajorVersion), static_cast<uint32_t>(reported.dwMajorVersion),
+	             "Windows reports its own version to the process");
+
+	// Windows 10 version 1903 is the first to honour a manifest's UTF-8 code page.
+	if (actual.dwMajorVersion > 10 || (actual.dwMajorVersion == 10 && actual.dwBuildNumber >= 18362))
+		assert_equal(static_cast<uint32_t>(CP_UTF8), static_cast<uint32_t>(GetACP()), "the process code page is UTF-8");
 }
 
 // Undocking or unplugging a second display leaves a saved rect that intersects no monitor at all.
@@ -1625,6 +1657,7 @@ void register_platform_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should convert extended file system paths"s, should_convert_extended_file_system_paths);
 	tests.add("Should recognise network locations"s, should_recognise_network_locations);
 	tests.add("Should convert utf8 to ansi"s, should_convert_utf8_to_ansi);
+	tests.add("Should run under the application manifest"s, should_run_under_the_application_manifest);
 	tests.add("Should restore a window onto a display that still exists"s, should_restore_a_window_onto_a_display);
 	tests.add("Should classify DXGI device loss"s, should_classify_dxgi_device_loss);
 	tests.add("Should recognise the Microsoft Basic Render Driver as software"s,

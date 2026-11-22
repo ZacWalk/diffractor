@@ -45,7 +45,30 @@ void log_open_files_to_crash_files_list()
 	crash_files().log_open_files();
 }
 
-void view_state::modify_items(const df::results_ptr& results, icon_index /*icon*/, const std::string_view /*title*/,
+// What a metadata write does, as the session's recent changes name it: the rating, label or tags it sets, or else
+// the title the caller gave it.
+static std::string describe_edits(const metadata_edits& edits, const std::string_view title)
+{
+	if (edits.remove_rating) return std::format("{}: {}", tt.prop_name_rating, prop::format_rating(0));
+	if (edits.rating) return std::format("{}: {}", tt.prop_name_rating, prop::format_rating(*edits.rating));
+	if (edits.label) return std::format("{}: {}", tt.prop_name_label, prop::format_label(*edits.label));
+
+	if (!edits.add_tags.is_empty() || !edits.remove_tags.is_empty())
+	{
+		std::string tags;
+		if (!edits.add_tags.is_empty()) tags = "+" + edits.add_tags.to_string(" +", false);
+		if (!edits.remove_tags.is_empty())
+		{
+			if (!tags.empty()) tags += " ";
+			tags += "-" + edits.remove_tags.to_string(" -", false);
+		}
+		return std::format("{}: {}", tt.prop_name_tag, tags);
+	}
+
+	return std::string(title);
+}
+
+void view_state::modify_items(const df::results_ptr& results, const icon_index icon, const std::string_view title,
                               const df::item_elements& items_to_modify, const metadata_edits& edits,
                               const view_host_base_ptr& view)
 {
@@ -59,6 +82,8 @@ void view_state::modify_items(const df::results_ptr& results, icon_index /*icon*
 	// This overload never applies photo edits, so orientation is the only thing that can change what
 	// is drawn.
 	spec.changes_presentation = edits.changes_presentation();
+	spec.change_icon = icon;
+	spec.change_title = describe_edits(edits, title);
 
 	modify_items(results, items_to_modify, spec, view);
 }
@@ -168,6 +193,8 @@ void view_state::modify_items(const df::results_ptr& results, const df::item_ele
 			std::vector<written_image> written_images;
 			// The open handle over the playable item the display is about to reopen.
 			platform::file_ptr detached_av_handle;
+			// What the write changed, for the session's recent changes.
+			std::vector<core::file_path> written_paths;
 
 			for (const auto& request : requests)
 			{
@@ -208,6 +235,7 @@ void view_state::modify_items(const df::results_ptr& results, const df::item_ele
 				}
 
 				if (request.path == detached_av_path) detached_av_handle = std::move(update_result.display_handle);
+				written_paths.emplace_back(request.path);
 
 				if (is_displayed)
 				{
@@ -215,7 +243,9 @@ void view_state::modify_items(const df::results_ptr& results, const df::item_ele
 					                            core::date_t(update_result.modified));
 				}
 
-				if (item_index.apply_write_scan(request.scan, update_result))
+				// A write with no photo edit leaves the pixels as they were, which the picture's face record is
+				// stamped for rather than read again.
+				if (item_index.apply_write_scan(request.scan, update_result, edits && edits->image.is_empty()))
 				{
 					needs_force.emplace_back(request.scan);
 				}
@@ -233,9 +263,12 @@ void view_state::modify_items(const df::results_ptr& results, const df::item_ele
 			_async.queue_ui(
 				[this, detach = detach, claimed = std::move(claimed), immediate_done = std::move(immediate_done),
 			     needs_force = std::move(needs_force), written_images = std::move(written_images), detached_av_path,
-			     detached_av_handle = std::move(detached_av_handle)]() mutable
+			     detached_av_handle = std::move(detached_av_handle), written_paths = std::move(written_paths),
+			     change_icon = spec.change_icon, change_title = spec.change_title]() mutable
 			{
 				item_index.release_write_claim(claimed);
+
+				if (change_icon != icon_index::none) record_change(change_icon, change_title, std::move(written_paths));
 
 				for (auto& written : written_images)
 				{
@@ -813,6 +846,8 @@ import_result import_copy(index_state& index, const df::results_ptr& results, co
 	std::vector<folder_scan_item> existing;
 	std::vector<folder_scan_item> previous;
 	core::unique_folders write_folders;
+	// What a move took from one place in the collection to another, so what the face book keeps of it follows.
+	std::vector<std::pair<core::file_path, core::file_path>> moved;
 	struct import_group_state
 	{
 		bool attempted = false;
@@ -1115,8 +1150,9 @@ import_result import_copy(index_state& index, const df::results_ptr& results, co
 				{
 					// The file arrived, so this is not a failed import - but the date was asked for
 					// and the filesystem refused it, and a row reported as plain success would say
-					// the opposite. Counted so the run can state it.
-					if (!platform::created_date(path_out, i.created_date))
+					// the opposite. Counted so the run can state it. The metadata date is the camera's
+					// clock, local time, where the file system keeps UTC.
+					if (!platform::created_date(path_out, platform::local_to_utc(i.created_date)))
 					{
 						core::log(__FUNCTION__, std::format("could not set created date on {}", path_out.str()));
 						++result.dates_unset;
@@ -1125,9 +1161,14 @@ import_result import_copy(index_state& index, const df::results_ptr& results, co
 
 				// An import that moves empties the folder it took from, which is only in the index
 				// when importing from one collection folder to another.
-				if (options.is_move) write_folders.emplace(path_in.folder());
+				if (options.is_move)
+				{
+					write_folders.emplace(path_in.folder());
+					moved.emplace_back(path_in, path_out);
+				}
 
 				result.folder = path_out.folder();
+				result.created.emplace_back(path_out);
 			}
 			else
 			{
@@ -1147,7 +1188,9 @@ import_result import_copy(index_state& index, const df::results_ptr& results, co
 		if (state.attempted && state.success) result.imports.emplace(import_rec);
 	}
 
+	index.paths_moved(moved);
 	index.queue_scan_folders(write_folders);
+	result.moved = std::move(moved);
 
 	if (!abort_message.empty())
 	{
@@ -1275,6 +1318,167 @@ std::vector<import_source> calc_import_sources(std::optional<import_source> sele
 	{
 		const auto text = std::format("{} {} {}", d.name, d.vol_name, d.used);
 		result.emplace_back(text, core::folder_path(d.name));
+	}
+
+	for (auto& device : platform::portable_devices())
+	{
+		import_source source;
+		source.text = device.name.empty() ? std::string(tt.import_device.sv())
+		                                  : str_format(tt.import_device_fmt.sv(), device.name);
+		source.device = std::move(device);
+		result.emplace_back(std::move(source));
+	}
+
+	return result;
+}
+
+// A name the file system takes for what a device calls a file or folder: its reserved characters become
+// underscores, and a name it still refuses - a trailing dot, or a device name such as CON - gains one in front.
+static std::string usable_name(const std::string_view name)
+{
+	std::string result;
+	result.reserve(name.size());
+
+	for (const auto c : name)
+	{
+		constexpr std::string_view reserved = "<>:\"/\\|?*";
+		const auto is_reserved = static_cast<unsigned char>(c) < 0x20 || reserved.find(c) != std::string_view::npos;
+		result += is_reserved ? '_' : c;
+	}
+
+	while (!result.empty() && (result.back() == '.' || result.back() == ' ')) result.pop_back();
+	if (result.empty()) return std::string(1, '_');
+	if (!platform::is_valid_file_name(result)) result.insert(result.begin(), '_');
+	return result;
+}
+
+core::folder_path device_staging_root()
+{
+	return platform::temp_folder().combine(usable_name(std::format("{} import", core::app_name())));
+}
+
+core::folder_path device_staging_folder(const platform::portable_device_t& device)
+{
+	// The device's id tells two of one model apart, which their names do not.
+	const auto name = device.name.empty() ? std::string(tt.import_device.sv()) : device.name;
+	return device_staging_root()
+	    .combine(core::to_string(platform::process_id()))
+	    .combine(usable_name(std::format("{} {:08x}", name, core::crc32c(device.id))));
+}
+
+std::string device_staging_lock_name(const uint32_t process_id)
+{
+	auto result = std::format("{}-import-{}", core::app_name(), process_id);
+	for (auto& c : result)
+		if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' && c != '_' && c != '-') c = '-';
+	return result;
+}
+
+void clear_abandoned_device_staging(const core::folder_path root)
+{
+	const auto own = platform::process_id();
+
+	for (const auto& folder : platform::iterate_file_items(root, true).folders)
+	{
+		const auto name = folder.name.sv();
+		uint32_t owner = 0;
+		const auto [end, error] = std::from_chars(name.data(), name.data() + name.size(), owner);
+		const auto is_instance = error == std::errc{} && end == name.data() + name.size();
+
+		// An instance still running holds its lock, and its process ending releases it.
+		if (is_instance && owner != own && !platform::try_lock_instance(device_staging_lock_name(owner)).lock) continue;
+
+		std::error_code ec;
+		std::filesystem::remove_all(platform::to_stream_path(root.combine(name)), ec);
+	}
+}
+
+// Removes what staging holds that is not wanted now: imported since it was staged, or gone from the device.
+static void remove_unwanted_staged(const core::folder_path folder, const core::unique_paths& wanted)
+{
+	const auto contents = platform::iterate_file_items(folder, true);
+
+	for (const auto& file : contents.files)
+	{
+		const auto path = folder.combine_file(file.name);
+		if (!wanted.contains(path)) (void)platform::delete_file(path);
+	}
+
+	for (const auto& sub_folder : contents.folders)
+		remove_unwanted_staged(folder.combine(sub_folder.name.sv()), wanted);
+}
+
+device_staging stage_device_files(const std::vector<platform::portable_file_t>& files,
+                                  const item_import_set& previous_imported, const core::folder_path staging,
+                                  const device_copier& copy)
+{
+	device_staging result;
+	std::vector<platform::portable_copy_t> copies;
+	core::unique_paths wanted;
+	uint64_t needed = 0;
+
+	for (const auto& file : files)
+	{
+		auto folder = staging;
+		for (const auto part : core::split(file.folder, false, [](const char c) { return core::is_path_sep(c); }))
+			folder = folder.combine(usable_name(part));
+		const auto path = folder.combine_file(usable_name(file.name));
+
+		// The identity an import records, which the staged copy keeps by keeping the device's name, size and time.
+		if (file.modified != 0 &&
+		    previous_imported.contains(item_import{path.name(), core::date_t(file.modified), file.size, {}}))
+		{
+			++result.previously_imported;
+			continue;
+		}
+
+		wanted.emplace(path);
+		const auto staged = platform::file_attributes(path);
+
+		if (staged.exists())
+		{
+			if (staged.size == file.size.to_int64() && file.modified != 0 && staged.modified == file.modified)
+			{
+				++result.staged;
+				continue;
+			}
+
+			// Cut short, or changed on the device since it was staged.
+			(void)platform::delete_file(path);
+		}
+
+		copies.push_back({file.id, path, file.modified, file.created});
+		needed += static_cast<uint64_t>(std::max<int64_t>(0, file.size.to_int64()));
+	}
+
+	remove_unwanted_staged(staging, wanted);
+
+	if (!copies.empty())
+	{
+		// Copied before anything is reviewed, so a device holding more than staging's drive has room for says so before
+		// copying any of it, rather than once the drive is full. The room asked for leaves the drive some to spare.
+		constexpr uint64_t spare = 512ull * 1024 * 1024;
+		auto probe = staging;
+		while (!platform::exists(probe) && !probe.parent().is_empty() && probe.parent() != probe)
+			probe = probe.parent();
+
+		std::error_code ec;
+		const auto space = std::filesystem::space(platform::to_stream_path(probe), ec);
+		if (!ec && space.available < needed + spare)
+		{
+			result.short_of_space = needed + spare - space.available;
+			return result;
+		}
+
+		const auto copied = copy(copies);
+		result.staged += copied.copied.size();
+		result.stopped = copied.stopped;
+
+		for (const auto& [index, why] : copied.unreadable)
+		{
+			if (index < copies.size()) result.unreadable.emplace_back(copies[index].destination.name().sv());
+			core::log(__FUNCTION__, why);
+		}
 	}
 
 	return result;
@@ -1884,6 +2088,28 @@ std::string format_collision_summary(const collision_policy policy, const int co
 	}
 
 	return str_format(tt.collision_blocked_fmt.sv(), num);
+}
+
+std::string save_file_replacing(const core::file_path path, const core::cspan bytes, const bool fail_if_exists)
+{
+	const auto staged = platform::temp_file(path.extension(), path.folder());
+	const auto cleanup = core::scope_exit([&staged] { platform::delete_file(staged); });
+
+	if (!platform::blob_save_to_file(bytes, staged)) return "could not write the staged copy";
+
+	const auto moved = fail_if_exists ? platform::move_file(staged, path, true) : platform::replace_file(path, staged);
+	return moved.failed() ? moved.format_error() : std::string{};
+}
+
+std::string read_text_file(const core::file_path path, const uint64_t max_bytes)
+{
+	const auto file = platform::open_file(path, platform::file_open_mode::read);
+	if (!file) return {};
+	const auto size = file->size();
+	if (size == 0 || size > max_bytes) return {};
+	std::string result(static_cast<size_t>(size), '\0');
+	if (file->read(std::bit_cast<uint8_t*>(result.data()), size) != size) return {};
+	return result;
 }
 
 core::file_path next_free_destination(const core::file_path destination)

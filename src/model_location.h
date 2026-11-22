@@ -130,7 +130,7 @@ public:
 	}
 };
 
-// locations.md 3.3: the reverse-geocode memo key. Two photos taken in the same spot never share
+// docs/locations.md#item-locations: the reverse-geocode memo key. Two photos taken in the same spot never share
 // an exact coordinate, so a memo keyed on gps_coordinate never hits and every located item pays
 // for a gazetteer lookup. Attribution answers at kilometre scale, so a cell of about 1 km
 // collapses them without changing the answer.
@@ -154,6 +154,21 @@ struct attribution_cell
 		if (l.lat != r.lat) return l.lat < r.lat;
 		return l.lon < r.lon;
 	}
+};
+
+class location_cache;
+
+// The place names contributed by coordinates to a free-text search. A scan and an index build use
+// the same cell centre, rather than whichever picture in that cell happened to be visited first.
+class gps_search_names
+{
+	using names = std::array<core::cached, 5>;
+	std::map<attribution_cell, names> _cells;
+	std::map<std::array<uint32_t, 3>, uint32_t> _place_parents;
+
+public:
+	names at(const location_cache& locations, gps_coordinate coordinate);
+	uint32_t parent_of(const location_cache& locations, core::cached place, core::cached state, core::cached country);
 };
 
 struct location_and_distance_t
@@ -182,7 +197,7 @@ struct split_location_result
 
 split_location_result split_location(std::string_view text);
 
-// locations.md 4.2: the distance slider's detents in kilometres. A user thinks "a bit wider",
+// docs/locations.md#location-search: the distance slider's detents in kilometres. A user thinks "a bit wider",
 // not in linear metres, so the ladder is roughly logarithmic.
 inline constexpr double location_distance_detents_km[] = {0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0};
 inline constexpr int location_distance_detent_count = std::size(location_distance_detents_km);
@@ -209,7 +224,8 @@ constexpr int location_nearest_distance_detent(const double km)
 	return location_distance_detent_count - 1;
 }
 
-// locations.md 5.1 rounds a map area's radius up, so it never drops an item the area contained.
+// docs/locations.md#areas-become-places-with-a-radius: a map area's radius is rounded up, so it never drops an
+// item the area contained.
 constexpr int location_distance_detent_at_least(const double km)
 {
 	for (auto i = 0; i < location_distance_detent_count; ++i)
@@ -222,7 +238,7 @@ constexpr int location_distance_detent_at_least(const double km)
 
 std::string format_distance_km(double km);
 
-// locations.md 2.1: the qualification level held in bits 0-1 of a gazetteer record's flags
+// docs/locations.md#place-data: the qualification level held in bits 0-1 of a gazetteer record's flags
 // column. It is the smallest name form that uniquely identifies the place to a user.
 enum class location_qualification : uint8_t
 {
@@ -231,8 +247,7 @@ enum class location_qualification : uint8_t
 	name_region_country = 2,
 };
 
-// locations.md 2.1: bit layout of the flags column. Bits 3-31 are reserved, are written as
-// zero by tools/generate_locations.py, and are ignored on read.
+// Bits 3-31 carry the enclosing city's GeoNames ID when the source identifies a subdivision.
 constexpr uint32_t location_flag_level_mask = 0x3;
 constexpr uint32_t location_flag_extent = 0x4;
 
@@ -261,7 +276,7 @@ struct location_t
 	{
 	}
 
-	// locations.md 2.1: the reserved encoding 3 is read as level 2, so an older loader facing a
+	// docs/locations.md#place-data: the reserved encoding 3 is read as level 2, so an older loader facing a
 	// newer file over-qualifies rather than under-qualifies.
 	location_qualification qualification() const
 	{
@@ -269,9 +284,10 @@ struct location_t
 		return level >= 2u ? location_qualification::name_region_country : static_cast<location_qualification>(level);
 	}
 
-	// locations.md 2.1: an extent feature is matched by its bounding box and has no meaningful
+	// docs/locations.md#place-data: an extent feature is matched by its bounding box and has no meaningful
 	// centroid, so it is excluded from find_closest, find_largest and radius search.
 	bool is_extent() const { return (flags & location_flag_extent) != 0; }
+	uint32_t enclosing_city() const { return flags >> 3; }
 
 	friend bool operator==(const location_t& lhs, const location_t& rhs) { return lhs.id == rhs.id; }
 
@@ -292,11 +308,11 @@ struct location_t
 	void clear();
 };
 
-// locations.md 2.3: the single composer of a place label. Group headers, map bubbles, timeline
+// docs/locations.md#place-data: the single composer of a place label. Group headers, map bubbles, timeline
 // nodes, autocomplete and canonical term formatting all go through it; nothing else composes one.
 std::string qualified_name(const location_t& loc);
 
-// locations.md 2.5: how a coordinate was attributed. Steps at/near/remote are all *located*;
+// docs/locations.md#item-locations: how a coordinate was attributed. Steps at/near/remote are all *located*;
 // only `none` means the item has no usable coordinate.
 enum class location_attribution : uint8_t
 {
@@ -306,7 +322,7 @@ enum class location_attribution : uint8_t
 	remote,
 };
 
-// locations.md 2.7: eight points, not sixteen. A nearest-place bearing is not precise enough to
+// docs/locations.md#item-locations: eight points, not sixteen. A nearest-place bearing is not precise enough to
 // justify NNW, and the extra points read as false confidence.
 enum class location_bearing : uint8_t
 {
@@ -336,7 +352,7 @@ struct located_place
 	location_attribution attribution = location_attribution::none;
 	double distance_km = 0.0;
 
-	// locations.md 2.7: the nearest place regardless of radius, so an item that is only Near or
+	// docs/locations.md#item-locations: the nearest place regardless of radius, so an item that is only Near or
 	// Remote can still answer "where was that?". Never a group key and never a search term.
 	location_t nearest;
 	double nearest_km = 0.0;
@@ -345,11 +361,15 @@ struct located_place
 	bool is_located() const { return attribution != location_attribution::none; }
 };
 
-// locations.md 2.7: the one composer of a bearing descriptor -- `410 km NW of Lisbon, Portugal`.
+// docs/locations.md#item-locations: the one composer of a bearing descriptor -- `410 km NW of Lisbon, Portugal`.
 // Empty when nothing was near enough to name or the item is already `at` the place it names.
 std::string bearing_descriptor(const located_place& lp);
 
-// locations.md 2.5: a place may label an item only within a radius scaled to its significance,
+// docs/locations.md#item-locations: the label of a place a coordinate was attributed to, which states how far it
+// had to reach -- the place, `Near` it, or Remote area where it names none. Empty for a coordinate attributed nowhere.
+std::string attributed_name(const located_place& lp);
+
+// docs/locations.md#item-locations: a place may label an item only within a radius scaled to its significance,
 // because a large city is a reasonable answer from far away and a hamlet is not.
 constexpr double location_attribution_radius_km(const double population)
 {
@@ -378,12 +398,12 @@ struct map_location_area
 	double max_longitude = 0.0;
 	double population = 0.0;
 
-	// locations.md 5.1: the resolved place's own position, which is where the click's radius is
-	// measured from. Invalid when nothing was near enough to name the area.
+	// docs/locations.md#areas-become-places-with-a-radius: the resolved place's own position, which is where the
+	// click's radius is measured from. Invalid when nothing was near enough to name the area.
 	gps_coordinate place_position = {};
 
-	// locations.md 5.1: the smallest radius that still covers every item the area displayed,
-	// measured from the resolved place to the furthest corner of the photo bounds and rounded up
+	// docs/locations.md#areas-become-places-with-a-radius: the smallest radius that still covers every item the
+	// area displayed, measured from the resolved place to the furthest corner of the photo bounds and rounded up
 	// to a slider detent so the click and the slider speak the same units.
 	double search_radius_km() const
 	{

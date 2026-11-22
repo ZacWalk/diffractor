@@ -131,7 +131,7 @@ public:
 
 	view_menu context_menu(const pointi /*loc*/) override { return media_view_menu(); }
 
-	// zoom.md 11: fullscreen has one surface, so the modifier alone chooses which of its axes moves.
+	// docs/zoom.md#the-wheel: fullscreen has one surface, so the modifier alone chooses which of its axes moves.
 	bool mouse_wheel(const pointi loc, const platform::wheel_notch notch) override
 	{
 		if (!_display) return false;
@@ -483,8 +483,8 @@ public:
 		return _media_element ? _media_element->controller_from_location(host, loc, media_offset, ctx) : nullptr;
 	}
 
-	// design.md L5: Escape peels one layer. A region can be drawn here too, so clearing it comes
-	// before the unwind ladder that would otherwise leave fullscreen with the rectangle still on the
+	// docs/design.md#selection-and-viewing: Escape peels one layer. A region can be drawn here too, so clearing
+	// it comes before the unwind ladder that would otherwise leave fullscreen with the rectangle still on the
 	// picture.
 	bool escape() override
 	{

@@ -15,8 +15,10 @@
 #include "test_fixtures.h"
 #include "test_runner.h"
 #include "model_location.h"
+#include "model_faces_search.h"
 #include "model_tile_cache.h"
 #include "model_visits.h"
+#include "model_explore.h"
 #include "ui_globe.h"
 #include "ui_map_common.h"
 
@@ -306,6 +308,134 @@ static void should_resolve_tile_cache_db_beside_index_db()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+// Fetching map tiles
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+namespace
+{
+	// A tile's worth of PNG, as the store keeps it and OpenStreetMap sends it.
+	core::blob tile_png()
+	{
+		const auto surface = std::make_shared<core::surface>();
+		surface->alloc(256, 256, core::texture_format::ARGB);
+
+		for (auto y = 0; y < 256; ++y)
+		{
+			auto* const line = std::bit_cast<core::color32*>(surface->pixels_line(y));
+			for (auto x = 0; x < 256; ++x) line[x] = core::rgba(x, y, 128);
+		}
+
+		return save_png(surface, {})->data().clone();
+	}
+
+	// A cache whose store is a test database, whose workers run when the test says, and whose downloads the test
+	// answers, so nothing reaches the network.
+	struct tile_fetch_fixture
+	{
+		tile_cache_db db;
+		deferred_async_strategy async;
+		int invalidations = 0;
+		map_tile_cache cache;
+		std::vector<map_tile_id> downloaded;
+		bool network_was_allowed = df::network_allowed;
+
+		explicit tile_fetch_fixture(const bool downloads_succeed = true) : cache(async, [this] { ++invalidations; })
+		{
+			df::network_allowed = true;
+			db.open(test_temps.next_path(".db"));
+			async.tile_db = &db;
+			cache.download_with([this, downloads_succeed](const map_tile_id& t)
+			{
+				downloaded.push_back(t);
+				return downloads_succeed ? tile_png() : core::blob{};
+			});
+		}
+
+		~tile_fetch_fixture()
+		{
+			df::network_allowed = network_was_allowed;
+			db.close();
+		}
+
+		tile_fetch_fixture(const tile_fetch_fixture&) = delete;
+		tile_fetch_fixture& operator=(const tile_fetch_fixture&) = delete;
+
+		void run_workers()
+		{
+			while (async.run_next(async_queue::map_tile))
+			{
+			}
+			async.drain_ui();
+		}
+	};
+}
+
+// After a zoom or a turn, a tile the view has moved away from is not downloaded, wherever it was waiting, and the
+// one the view shows is - into the store, and onto the screen.
+static void should_download_only_the_map_tiles_still_shown()
+{
+	tile_fetch_fixture f;
+	const map_tile_id a{1, 1, 5}, b{2, 1, 5}, c{3, 1, 5};
+
+	f.cache.show(std::vector{a, b, c});
+	assert_equal(static_cast<size_t>(map_tile_cache::max_downloads),
+	             f.async.pending_worker_count(async_queue::map_tile), "no more downloads run at once than the limit",
+	             "tile fetch");
+
+	f.cache.show(std::vector{c});
+	f.run_workers();
+
+	assert_equal(1_z, f.downloaded.size(), "only the tile still shown is downloaded", "tile fetch");
+	assert_equal(true, f.downloaded.front() == c, "the one the view moved to", "tile fetch");
+	assert_equal(true, f.cache.surface(c) != nullptr, "it is decoded", "tile fetch");
+	assert_equal(1, f.invalidations, "and the view drawn again for it", "tile fetch");
+	assert_equal(false, f.db.load(map_tile_db_key(c.z, c.x, c.y)).empty(), "the store keeps it", "tile fetch");
+
+	// Shown again, the tiles let go are fetched again.
+	f.cache.show(std::vector{a, b, c});
+	f.run_workers();
+	assert_equal(3_z, f.downloaded.size(), "tiles let go can be asked for again", "tile fetch");
+}
+
+// Downloads take the most wanted tile first, as the view last ranked them, and a tile the store holds is decoded by
+// a worker of its own rather than waiting for a download to finish.
+static void should_download_the_most_wanted_map_tile_first()
+{
+	tile_fetch_fixture f;
+	const map_tile_id a{1, 1, 5}, b{2, 1, 5}, c{3, 1, 5}, stored{4, 1, 5};
+	f.db.store(map_tile_db_key(stored.z, stored.x, stored.y), core::cspan(tile_png()));
+
+	f.cache.show(std::vector{a, b, c, stored});
+	assert_equal(static_cast<size_t>(map_tile_cache::max_downloads) + 1,
+	             f.async.pending_worker_count(async_queue::map_tile),
+	             "the stored tile's decode is queued beside the downloads, not behind them", "tile fetch");
+
+	f.cache.show(std::vector{c, b, a, stored});
+	f.run_workers();
+
+	assert_equal(true, f.downloaded == std::vector{c, b, a}, "the newest ranking decides the order", "tile fetch");
+	assert_equal(true, f.cache.surface(stored) != nullptr, "the stored tile is decoded without a download",
+	             "tile fetch");
+}
+
+// A tile that could not be had is not asked for again each time the view is drawn.
+static void should_not_ask_again_at_once_for_a_map_tile_that_failed()
+{
+	tile_fetch_fixture f(false);
+	const map_tile_id a{1, 1, 5};
+
+	f.cache.show(std::vector{a});
+	f.run_workers();
+	assert_equal(1_z, f.downloaded.size(), "the tile is asked for", "tile fetch");
+	assert_equal(true, f.cache.surface(a) == nullptr, "and is not there", "tile fetch");
+
+	f.cache.show(std::vector{a});
+	f.run_workers();
+	assert_equal(1_z, f.downloaded.size(), "drawn again a moment later, it is not asked for again", "tile fetch");
+	assert_equal(0, f.invalidations, "and nothing is drawn again for it", "tile fetch");
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 // Map geometry
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -421,54 +551,6 @@ static void should_measure_distance_to_map_cells()
 	const auto left_distance = distance_squared({50, 30}, cell);
 	constexpr auto right_distance = distance_squared({50, 30}, recti(60, 20, 80, 40));
 	assert_equal(true, right_distance < left_distance, "nearest occupied cell wins between cells", "map cells");
-}
-
-static void should_frame_map_on_the_box_that_holds_items()
-{
-	constexpr sizei extent(800, 600);
-
-	// locations.md 5.5: the gesture is to see a hot spot and click it, so a map that opens has
-	// to show the region that holds items rather than an arbitrary coordinate inside it.
-	const map_box empty;
-	assert_equal(false, empty.valid, "an empty box frames nothing", "map framing");
-	assert_equal(false, empty.centre().is_valid(), "an empty box has no centre", "map framing");
-
-	map_box city;
-	city.add(gps_coordinate(51.4, -0.3));
-	city.add(gps_coordinate(51.6, 0.1));
-
-	const auto centre = city.centre();
-	assert_equal(true, std::abs(centre.latitude() - 51.5) < 0.0001, "centre latitude", "map framing");
-	assert_equal(true, std::abs(centre.longitude() - -0.1) < 0.0001, "centre longitude", "map framing");
-
-	map_box world;
-	world.add(gps_coordinate(-60.0, -170.0));
-	world.add(gps_coordinate(60.0, 170.0));
-
-	const auto city_zoom = map_fit_zoom(city, extent);
-	const auto world_zoom = map_fit_zoom(world, extent);
-
-	assert_equal(true, city_zoom > world_zoom, "a smaller box frames closer", "map framing");
-	assert_equal(true, world_zoom >= map_min_zoom && city_zoom <= map_max_zoom, "framing stays on served tiles",
-	             "map framing");
-
-	// The fitted zoom shows the whole box; one step closer would cut it off.
-	const auto span_px = [](const map_box& box, const int zoom)
-	{
-		return std::max((lon_to_tile_x(box.max_longitude, zoom) - lon_to_tile_x(box.min_longitude, zoom)) * TILE_SIZE,
-		                (lat_to_tile_y(box.min_latitude, zoom) - lat_to_tile_y(box.max_latitude, zoom)) * TILE_SIZE);
-	};
-
-	assert_equal(true, span_px(city, city_zoom) <= extent.cx, "the framed box fits", "map framing");
-	assert_equal(true, span_px(city, city_zoom + 1) > extent.cx - TILE_SIZE, "framing is not needlessly wide",
-	             "map framing");
-
-	map_box point;
-	point.add(gps_coordinate(51.5, -0.1));
-	assert_equal(map_max_zoom, map_fit_zoom(point, extent), "a single place frames as close as the tiles go",
-	             "map framing");
-
-	assert_equal(map_min_zoom, map_fit_zoom(city, sizei(0, 0)), "an unlaid-out map cannot frame", "map framing");
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -626,6 +708,257 @@ static void should_frame_globe_on_the_collection()
 	             "globe framing");
 }
 
+// A drag keeps the point grabbed under the pointer, and a zoom the point under the pointer, by solving for the
+// view that puts a coordinate at a point of the disc. Either is wrong as soon as the coordinate drifts from it.
+static void should_place_a_coordinate_under_the_pointer()
+{
+	constexpr pointi center(400, 400);
+	constexpr double radius = 300.0;
+
+	const gps_coordinate views[] = {{0.0, 0.0}, {-33.8688, 151.2093}, {48.0, 16.0}, {-70.0, -120.0}};
+	const gps_coordinate places[] = {{0.0, 0.0}, {43.5, 16.4}, {-33.8688, 151.2093}, {35.7, 139.7}, {64.1, -21.9}};
+	const std::pair<double, double> offsets[] = {{0.0, 0.0}, {0.3, -0.2}, {-0.55, 0.4}, {0.1, 0.8}, {-0.7, -0.6}};
+
+	for (const auto& view : views)
+	{
+		for (const auto& place : places)
+		{
+			for (const auto& [unit_x, unit_y] : offsets)
+			{
+				const auto placed = globe_view_placing(place, unit_x, unit_y, view);
+				if (!placed) continue;
+
+				const auto at = globe_projection(*placed, center, radius).project(place);
+				if (!at)
+				{
+					assert_equal(true, std::abs(placed->latitude()) > 89.9,
+					             "only a view held at a pole may leave the point out of sight", "globe placing");
+					continue;
+				}
+
+				// An upright view cannot always put the point exactly there: what it misses by is how far past a
+				// pole it would have had to tip. Short of that it is exact to the pixel.
+				if (std::abs(placed->latitude()) < 89.9)
+				{
+					assert_near(center.x + unit_x * radius, at->x, 1.0, "the point lands where it was put, across",
+					            "globe placing");
+					assert_near(center.y - unit_y * radius, at->y, 1.0, "and down", "globe placing");
+				}
+			}
+		}
+	}
+
+	const auto centred = globe_view_placing({43.5, 16.4}, 0.0, 0.0, {0.0, 0.0});
+	assert_equal(true, centred.has_value(), "a coordinate can be put at the centre", "globe placing");
+	assert_near(43.5, centred->latitude(), 0.0001, "by facing it", "globe placing");
+	assert_near(16.4, centred->longitude(), 0.0001, "squarely", "globe placing");
+
+	assert_equal(false, globe_view_placing({10.0, 10.0}, 0.9, 0.9, {0.0, 0.0}).has_value(),
+	             "a point off the disc has no view", "globe placing");
+	assert_equal(false, globe_view_placing({85.0, 10.0}, 0.5, 0.0, {0.0, 0.0}).has_value(),
+	             "nor one a parallel that small cannot reach", "globe placing");
+	assert_equal(false, globe_view_placing(gps_coordinate(), 0.0, 0.0, {0.0, 0.0}).has_value(),
+	             "nor a coordinate that is not one", "globe placing");
+}
+
+namespace
+{
+	// An item of the collection as the index holds it, taken on a day, with the place its file names.
+	struct explore_test_item
+	{
+		core::file_path path;
+		df::index_file_item file;
+	};
+
+	void add_explore_item(std::vector<explore_test_item>& items, const std::string_view extension, const uint32_t day,
+	                      const std::string_view country, const std::string_view state = {},
+	                      const gps_coordinate where = {})
+	{
+		explore_test_item item;
+		item.path = core::file_path(std::format("c:\\explore\\{}.{}", items.size(), extension));
+		item.file.ft = files::file_type_from_name(item.path.name().sv());
+		const auto md = item.file.safe_ps();
+		md->dates.add(prop::date_source::exif_original,
+		              core::date_t::from_days(day) + static_cast<int64_t>(core::date_t::intervals_per_day / 2));
+		if (!country.empty()) md->location_country = core::cache(country);
+		if (!state.empty()) md->location_state = core::cache(state);
+		md->coordinate = where;
+		items.push_back(std::move(item));
+	}
+
+	df::explore_model build_test_explore_model(const std::vector<explore_test_item>& items, const uint32_t today)
+	{
+		df::explore_request request;
+		request.today = today;
+
+		for (const auto& item : items)
+		{
+			if (auto sample = df::explore_sample_of(item.file, item.path)) request.samples.push_back(*sample);
+		}
+
+		return df::build_explore_model(std::move(request), nullptr);
+	}
+
+	uint32_t count_listed(const std::vector<explore_test_item>& items, const df::search_t& search)
+	{
+		const df::search_matcher matcher(search);
+		return static_cast<uint32_t>(std::ranges::count_if(items, [&matcher](const explore_test_item& item)
+		{ return matcher.match_item(item.path, item.file).is_match(); }));
+	}
+}
+
+// Every part of Explore states a count and opens a search, so the two are the same question asked twice: a
+// week, a month, a year, a trip and a place in a year each list exactly the items they counted.
+static void should_count_explore_parts_as_their_searches_list()
+{
+	std::vector<explore_test_item> items;
+	using df::explore_day;
+
+	// Home: New South Wales, a photo every third day for two years, and a video now and then.
+	for (auto day = explore_day(2024, 1, 2); day <= explore_day(2025, 12, 28); day += 3)
+	{
+		add_explore_item(items, day % 5 == 0 ? "mp4" : "jpg", day, "Australia", "New South Wales");
+	}
+
+	// Abroad: a week in Croatia, four a day, one of them by a camera that recorded no place at all.
+	for (auto day = explore_day(2025, 7, 5); day <= explore_day(2025, 7, 12); ++day)
+	{
+		for (auto i = 0; i < 4; ++i) add_explore_item(items, "jpg", day, i == 3 && day % 2 == 0 ? "" : "Croatia");
+	}
+
+	// A stray photo from Croatia a fortnight later is not a trip of its own, though it is of the year's places.
+	add_explore_item(items, "jpg", explore_day(2025, 7, 26), "Croatia");
+
+	// A long weekend in another state of home's country.
+	for (auto day = explore_day(2025, 4, 18); day <= explore_day(2025, 4, 20); ++day)
+	{
+		for (auto i = 0; i < 3; ++i) add_explore_item(items, "jpg", day, "Australia", "Victoria");
+	}
+
+	// An older year, with years of nothing after it.
+	add_explore_item(items, "jpg", explore_day(2021, 5, 1), "Australia", "New South Wales");
+
+	const auto model = build_test_explore_model(items, explore_day(2025, 12, 31));
+
+	assert_equal(2021, model.first_year, "the timeline starts with the first year holding anything", "explore");
+	assert_equal(static_cast<uint32_t>(items.size()), model.total.total(), "and counts every item", "explore");
+	assert_equal(2u, static_cast<uint32_t>(model.trips.size()), "two trips away from home", "explore");
+
+	const auto& croatia = model.trips[0];
+	assert_equal("Croatia", croatia.place.name, "the newest first, abroad", "explore");
+	assert_equal(true, croatia.place.level == df::location_level::country, "labelled by its country", "explore");
+	assert_equal(explore_day(2025, 7, 5), croatia.first_day, "from its first day", "explore");
+	assert_equal(explore_day(2025, 7, 12), croatia.last_day, "to its last, not the stray photo after", "explore");
+
+	const auto& victoria = model.trips[1];
+	assert_equal("Victoria", victoria.place.name, "a state of home's country is away too", "explore");
+	assert_equal(true, victoria.place.level == df::location_level::state, "labelled by the state", "explore");
+
+	for (const auto& trip : model.trips)
+	{
+		assert_equal(trip.count, count_listed(items, df::explore_trip_search(trip)),
+		             std::format("{}'s search lists what it counted", trip.place.name), "explore");
+	}
+
+	auto croatia_2025 = false;
+
+	for (const auto& place : model.year_places)
+	{
+		croatia_2025 |= place.year == 2025 && place.place.name == "Croatia";
+		assert_equal(place.count, count_listed(items, df::explore_year_place_search(place)),
+		             std::format("{} in {} lists what it counted", place.place.name, place.year), "explore");
+	}
+
+	assert_equal(true, croatia_2025, "Croatia 2025 is one of the year's places", "explore");
+
+	for (const auto& year : model.years)
+	{
+		assert_equal(year.counts.total(), count_listed(items, df::explore_year_search(year.year)),
+		             std::format("{} lists what it counted", year.year), "explore");
+	}
+
+	for (const auto& month : model.months)
+	{
+		assert_equal(month.counts.total(), count_listed(items, df::explore_month_search(month)),
+		             std::format("{}-{} lists what it counted", month.year, month.month), "explore");
+	}
+
+	auto weeks_with_items = 0;
+
+	for (const auto& week : model.weeks)
+	{
+		assert_equal(true, week.first_day <= week.last_day && week.last_day - week.first_day < 7, "a week is a week",
+		             "explore");
+		assert_equal(df::explore_date(week.first_day).year, df::explore_date(week.last_day).year,
+		             "cut to the year it falls in", "explore");
+		assert_equal(week.counts.total(), count_listed(items, df::explore_days_search(week.first_day, week.last_day)),
+		             "a week lists what it counted", "explore");
+		if (!week.counts.is_empty()) ++weeks_with_items;
+	}
+
+	assert_equal(true, weeks_with_items > 100, "two years of weeks were counted", "explore");
+
+	// 1 January 2025 was a Wednesday, so its week starts with the year rather than on the Monday before.
+	const auto new_year = std::ranges::find(model.weeks, explore_day(2025, 1, 1), &df::explore_week::first_day);
+	assert_equal(true, new_year != model.weeks.end(), "a week starts with the new year", "explore");
+	assert_equal(explore_day(2025, 1, 5), new_year->last_day, "and ends on its Sunday", "explore");
+
+	const auto videos = std::ranges::count_if(items, [](const explore_test_item& item)
+	{ return item.file.ft->group == &file_group::video; });
+	assert_equal(static_cast<uint32_t>(videos), model.total.videos, "videos are counted as videos", "explore");
+}
+
+// The globe gathers places into cells about a marker across at the scale it is seen at: zoomed out, a city and
+// the next one share a marker; zoomed in, they part.
+static void should_cluster_explore_places_by_scale()
+{
+	df::explore_request request;
+	request.today = df::explore_day(2025, 12, 31);
+
+	const auto add = [&request](const gps_coordinate where, const int n)
+	{
+		for (auto i = 0; i < n; ++i)
+		{
+			df::explore_sample sample;
+			sample.day = df::explore_day(2025, 3, 1) + i;
+			sample.kind = df::explore_kind::photo;
+			sample.rank = 1;
+			sample.coordinate = gps_coordinate(where.latitude() + i * 0.001, where.longitude());
+			sample.path = core::file_path(std::format("c:\\places\\{}-{}.jpg", where.latitude(), i));
+			request.samples.push_back(sample);
+		}
+	};
+
+	add({-33.87, 151.21}, 5); // Sydney
+	add({-34.42, 150.89}, 3); // Wollongong, 70 km south
+	add({45.81, 15.98}, 2);   // Zagreb
+
+	const auto model = df::build_explore_model(std::move(request), nullptr);
+	assert_equal(10u, static_cast<uint32_t>(model.located.size()), "every located item is placed", "explore clusters");
+
+	const auto far = df::cluster_explore_model(model, df::explore_cluster_level(300.0));
+	const auto near = df::cluster_explore_model(model, df::explore_cluster_level(300.0 * 1024.0));
+
+	assert_equal(true, near.level > far.level, "zooming in asks for finer cells", "explore clusters");
+	assert_equal(2u, static_cast<uint32_t>(far.clusters.size()), "seen whole, Sydney and Wollongong are one place",
+	             "explore clusters");
+	assert_equal(3u, static_cast<uint32_t>(near.clusters.size()), "zoomed in, they part", "explore clusters");
+
+	for (const auto* clusters : {&far, &near})
+	{
+		uint32_t total = 0;
+		for (const auto& c : clusters->clusters) total += c.count;
+		assert_equal(10u, total, "every item is in exactly one cluster", "explore clusters");
+
+		std::vector<uint32_t> counted(clusters->clusters.size());
+		for (const auto c : clusters->of_located) ++counted[c];
+		for (size_t i = 0; i < counted.size(); ++i)
+		{
+			assert_equal(clusters->clusters[i].count, counted[i], "and each item says which", "explore clusters");
+		}
+	}
+}
+
 static void should_build_aggregate_location_matrix()
 {
 	location_matrix matrix({16, 44, -60.0, -30.0, 60.0, 170.0});
@@ -733,7 +1066,7 @@ static void should_find_location()
 	assert_equal(true, boulder_city_matcher.match_item({}, boulder_city_file).is_match(),
 	             "loc place uses map reverse geocode when stored place is empty");
 
-	// locations.md 2.3: a prediction is labelled at its qualification level, not always fully.
+	// docs/locations.md#location-search: a prediction is labelled at its qualification level, not always fully.
 	assert_equal("London, United Kingdom", locations.auto_complete("london", 8, default_location)[0].location.str(),
 	             "City");
 	assert_equal("London, Canada", locations.auto_complete("london canada", 8, default_location)[0].location.str(),
@@ -918,7 +1251,7 @@ static void should_offset_localized_name()
 
 static void should_read_place_qualification_level()
 {
-	// locations.md 2.1/2.2: the flags column carries the smallest name form that identifies
+	// docs/locations.md#place-data: the flags column carries the smallest name form that identifies
 	// the place. Levels are assigned by tools/generate_locations.py over the emitted records.
 	auto& locations = test_locations();
 
@@ -957,7 +1290,7 @@ static void should_read_place_qualification_level()
 
 static void should_compose_qualified_place_name()
 {
-	// locations.md 2.3: one composer, driven by the qualification level, using the country's
+	// docs/locations.md#place-data: one composer, driven by the qualification level, using the country's
 	// short common form.
 	auto& locations = test_locations();
 
@@ -1007,7 +1340,7 @@ static void should_compose_qualified_place_name()
 
 static void should_bound_place_attribution()
 {
-	// locations.md 2.5: a place may label an item only within a radius scaled to its
+	// docs/locations.md#item-locations: a place may label an item only within a radius scaled to its
 	// significance, so a photo taken far from anywhere is not confidently mislabelled.
 	assert_equal(100.0, location_attribution_radius_km(8961989.0), "a megacity reaches 100km");
 	assert_equal(100.0, location_attribution_radius_km(1000000.0), "the 1M boundary is inclusive");
@@ -1063,8 +1396,8 @@ static void should_bound_place_attribution()
 		assert_equal("Germany", canonical.name, "the search country stays canonical");
 	}
 
-	// Baseline defect 10: find_closest stays unbounded because 2.7's bearing descriptor needs
-	// the nearest place at any distance, but it must no longer be what labels an item.
+	// find_closest stays unbounded because the bearing descriptor needs the nearest place at any distance,
+	// but it must no longer be what labels an item.
 	const auto atlantic = locations.find_attributed(35.0, -45.0);
 	assert_equal(static_cast<int>(location_attribution::remote), static_cast<int>(atlantic.attribution),
 	             "mid-ocean is Remote");
@@ -1081,7 +1414,7 @@ static void should_bound_place_attribution()
 
 static void should_describe_bearing()
 {
-	// locations.md 2.7: every item resolved at step 3, 4 or 5 also gets a secondary descriptor
+	// docs/locations.md#item-locations: every item resolved Near a place or Remote also gets a secondary descriptor
 	// computed from the nearest place regardless of radius. It is never a group key and never a
 	// search term, so it exists only to answer "where was that?".
 	const auto point = [](const double degrees)
@@ -1189,8 +1522,8 @@ static void should_attribute_from_the_place_find_closest_names()
 // Location search
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-// locations.md 3.7: a location query that finds nothing must explain itself and offer the next
-// action. Each action is a normal search, so Back reverses it like any other navigation.
+// docs/design.md#system-states-and-consistency: a location query that finds nothing must explain itself and
+// offer the next action. Each action is a normal search, so Back reverses it like any other navigation.
 static void should_recover_from_an_empty_location_search()
 {
 	const auto search = df::search_t::parse("loc:\"London, Canada, 2km\"");
@@ -1240,7 +1573,7 @@ static void should_recover_from_an_empty_location_search()
 	assert_equal(false, has_no_location({}, "London"_c), "stored text is a location");
 }
 
-// locations.md 3.8, baseline defect 7: a location group header must reproduce its own group.
+// docs/locations.md#location-search: a location group header must reproduce its own group.
 static void should_reproduce_a_location_group_from_its_header()
 {
 	// The link the header builds for `London` inside `England, United Kingdom`.
@@ -1275,7 +1608,7 @@ static void should_search_unbuilt_height_classes_as_typed()
 	             "underwater is searched as typed");
 }
 
-// locations.md 4: the distance slider rewrites the radius of the one location term it controls.
+// docs/locations.md#location-search: the distance slider rewrites the radius of the one location term it controls.
 // The detent ladder and the term it applies to are both pure, so both are pinned here.
 static void should_step_search_distance()
 {
@@ -1347,8 +1680,8 @@ static void should_read_only_signed_numbers_as_a_coordinate()
 	assert_equal(true, df::search_t::parse("near:Aix-en-Provence").single_place_term() != nullptr, "near: too");
 }
 
-// locations.md 3.5: every location scope spelling is one entry in df::location_scopes, and completing,
-// parsing and writing a query all read it - so a spelling added there works everywhere at its level.
+// docs/locations.md#location-search: every location scope spelling is one entry in df::location_scopes, and
+// completing, parsing and writing a query all read it - so a spelling added there works everywhere at its level.
 static void should_read_every_location_scope_from_one_table()
 {
 	for (const auto& scope : df::location_scopes)
@@ -1369,6 +1702,52 @@ static void should_read_every_location_scope_from_one_table()
 		assert_equal(std::format("{}:Paris", df::location_scope_name(scope.level)), search.format_terms(),
 		             std::format("{} is written back in its level's spelling", scope.name));
 	}
+}
+
+static void should_search_gps_faces_and_metadata_as_independent_words()
+{
+	const auto& locations = test_locations();
+	const auto folder = test_temps.next_folder("gps-word-search");
+	df::index_item_infos items(4);
+	for (size_t i = 0; i < items.size(); ++i)
+	{
+		items[i].name = core::cache(std::format("{}.jpg", i));
+		items[i].ft = files::file_type_from_name(items[i].name);
+	}
+	// A GPS-only London photo with a suggested face, a text-only match, and each word alone.
+	items[0].safe_ps()->coordinate = gps_coordinate(51.5142, -0.0985);
+	items[1].safe_ps()->title = "London trip"_c;
+	items[1].safe_ps()->tags = "zac"_c;
+	items[2].safe_ps()->coordinate = gps_coordinate(51.5142, -0.0985);
+	items[3].safe_ps()->title = "Zac's trip"_c;
+	const auto node = std::make_shared<df::index_folder_item>(std::move(items));
+	node->is_in_collection = true;
+	const df::search_index::folder_list folders{{folder, node}};
+	const auto index = df::search_index::build(folders, locations, 1, [] { return false; });
+	df::search_index_evaluator evaluator(index, folders);
+
+	const auto overview = std::make_shared<faces::overview>();
+	overview->people = {{1, "Zac Walker"}};
+	overview->picture_people[folder.combine_file("0.jpg")] = {{0, false}};
+	const auto previous = faces::active_overview();
+	const core::scope_exit restore([previous] { faces::set_active_overview(previous); });
+	faces::set_active_overview(overview);
+
+	const auto check = [&](const std::string_view query, const std::array<bool, 4> expected)
+	{
+		const auto search = df::search_t::parse(query);
+		const df::search_matcher matcher(search, core::utc_now().to_days(), &locations);
+		const auto docs = evaluator.evaluate(matcher, test_token);
+		for (uint32_t i = 0; i < expected.size(); ++i)
+		{
+			assert_equal(expected[i], matcher.match_all_terms(folder.text(), node->files[i]).is_match(),
+			             std::format("scan: {}, item {}", query, i));
+			assert_equal(expected[i], docs.test(i), std::format("index: {}, item {}", query, i));
+		}
+	};
+	check("london zac", {true, true, false, false});
+	check("zac -london", {false, false, false, true});
+	check("london zac!", {false, false, false, false});
 }
 
 static void should_resolve_location_vocabulary()
@@ -1420,7 +1799,7 @@ static void should_resolve_location_vocabulary()
 	assert_equal(false, matches("-place:\"Boulder City\"", gps_only), "negated location term excludes the item");
 	assert_equal(true, matches("-place:Reno", gps_only), "negated non-matching location term keeps the item");
 
-	// locations.md 2.3: a completion commits the gazetteer's qualified name, which is labelled at
+	// docs/locations.md#location-search: a completion commits the gazetteer's qualified name, which is labelled at
 	// the record's own level. London omits its region; the index still knows the item as England.
 	df::index_file_item london;
 	london.ft = files::file_type_from_name("test.jpg");
@@ -1445,7 +1824,44 @@ static void should_resolve_location_vocabulary()
 	assert_equal(false, matches("loc:\"London, United Kingdom\"", windsor), "35 km away is not in London");
 }
 
-// locations.md 3.4/3.5: typing a bare place name must offer the canonical location term. Before
+static void should_search_suburbs_by_their_enclosing_city()
+{
+	const auto& locations = test_locations();
+	const auto folder = test_temps.next_folder("search-city-parent");
+	df::index_item_infos items(5);
+	for (size_t i = 0; i < items.size(); ++i)
+	{
+		items[i].name = core::cache(std::format("{}.jpg", i));
+		items[i].ft = files::file_type_from_name(items[i].name);
+		items[i].safe_ps()->people = "Zac"_c;
+	}
+	items[0].safe_ps()->coordinate = {-27.480, 153.020}; // South Brisbane, GPS only.
+	items[1].safe_ps()->location_place = "Indooroopilly"_c; // No GPS and no "Brisbane" in the name.
+	items[1].safe_ps()->location_country = "Australia"_c;
+	items[2].safe_ps()->coordinate = {-27.623, 152.760}; // Ipswich is an independent town.
+	items[3].safe_ps()->location_place = "Gold Coast"_c;
+	items[4].safe_ps()->location_place = "Greenwich"_c; // Ambiguous without a region.
+	const auto node = std::make_shared<df::index_folder_item>(std::move(items));
+	node->is_in_collection = true;
+	const df::search_index::folder_list folders{{folder, node}};
+	const auto index = df::search_index::build(folders, locations, 1, [] { return false; });
+	df::search_index_evaluator evaluator(index, folders);
+	for (const std::string_view query : {"Zac Brisbane", "zac loc:\"Brisbane, Australia\""})
+	{
+		const auto search = df::search_t::parse(query);
+		const df::search_matcher matcher(search, core::utc_now().to_days(), &locations);
+		const auto docs = evaluator.evaluate(matcher, test_token);
+		for (uint32_t i = 0; i < node->files.size(); ++i)
+		{
+			assert_equal(i < 2, matcher.match_all_terms(folder.text(), node->files[i]).is_match(),
+			             std::format("scan: {}, item {}", query, i));
+			assert_equal(i < 2, docs.test(i), std::format("index: {}, item {}", query, i));
+		}
+	}
+	assert_equal(0u, locations.find_enclosing_city("Greenwich"), "ambiguous names do not gain a city");
+}
+
+// docs/locations.md#location-search: typing a bare place name must offer the canonical location term. Before
 // this, the prediction committed the plain qualified name, which ran a text search over stored
 // place fields and found nothing for the (typical) GPS-only photo.
 static void should_complete_locations_as_search_terms()
@@ -1544,7 +1960,7 @@ static void should_match_location_radius_and_presence()
 	assert_equal(false, matches("loc:\"Reno, 10km\"", gps_only), "an item outside the radius does not match");
 
 	// A bare name resolves to its canonical record: exact name, largest population
-	// (locations.md baseline defect 1).
+	// (docs/locations.md#location-search).
 	const auto reno = locations.find_by_name("Reno");
 	assert_equal("Reno/United States", std::string(reno.place.sv()) + "/" + std::string(reno.country.sv()),
 	             "a bare name resolves to its canonical record");
@@ -1572,8 +1988,8 @@ static void should_match_location_radius_and_presence()
 // Map areas
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-// locations.md 5.1: a map area resolves to a place plus a radius. `area:` was an internal
-// heat-map concept leaking into the user's address bar; "within 25 km of London" is not.
+// docs/locations.md#areas-become-places-with-a-radius: a map area resolves to a place plus a radius. `area:` was
+// an internal heat-map concept leaking into the user's address bar; "within 25 km of London" is not.
 static void should_open_a_map_area_as_a_place_and_radius()
 {
 	map_location_area area;
@@ -1761,14 +2177,14 @@ static void should_derive_visits_from_a_result_set()
 	assert_equal(3u, static_cast<uint32_t>(timeline.nodes.size()), "node count");
 	assert_equal(true, timeline.publish, "publishes a timeline");
 
-	// locations.md 6.2 step 7: chronological order after selection, never score order.
+	// docs/locations.md#visits: chronological order after selection, never score order.
 	assert_equal("Tokyo", timeline.nodes[0].name, "first node");
 	assert_equal("Sydney", timeline.nodes[1].name, "second node");
 	assert_equal("London", timeline.nodes[2].name, "third node");
 	assert_equal(true, timeline.nodes[0].first < timeline.nodes[1].first, "nodes ordered by date");
 	assert_equal(10u, timeline.nodes[0].count, "first node count");
 
-	// locations.md 7.2: the same clustering counted by place.
+	// docs/locations.md#the-places-row: the same clustering counted by place.
 	assert_equal(3u, static_cast<uint32_t>(timeline.places.size()), "place tallies");
 	assert_equal("Tokyo", timeline.places[0].name, "largest place first");
 	assert_equal(10u, timeline.places[0].count, "largest place count");
@@ -1883,7 +2299,7 @@ static void should_exclude_items_that_cannot_sit_on_a_timeline()
 	}
 
 	// A date with no location, and a location with no date, are counted rather than invented
-	// into a node (locations.md 6.5).
+	// into a node (docs/locations.md#visits).
 	auto dated_only = visit_sample_at(2020, 5, 20, 0.0, 0.0, {});
 	dated_only.coordinate = {};
 	request.samples.emplace_back(dated_only);
@@ -2197,7 +2613,7 @@ static void should_cancel_place_breakdown_derivation()
 	assert_equal(0u, static_cast<uint32_t>(timeline.places.size()), "cancelled visit derivation publishes no chips");
 }
 
-// locations.md 7.2: a chip states a count and then runs a search. They are one promise, so the
+// docs/locations.md#the-places-row: a chip states a count and then runs a search. They are one promise, so the
 // search has to return exactly what the chip counted -- whatever placed those items.
 static void should_reproduce_a_place_breakdown_from_its_chip()
 {
@@ -2286,7 +2702,7 @@ static void should_reproduce_a_place_breakdown_from_its_chip()
 	}
 }
 
-// locations.md 7.2: two chips that read the same are one affordance the user cannot choose from,
+// docs/locations.md#the-places-row: two chips that read the same are one affordance the user cannot choose from,
 // and a chip that omits a field runs a query that already returns the items a sharper chip counted.
 static void should_tell_two_place_chips_apart()
 {
@@ -2374,7 +2790,7 @@ static void should_run_the_search_a_timeline_node_promises()
 
 	assert_equal("Jun 2019", df::visit_node_dates(node), "node label inside one month");
 
-	// locations.md 6.3: refining an existing query replaces its location and date scope rather
+	// docs/locations.md#visits: refining an existing query replaces its location and date scope rather
 	// than intersecting with it, so clicking a second node moves the view instead of emptying it.
 	auto current = df::search_t();
 	current.location("Paris", df::location_level::any);
@@ -2387,7 +2803,7 @@ static void should_run_the_search_a_timeline_node_promises()
 	assert_equal(true, df::is_visit_node_selected(search, node), "node latched by its own search");
 	assert_equal(false, df::is_visit_node_selected(current, node), "node not latched by another search");
 
-	// locations.md 6.5: the date bounds have to include their own end days, or the query a node
+	// docs/locations.md#visits: the date bounds have to include their own end days, or the query a node
 	// runs returns fewer items than the node displayed.
 	const auto range = df::search_t().date_range(node.first.date(), node.last.date());
 
@@ -2445,6 +2861,10 @@ void register_location_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should keep tile transaction bookkeeping after commit failure"s,
 	          should_keep_tile_transaction_bookkeeping_after_commit_failure);
 	tests.add("Should resolve tile cache db beside index db"s, should_resolve_tile_cache_db_beside_index_db);
+	tests.add("Should download only the map tiles still shown"s, should_download_only_the_map_tiles_still_shown);
+	tests.add("Should download the most wanted map tile first"s, should_download_the_most_wanted_map_tile_first);
+	tests.add("Should not ask again at once for a map tile that failed"s,
+	          should_not_ask_again_at_once_for_a_map_tile_that_failed);
 
 	//
 	// Map geometry
@@ -2456,7 +2876,6 @@ void register_location_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should clear map marker hits when snapshot changes"s,
 	          should_clear_map_marker_hits_when_snapshot_changes);
 	tests.add("Should measure distance to map cells"s, should_measure_distance_to_map_cells);
-	tests.add("Should frame map on the box that holds items"s, should_frame_map_on_the_box_that_holds_items);
 	tests.add("Should build aggregate location matrix"s, should_build_aggregate_location_matrix);
 	tests.add("Should select thumbnail representatives while counting"s,
 	          should_select_thumbnail_representatives_while_counting);
@@ -2468,6 +2887,9 @@ void register_location_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should round trip globe pixels"s, should_round_trip_globe_pixels);
 	tests.add("Should rotate globe by drag"s, should_rotate_globe_by_drag);
 	tests.add("Should frame globe on the collection"s, should_frame_globe_on_the_collection);
+	tests.add("Should place a coordinate under the pointer"s, should_place_a_coordinate_under_the_pointer);
+	tests.add("Should count explore parts as their searches list"s, should_count_explore_parts_as_their_searches_list);
+	tests.add("Should cluster explore places by scale"s, should_cluster_explore_places_by_scale);
 
 	//
 	// Gazetteer lookup
@@ -2503,6 +2925,9 @@ void register_location_tests(view_state& /*state*/, test_registry& tests)
 	tests.add("Should read every location scope from one table"s, should_read_every_location_scope_from_one_table);
 	tests.add("Should complete locations as search terms"s, should_complete_locations_as_search_terms);
 	tests.add("Should match location radius and presence"s, should_match_location_radius_and_presence);
+	tests.add("Should search suburbs by their enclosing city"s, should_search_suburbs_by_their_enclosing_city);
+	tests.add("Should search GPS faces and metadata as independent words"s,
+	          should_search_gps_faces_and_metadata_as_independent_words);
 
 	//
 	// Map areas

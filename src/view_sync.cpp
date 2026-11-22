@@ -14,7 +14,7 @@
 // or option invalidates the plan, so Run cannot act on one that no longer matches the controls.
 //
 // Run does not re-derive the plan. Each row is revalidated against its own files immediately before
-// that row acts - see sync_copy in app_util.cpp and docs/file-io.md section 9.1. This keeps Run's
+// that row acts - see sync_copy in app_util.cpp and docs/file-io.md#contract. This keeps Run's
 // cost proportional to the work rather than to the size of the two trees, which is the difference
 // between a pause and a second full scan when the remote is a NAS. A row whose files moved on writes
 // nothing and is reported as failed with the reason stated; the rows that still match still run, so
@@ -110,8 +110,9 @@ view_controls_host_ptr sync_view::controls(const ui::frame_ptr& owner)
 
 	// Sync compares two folder trees, so the item selection is not its target and showing it as one
 	// misstates what will be copied. The example belongs to the sentence that explains the view.
-	controls.emplace_back(create_view_info_element(
-		std::format("{} {} {}", tt.sync_info_1.sv(), tt.for_example.sv(), tt.sync_info_2.sv())));
+	controls.emplace_back(std::make_shared<view_info_element>(icon_index::sync, tt.command_sync,
+	                                                          std::format("{} {} {}", tt.sync_info_1.sv(),
+	                                                                      tt.for_example.sv(), tt.sync_info_2.sv())));
 	controls.emplace_back(std::make_shared<text_element>(tt.sync_local));
 
 	// Initialise _select_other_folder from the persisted setting so analyze()
@@ -163,6 +164,8 @@ view_controls_host_ptr sync_view::controls(const ui::frame_ptr& owner)
 	controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.sync_remote_local,
 	                                                          setting.sync.sync_remote_local, false, false,
 	                                                          [this](const bool) { invalidate_analysis(); }));
+	controls.emplace_back(std::make_shared<divider_element>());
+	controls.emplace_back(std::make_shared<ui::title_control>(icon_index::del, tt.command_delete));
 	controls.emplace_back(std::make_shared<ui::check_control>(frame, tt.sync_delete_local,
 	                                                          setting.sync.sync_delete_local, false, false,
 	                                                          [this](const bool) { invalidate_analysis(); }));
@@ -184,9 +187,9 @@ view_controls_host_ptr sync_view::controls(const ui::frame_ptr& owner)
 
 void sync_view::update_rows(const sync_analysis_result& analysis_result)
 {
-	const auto blue_text_color = core::lighten(ui::style::colors.dialog_selected_background, 0.55f);
-	const auto gray_text_color = core::darken(ui::style::colors.view_text, 0.22f);
-	const auto orange_text_color = core::lighten(ui::style::colors.important_background, 0.55f);
+	const auto blue_text_color = ui::style::tone_text(ui::style::tone::accent);
+	const auto gray_text_color = ui::style::tone_text(ui::style::tone::muted);
+	const auto orange_text_color = ui::style::tone_text(ui::style::tone::caution);
 
 	std::vector<row_element_ptr> rows;
 
@@ -204,6 +207,8 @@ void sync_view::update_rows(const sync_analysis_result& analysis_result)
 		{
 			auto row = std::make_shared<row_element>(*this);
 
+			// The Action column sorts by what each row does - copies, then deletes, then what is ignored - rather
+			// than by how the action reads.
 			switch (i.second.action)
 			{
 			case sync_action::none:
@@ -214,7 +219,7 @@ void sync_view::update_rows(const sync_analysis_result& analysis_result)
 				if (!i.second.local_path.is_empty()) row->_text[1] = i.second.local_path.pack();
 				row->_text[3] = i.second.remote_path.pack();
 				row->_text[0] = tt.ignore;
-				row->_order = 100;
+				row->_keys[0] = 100;
 				ignore += 1;
 				break;
 			case sync_action::copy_local:
@@ -229,7 +234,7 @@ void sync_view::update_rows(const sync_analysis_result& analysis_result)
 				row->_text[1] = i.second.local_path.pack();
 				row->_icons[2] = icon_index::back;
 				row->_text[3] = i.second.remote_path.pack();
-				row->_order = 1;
+				row->_keys[0] = 1;
 				copy_local += 1;
 				break;
 			case sync_action::copy_remote:
@@ -244,7 +249,7 @@ void sync_view::update_rows(const sync_analysis_result& analysis_result)
 				row->_text[1] = i.second.local_path.pack();
 				row->_icons[2] = icon_index::next;
 				row->_text[3] = i.second.remote_path.pack();
-				row->_order = 2;
+				row->_keys[0] = 2;
 				copy_remote += 1;
 				break;
 			case sync_action::delete_local:
@@ -252,7 +257,7 @@ void sync_view::update_rows(const sync_analysis_result& analysis_result)
 				row->_text_color[1] = orange_text_color;
 				row->_text[0] = tt.sync_delete_local_action;
 				row->_text[1] = i.second.local_path.pack();
-				row->_order = 3;
+				row->_keys[0] = 3;
 				delete_local_count += 1;
 				break;
 			case sync_action::delete_remote:
@@ -260,14 +265,14 @@ void sync_view::update_rows(const sync_analysis_result& analysis_result)
 				row->_text_color[3] = orange_text_color;
 				row->_text[0] = tt.sync_delete_remote_action;
 				row->_text[3] = i.second.remote_path.pack();
-				row->_order = 4;
+				row->_keys[0] = 4;
 				delete_remote_count += 1;
 				break;
 			}
 
 			// Rows are built in the order the run consumes the same analysis, so the count of acting
 			// rows so far is the work index the run will report. Ignored rows are never reported.
-			if (row->_order != 100) row->_work_index = work_index++;
+			if (i.second.action != sync_action::none) row->_work_index = work_index++;
 			rows.emplace_back(row);
 		}
 	}

@@ -424,14 +424,17 @@ Section "Diffractor"
 	File "..\exe\diffractor-tools.json"
 
 	; Diffractor is MPL-2.0; the LGPL libraries it links need their texts, and the GPL-3.0 the LGPL-3.0
-	; incorporates, beside every copy, and libaom its BSD licence and the AOM patent licence. dd.ps1 desktop
-	; stages all six into exe\ before this is compiled.
+	; incorporates, beside every copy, libaom its BSD licence and the AOM patent licence, and the
+	; libfacedetection and SFace weights face search compiles in their licences. dd.ps1 desktop stages all
+	; eight into exe\ before this is compiled.
 	File "..\exe\LICENSE.txt"
 	File "..\exe\COPYING.LGPLv3.txt"
 	File "..\exe\COPYING.GPLv3.txt"
 	File "..\exe\COPYING.LGPLv2.1.txt"
 	File "..\exe\LICENSE.libaom.txt"
 	File "..\exe\PATENTS.libaom.txt"
+	File "..\exe\LICENSE.libfacedetection.txt"
+	File "..\exe\LICENSE.sface.txt"
 
 	File "..\exe\${PRODUCT32_EXE}"
 	File "..\exe\${PRODUCT64_EXE}"
@@ -550,6 +553,8 @@ Section "Uninstall"
 	Delete "$INSTDIR\COPYING.LGPLv2.1.txt"
 	Delete "$INSTDIR\LICENSE.libaom.txt"
 	Delete "$INSTDIR\PATENTS.libaom.txt"
+	Delete "$INSTDIR\LICENSE.libfacedetection.txt"
+	Delete "$INSTDIR\LICENSE.sface.txt"
 	Delete "$INSTDIR\diffractor.log"
 	Delete "$INSTDIR\diffractor.previous.log"
 	Delete "$INSTDIR\languages\*.po"

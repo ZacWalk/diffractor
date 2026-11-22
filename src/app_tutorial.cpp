@@ -242,6 +242,7 @@ namespace
 		{"rename", commands::tool_rename},
 		{"convert", commands::tool_convert},
 		{"locate", commands::tool_locate},
+		{"explore", commands::explore},
 		{"rotate-clockwise", commands::tool_rotate_clockwise},
 		{"rotate-anticlockwise", commands::tool_rotate_anticlockwise},
 		{"auto-color", commands::edit_item_auto_color},
@@ -1727,7 +1728,7 @@ void tutorial_player::wheel(const int notches)
 void tutorial_player::key(const char32_t key, const platform::key_state keys)
 {
 	auto& app = _app;
-	if (!app._search_has_focus && !app._filter_has_focus && !app._view_has_focus && !app._view_controls_have_focus)
+	if (!app._search_has_focus && !app._focused_filter && !app._view_has_focus && !app._view_controls_have_focus)
 		app.focus_view();
 
 	// As the keyboard's own: to whatever has it, the application's shortcuts first, as a user's keys go.

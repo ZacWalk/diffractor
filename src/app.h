@@ -32,6 +32,8 @@ class sync_view;
 class tags_view;
 class import_view;
 class locate_view;
+class explore_view;
+class faces_view;
 class options_view;
 class view_controls_host;
 class mcp_host;
@@ -73,29 +75,6 @@ inline status_repaint status_repaints(const bool progress_active, const int64_t 
 {
 	return {command_progress_needs_animation(progress_active, progress_total), show_debug_info};
 }
-
-struct tooltip_dwell
-{
-	static constexpr uint64_t delay_ms = 500;
-	pointi origin;
-	uint64_t since = 0;
-	bool armed = false;
-
-	void reset() { armed = false; }
-
-	bool ready(const uint64_t now, const pointi position, const int tolerance, const uint32_t requested_delay)
-	{
-		const auto moved = std::abs(static_cast<int64_t>(position.x) - origin.x) > tolerance ||
-		                   std::abs(static_cast<int64_t>(position.y) - origin.y) > tolerance;
-		if (!armed || now < since || moved)
-		{
-			origin = position;
-			since = now;
-			armed = true;
-		}
-		return now - since >= std::max(delay_ms, static_cast<uint64_t>(requested_delay));
-	}
-};
 
 // One part of a bar as arrange_bar sees it.
 struct bar_slot
@@ -521,12 +500,20 @@ public:
 						                                     desc.preferred_drop_effect == platform::drop_effect::copy);
 						const auto drop_action = is_copy ? platform::drop_effect::copy : platform::drop_effect::move;
 
+						// What a drop is given, read before it runs, as a move takes them away.
+						const auto given = data.drop_paths();
+						const auto given_is_folder = folders_among(given);
+
 						detach_file_handles detach(_state);
 						shell_file_operation_ui processing(*this, _owner);
 						const auto drop_result = data.drop_files(save_path, drop_action);
 
 						if (drop_result.success())
 						{
+							record_dropped_files(_state,
+							                     is_copy ? icon_index::copy_to_folder : icon_index::move_to_folder,
+							                     is_copy ? tt.command_copy.sv() : tt.command_move.sv(), given,
+							                     given_is_folder, drop_result.created_files, !is_copy);
 							if (!drop_result.created_files.files.empty() || !drop_result.created_files.folders.empty())
 								detach.keep_display_closed();
 							_state.open(shared_from_this(), _state.search(),
@@ -676,9 +663,12 @@ public:
 	platform::task_queue auto_complete_task_queue;
 	platform::task_queue query_task_queue;
 	platform::task_queue render_task_queue;
-	// Separate from render so the image being viewed is never queued behind background thumbnail
-	// staging, which reaches hundreds of tasks deep while stepping through a folder.
+	// Separate from render, whose placeholders, strips and collages each decode in a fraction of the time the image
+	// being viewed takes, so neither waits behind the other.
 	platform::task_queue render_display_task_queue;
+	// Several threads, started on first use: they decode the thumbnails items hold into surfaces to draw, which a
+	// folder opening asks for by the hundred, so the render queue's work never waits behind them.
+	platform::task_queue thumbnail_stage_task_queue;
 	platform::task_queue scan_folder_task_queue;
 	platform::task_queue scan_modified_items_task_queue;
 	platform::task_queue scan_displayed_items_task_queue;
@@ -691,6 +681,11 @@ public:
 	platform::task_queue emulator_task_queue;
 	// An agent's long work: a render holds its thread for as long as it runs.
 	platform::task_queue agent_task_queue;
+	// Face search's scan holds the first's thread for as long as it reads; the second's few threads decode, detect
+	// and embed what it read (docs/faces.md#32-the-scan); the third's makes the overview of people and suggestions.
+	platform::task_queue faces_task_queue;
+	platform::task_queue faces_work_task_queue;
+	platform::task_queue faces_overview_task_queue;
 	platform::threads _threads;
 
 	// UI-thread owned. The database-open completion and every collection walk ask to bring the index
@@ -706,10 +701,14 @@ public:
 	std::atomic_bool _search_index_worker_started = false;
 	std::atomic_bool _map_tile_workers_started = false;
 	std::atomic_bool _thumbnail_decode_workers_started = false;
+	std::atomic_bool _thumbnail_stage_workers_started = false;
 	std::atomic_bool _tile_db_worker_started = false;
 	std::atomic_bool _media_preview_worker_started = false;
 	std::atomic_bool _emulator_worker_started = false;
 	std::atomic_bool _agent_worker_started = false;
+	std::atomic_bool _faces_worker_started = false;
+	std::atomic_bool _faces_work_workers_started = false;
+	std::atomic_bool _faces_overview_worker_started = false;
 
 	ui::frame_ptr _app_frame;
 	std::shared_ptr<app_logo_element> _app_logo;
@@ -744,11 +743,14 @@ public:
 	// The bar controls that are not toolbar buttons, one of each whichever views declare them.
 	ui::edit_ptr _filter_edit;
 	ui::trackbar_ptr _item_size;
+	ui::edit_ptr _face_filter_edit;
+	ui::trackbar_ptr _face_size;
 	std::string _totals_text;
 	// The filter as it stood when its box took focus, which Escape puts back.
 	std::string _filter_edit_original;
-	bool _filter_has_focus = false;
+	ui::control_ptr _focused_filter;
 	bool _item_size_dragging = false;
+	bool _face_size_dragging = false;
 
 	std::shared_ptr<ui::complete_strategy_t> _search_completes;
 	ui::list_window_ptr _search_predictions_frame;
@@ -780,6 +782,10 @@ public:
 	std::shared_ptr<sync_view> _view_sync;
 	std::shared_ptr<tags_view> _view_tags;
 	std::shared_ptr<options_view> _view_options;
+	std::shared_ptr<explore_view> _view_explore;
+	std::shared_ptr<faces_view> _view_faces;
+	// The grouping face search published that a listing it answers and the sidebar's counts were last brought up to.
+	std::weak_ptr<const faces::overview> _faces_listed;
 
 	std::shared_ptr<items_view> _view_items;
 	std::shared_ptr<selector_view> _view_selector;
@@ -789,7 +795,7 @@ public:
 	std::shared_ptr<view_base> _view;
 
 	ui::bubble_window_ptr _bubble;
-	tooltip_dwell _tooltip_dwell;
+	pointer_dwell _tooltip_dwell;
 	bool _tooltip_content_dirty = false;
 
 	int _frame_delay = 0;
@@ -808,6 +814,12 @@ public:
 	// In the status bar's coordinates, the parts of it drawn rather than controls: the view's status,
 	// and the item totals among the bar's controls.
 	recti _status_text_bounds;
+	recti _receipt_prefix_bounds;
+	ui::toolbar_ptr _receipt_link;
+	recti _receipt_suffix_bounds;
+	std::string _receipt_prefix;
+	std::string _receipt_suffix;
+	int _status_text_row_height = 0;
 	recti _totals_bounds;
 	std::optional<recti> _last_texture_eviction_bounds;
 
@@ -857,6 +869,7 @@ public:
 	// over once that one has closed.
 	bool _instance_claim_retry = false;
 	double _next_instance_claim = 0.0;
+	double _next_face_book_poll = 0.0;
 	bool reuse_running_instance(bool forward_file = true);
 	bool accept_instance_files(std::vector<core::file_path> files);
 	// Whether the view on screen gives way to another without asking. One running a task refuses, and Edit or Options
@@ -926,8 +939,7 @@ public:
 	void update_status_hover(pointi loc);
 	bool filter_key_down(char32_t key, platform::key_state keys);
 	void filter_text_changed(std::string_view text);
-	void set_filter_edit_text(std::string_view text);
-	void focus_filter(bool has_focus);
+	void focus_filter(const ui::control_ptr& edit, bool has_focus);
 	void focus_filter_edit();
 	void cancel_filter_edit();
 
@@ -979,7 +991,7 @@ public:
 	void title_bar_mouse_leave();
 	void title_bar_click(pointi loc);
 	int title_bar_height(render::measure_context& mc);
-	int status_bar_height(render::measure_context& mc);
+	int status_bar_height(render::measure_context& mc, int width);
 	void activate(bool is_active) override;
 	void fail(std::string_view message, std::string_view more_text) override;
 	void invalidate_status() const;
@@ -1057,6 +1069,7 @@ public:
 	void add_command_invoke(commands id, std::function<void()> invoke);
 	ui::command_ptr find_command(commands id) const override;
 	void tooltip(view_hover_element& hover, commands id) const;
+	commands close_shortcut_target() const;
 	void search_text_changed(std::string_view text);
 	void preview_search_prediction(const std::string& text);
 	void set_search_edit_text(std::string_view text);

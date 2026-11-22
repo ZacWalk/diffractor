@@ -33,6 +33,44 @@ using view_host_base = ui::element_host_base;
 using view_host_base_ptr = ui::element_host_base_ptr;
 using view_host_ptr = ui::element_host_ptr;
 using view_hover_element = ui::hover_bubble;
+
+namespace bubble_delay
+{
+	inline constexpr uint32_t immediate = 0;
+	inline constexpr uint32_t scrollbar_entry = 50;
+	inline constexpr uint32_t sidebar_entry = 150;
+	inline constexpr uint32_t face_preview = 200;
+	inline constexpr uint32_t help = 500;
+
+	constexpr bool follows_pointer(const uint32_t delay)
+	{
+		return delay == scrollbar_entry || delay == sidebar_entry;
+	}
+}
+
+struct pointer_dwell
+{
+	pointi origin;
+	uint64_t since = 0;
+	bool armed = false;
+
+	void reset() { armed = false; }
+
+	bool ready(const uint64_t now, const pointi position, const int tolerance, const uint32_t delay,
+	           const bool follow_pointer = false)
+	{
+		const auto moved = std::abs(static_cast<int64_t>(position.x) - origin.x) > tolerance ||
+		                   std::abs(static_cast<int64_t>(position.y) - origin.y) > tolerance;
+		if (!armed || now < since || (moved && !follow_pointer))
+		{
+			origin = position;
+			since = now;
+			armed = true;
+		}
+		return now - since >= delay;
+	}
+};
+
 using view_scroller = ui::scroller;
 using view_scroller_section = ui::scroller_section;
 using view_scroll_anchor = ui::scroll_anchor;
@@ -61,6 +99,7 @@ using ui::make_icon_element;
 using ui::make_icon_link_element;
 using ui::link_foreground_color;
 using ui::draw_splitter_handle;
+using ui::draw_keyboard_ring;
 
 inline core::color view_handle_color(const bool selected, const bool hover, const bool tracking,
                                      const bool view_has_focus, const bool text_over,
@@ -85,6 +124,9 @@ enum class view_invalid
 {
 	none = 0,
 
+	// Face search's store, progress or overview changed: the Faces view, the faces drawn on a picture and the
+	// sidebar's Faces row (docs/faces.md).
+	faces = 1 << 0,
 	view_layout = 1 << 1,
 	// The selector strip's membership rule changed, so rebuild the strip without re-grouping.
 	selector_filter = 1 << 2,
@@ -182,6 +224,8 @@ enum class bar_control
 	item_filter, // the box that filters the items by name
 	item_size,   // the thumbnail size slider
 	item_totals, // the item count and size; hovering shows the breakdown by type
+	face_filter,
+	face_size,
 };
 
 // A command, shown as a toolbar button, or one of the frame's own bar controls.
@@ -206,6 +250,8 @@ struct view_bars
 
 // The bars every task view shows: the window buttons and Close above, the task's own commands below.
 view_bars task_view_bars(std::vector<bar_entry> bottom);
+// A task view's bars with Back at the start of the window controls.
+view_bars history_view_bars(std::vector<bar_entry> bottom);
 
 // What a right-click on a view offers. As with its bars, a view only names the commands and the frame builds the
 // menu: `row` opens it as a row of buttons - the commonest commands on what the menu acts on, each named under its
@@ -277,10 +323,6 @@ int step_keyboard_part(const std::vector<keyboard_part>& parts, int from, char32
 
 // Presses a part as a click at its centre does, through the controller host offers there.
 void press_keyboard_part(const view_host_ptr& host, const keyboard_part& part);
-
-// The ring around what the keyboard is on, where nothing else shows it: just outside bounds, or inside them for
-// what fills its space - a whole view.
-void draw_keyboard_ring(render::draw_context& dc, recti bounds, bool inside = false);
 
 // Scrolls what scroller shows so bounds, where it is drawn now, is in view.
 void scroll_into_view(view_scroller& scroller, const view_host_ptr& host, recti bounds);

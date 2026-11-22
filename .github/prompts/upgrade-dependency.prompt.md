@@ -12,7 +12,7 @@ Ask which dependency and which target version if not already stated.
    `cmake/dd-dependencies.json`, `cmake/vendored`, the CMake dependency and policy files, or the
    owned wrapper — [files.cpp](../../src/files.cpp) or a `files_*` decoder,
    [av_format.cpp](../../src/av_format.cpp), [metadata.cpp](../../src/metadata.cpp),
-   [util_spell.cpp](../../src/util_spell.cpp) or
+   [model_faces.cpp](../../src/model_faces.cpp), [util_spell.cpp](../../src/util_spell.cpp) or
    [util_zip.cpp](../../src/util_zip.cpp). If a fix seems to require editing the library's source, it
    belongs in the wrapper or the build configuration, or upstream: Diffractor keeps no fork.
 
@@ -22,17 +22,17 @@ Ask which dependency and which target version if not already stated.
    thing an upgrade silently drops.
 
 3. **Move the pin, regenerate, then re-apply.** Put the new archive's URL and SHA-256 in
-   `cmake/dd-dependencies.json` - or in libfiles' or libdesktop's, for a library one of them fetches,
-   and the new commit in its `cmake/Diffractor*.cmake` module for libfiles, libdesktop or lib64
-   themselves. For FFmpeg, the Windows configuration in `cmake/vendored/ffmpeg-windows` is
+   `cmake/dd-dependencies.json` - or in libfiles', libdesktop's or libmug's, for a library one of them
+   fetches - and the new commit in its `cmake/Diffractor*.cmake` module for libdesktop, libfiles, lib64
+   or libmug themselves. For FFmpeg, the Windows configuration in `cmake/vendored/ffmpeg-windows` is
    regenerated for the new version and compared with Linux's by `tools/compare_ffmpeg_config.py`,
    which CI runs. The guard is not "no divergence" but "no divergence that has not been accounted
    for": record any new platform switch beside the Windows configuration.
 
 4. **Prove it through the wrapper, not the library.** The library's own suite says nothing about
    Diffractor's integration. Build Debug with `python tools\dd.py build`, then run
-   `/test:*metadata*`, `/test:*video*`, `/test:*audio*` and the format tests in
-   [test_files.cpp](../../src/test_files.cpp), plus any test the constraint inventory named, as
+   `/test:*metadata*`, `/test:*video*`, `/test:*audio*` (`/test:*face*` for libmug) and the format
+   tests in [test_files.cpp](../../src/test_files.cpp), plus any test the constraint inventory named, as
    `.\exe\diffractor64-d.exe /test:*metadata* | Out-Host`.
 
 5. **Update the document.** Record the new version in [third-party.md](../../docs/third-party.md),
